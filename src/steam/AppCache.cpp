@@ -1,13 +1,15 @@
 #include "steam/AppCache.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <set>
 #include <string>
 #include <string_view>
 
 #include "core/Files.h"
+#include "core/Strings.h"
 #include "steam/BinaryVdf.h"
 
 namespace mira::steam {
@@ -48,21 +50,13 @@ std::set<std::uint32_t> OwnedAppIds(const fs::path& steam_root) {
   return owned;
 }
 
-bool IsGame(std::string_view type) {
-  return std::ranges::equal(type, std::string_view("game"), [](unsigned char a, unsigned char b) {
-    return std::tolower(a) == std::tolower(b);
-  });
-}
-
-}  // namespace
-
-std::vector<OwnedGame> OwnedFromAppCache(const fs::path& steam_root) {
-  std::vector<OwnedGame> games;
-  const std::set<std::uint32_t> owned = OwnedAppIds(steam_root);
+// Calls `visit` with each app in appinfo.vdf that `wanted` accepts, parsed.
+void ForEachApp(const fs::path& steam_root, const std::function<bool(std::uint32_t)>& wanted,
+                const std::function<void(std::uint32_t, Node&)>& visit) {
   const auto data = files::ReadFile(steam_root / "appcache" / "appinfo.vdf");
-  if (!data || owned.empty()) return games;
+  if (!data) return;
   const auto magic = ReadLittle(*data, 0, 4);
-  if (magic != kAppV29 && magic != kAppV28) return games;
+  if (magic != kAppV29 && magic != kAppV28) return;
   const bool v29 = magic == kAppV29;
 
   // v29 keeps its keys in a table at a 64-bit offset; the entries end where the table starts.
@@ -70,14 +64,14 @@ std::vector<OwnedGame> OwnedFromAppCache(const fs::path& steam_root) {
   size_t end = data->size();
   if (v29) {
     const auto offset = ReadLittle(*data, 8, 8);
-    if (!offset || *offset < 16 || *offset >= data->size()) return games;
+    if (!offset || *offset < 16 || *offset >= data->size()) return;
     end = *offset;
     const auto count = ReadLittle(*data, end, 4);
-    if (!count) return games;
+    if (!count) return;
     Reader table{*data, end + 4};
     for (std::uint64_t i = 0; i < *count; ++i) {
       auto key = table.CString();
-      if (!key) return games;
+      if (!key) return;
       keys.push_back(std::move(*key));
     }
   }
@@ -93,23 +87,134 @@ std::vector<OwnedGame> OwnedFromAppCache(const fs::path& steam_root) {
     const size_t next = body + *size;
     if (next > end) break;
     const auto id = static_cast<std::uint32_t>(*appid);
-    if (owned.contains(id)) {
+    if (wanted(id)) {
       Reader reader{std::string_view(*data).substr(0, next), body + 60, v29 ? &keys : nullptr};
-      auto app = reader.Single();
-      Node* common = app ? app->Child("common") : nullptr;
-      Node* type = common ? common->Child("type") : nullptr;
-      Node* name = common ? common->Child("name") : nullptr;
-      if (type && name && IsGame(type->bytes)) {
-        OwnedGame game;
-        game.appid = std::to_string(id);
-        game.name = name->bytes;
-        games.push_back(std::move(game));
-      }
+      if (auto app = reader.Single()) visit(id, *app);
     }
     at = next;
   }
-  std::ranges::sort(games, {}, &OwnedGame::name);
+}
+
+// A size written as text (above 2 GiB) or as a number.
+std::int64_t SizeOf(const Node* node) {
+  if (node == nullptr) return -1;
+  if (node->type == kString) {
+    try {
+      return static_cast<std::int64_t>(std::stoull(node->bytes));
+    } catch (...) {
+      return -1;
+    }
+  }
+  if (node->type == kInt) return static_cast<std::uint32_t>(node->Int32());
+  if (node->type == kUint64) {
+    if (const auto value = ReadLittle(node->bytes, 0, 8)) return static_cast<std::int64_t>(*value);
+  }
+  return -1;
+}
+
+std::string Text(Node* node, std::string_view key) {
+  Node* child = node != nullptr ? node->Child(key) : nullptr;
+  return child != nullptr && child->type == kString ? child->bytes : std::string();
+}
+
+}  // namespace
+
+std::vector<OwnedGame> OwnedFromAppCache(const fs::path& steam_root) {
+  std::vector<OwnedGame> games;
+  const std::set<std::uint32_t> owned = OwnedAppIds(steam_root);
+  if (owned.empty()) return games;
+  ForEachApp(
+      steam_root, [&owned](std::uint32_t id) { return owned.contains(id); },
+      [&games](std::uint32_t id, Node& app) {
+        Node* common = app.Child("common");
+        Node* type = common ? common->Child("type") : nullptr;
+        Node* name = common ? common->Child("name") : nullptr;
+        if (type && name && strings::EqualsIgnoreCase(type->bytes, "game")) {
+          OwnedGame game;
+          game.appid = std::to_string(id);
+          game.name = name->bytes;
+          games.push_back(std::move(game));
+        }
+      });
+  SortLikeSteam(games, steam_root);
   return games;
+}
+
+void SortLikeSteam(std::vector<OwnedGame>& games, const std::optional<fs::path>& steam_root) {
+  std::map<std::string, std::string> keys;
+  for (const OwnedGame& game : games) keys[game.appid] = strings::ToLower(game.name);
+  if (steam_root) {
+    ForEachApp(
+        *steam_root, [&keys](std::uint32_t id) { return keys.contains(std::to_string(id)); },
+        [&keys](std::uint32_t id, Node& app) {
+          const std::string sort_as = Text(app.Child("common"), "sortas");
+          if (!sort_as.empty()) keys[std::to_string(id)] = strings::ToLower(sort_as);
+        });
+  }
+  std::ranges::stable_sort(games, [&keys](const OwnedGame& a, const OwnedGame& b) {
+    return keys[a.appid] < keys[b.appid];
+  });
+}
+
+std::optional<AppSize> AppSizeFromAppCache(const fs::path& steam_root, const std::string& appid) {
+  std::optional<AppSize> found;
+  const std::set<std::uint32_t> owned = OwnedAppIds(steam_root);
+  ForEachApp(
+      steam_root, [&appid](std::uint32_t id) { return std::to_string(id) == appid; },
+      [&found, &owned](std::uint32_t, Node& app) {
+        Node* depots = app.Child("depots");
+        if (depots == nullptr) return;
+        struct Depot {
+          std::string os;
+          std::string arch;
+          std::int64_t size;
+          std::int64_t download;
+        };
+        std::vector<Depot> candidates;
+        for (Node& depot : depots->children) {
+          if (depot.type != kObject || depot.children.empty()) continue;
+          // Pulled from another app, shared with other games (redistributables), or DLC the
+          // account doesn't own.
+          if (depot.Child("depotfromapp") || depot.Child("sharedinstall") ||
+              depot.Child("optionaldlc"))
+            continue;
+          if (Node* dlc = depot.Child("dlcappid");
+              dlc != nullptr && !owned.contains(static_cast<std::uint32_t>(dlc->Int32())))
+            continue;
+          Node* config = depot.Child("config");
+          const std::string language = Text(config, "language");
+          if (!language.empty() && !strings::EqualsIgnoreCase(language, "english")) continue;
+          Node* manifests = depot.Child("manifests");
+          Node* manifest = manifests ? manifests->Child("public") : nullptr;
+          if (manifest == nullptr) continue;
+          Node* arch = config ? config->Child("osarch") : nullptr;
+          candidates.push_back({strings::ToLower(Text(config, "oslist")),
+                                arch != nullptr && arch->type == kString ? arch->bytes
+                                : arch != nullptr ? std::to_string(arch->Int32())
+                                                  : std::string(),
+                                SizeOf(manifest->Child("size")),
+                                SizeOf(manifest->Child("download"))});
+        }
+        // Steam installs a game's Linux build when it has one.
+        const bool linux_build = std::ranges::any_of(
+            candidates, [](const Depot& d) { return d.os.find("linux") != std::string::npos; });
+        const std::string os = linux_build ? "linux" : "windows";
+        const auto for_os = [&os](const Depot& d) {
+          return d.os.empty() || d.os.find(os) != std::string::npos;
+        };
+        const bool has_64 = std::ranges::any_of(
+            candidates, [&](const Depot& d) { return for_os(d) && d.arch == "64"; });
+        AppSize size;
+        for (const Depot& depot : candidates) {
+          if (!for_os(depot) || (has_64 && depot.arch == "32")) continue;
+          if (depot.size >= 0)
+            size.install_bytes = std::max<std::int64_t>(size.install_bytes, 0) + depot.size;
+          if (depot.download >= 0)
+            size.download_bytes = std::max<std::int64_t>(size.download_bytes, 0) + depot.download;
+        }
+        if (size.install_bytes >= 0 || size.download_bytes >= 0) found = size;
+      });
+  return found;
 }
 
 }  // namespace mira::steam

@@ -14,10 +14,9 @@ namespace mira::steam {
 // Detects installed Steam games and upserts them into the same GameStore
 // as everything else: a Steam game is a normal model::Game with
 // runner_ref "steam:<appid>", so every existing endpoint (GET /v1/games,
-// PATCH, launch, stop) already works on it without modification. Manual
-// (POST /v1/steam/scan), not inotify-driven: Steam's own library isn't
-// under a watched library_root, and appearing/vanishing games there is
-// nowhere near as frequent as it is for a game folder.
+// PATCH, launch, stop) already works on it without modification. Run by
+// POST /v1/steam/scan, and by the library Watcher once Steam stops writing an
+// app manifest (an install or uninstall finishing in Steam).
 class SteamScanner {
  public:
   SteamScanner(config::Config& config, store::GameStore& games, api::EventBus& events);

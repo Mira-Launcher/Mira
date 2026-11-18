@@ -194,6 +194,7 @@ int main(int argc, char** argv) {
   watcher.UseMetadataQueue(services.fetches);
   watcher.UseInstallLane(services.installs);
   watcher.OnSettingsSaved([&services] { services.ReloadSettings(); });
+  watcher.OnSteamChanged([&services] { services.ScanSteamLater(); });
   watcher.UseUnclearMoves(services.unclear_moves);
   watcher.UseDrops(services.drops);
   services.on_roots_changed = [&watcher] { watcher.ReloadRoots(); };

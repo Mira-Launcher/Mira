@@ -11,6 +11,8 @@
 #include "amazon/Nile.h"
 #include "epic/Legendary.h"
 #include "gog/Gog.h"
+#include "steam/AppCache.h"
+#include "steam/SteamDetector.h"
 
 namespace mira::library {
 namespace {
@@ -61,6 +63,18 @@ std::optional<InstallSize> ParseInstallSize(std::string_view output) {
 Result<InstallSize> FetchInstallSize(const config::Config& config, const std::string& source,
                                      const std::string& ref) {
   if (auto known = KnownInstallSize(source, ref)) return *known;
+  const auto remember = [&](const InstallSize& size) {
+    std::lock_guard lock(cache_mutex);
+    if (cache.size() >= kCacheLimit && !cache.contains({source, ref})) cache.erase(cache.begin());
+    cache[{source, ref}] = size;
+  };
+  if (source == "steam") {
+    const auto root = steam::FindSteamRoot(config);
+    const auto size = root ? steam::AppSizeFromAppCache(*root, ref) : std::nullopt;
+    if (!size) return Err("size_unknown", "Steam didn't say how big " + ref + " is");
+    remember({size->download_bytes, size->install_bytes});
+    return InstallSize{size->download_bytes, size->install_bytes};
+  }
   const auto ask = [&]() -> Result<std::string> {
     if (source == "epic") return epic::RunLegendary(config, {"info", ref, "--json"});
     if (source == "gog") return gog::RunGogdl(config, {"info", ref, "--platform", "windows"});
@@ -71,9 +85,7 @@ Result<InstallSize> FetchInstallSize(const config::Config& config, const std::st
   if (!output) return std::unexpected(output.error());
   const auto size = ParseInstallSize(*output);
   if (!size) return Err("size_unknown", "The store didn't say how big " + ref + " is");
-  std::lock_guard lock(cache_mutex);
-  if (cache.size() >= kCacheLimit && !cache.contains({source, ref})) cache.erase(cache.begin());
-  cache[{source, ref}] = *size;
+  remember(*size);
   return *size;
 }
 

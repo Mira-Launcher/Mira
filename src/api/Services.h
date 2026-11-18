@@ -170,6 +170,11 @@ class Services {
   // {added, updated}.
   nlohmann::json FinishImport(const std::string& source, const library::ImportSummary& summary);
 
+  // Imports the games Steam has installed, for a job: the work behind POST /v1/steam/scan.
+  Result<nlohmann::json> ScanSteam();
+  // ScanSteam as a job of its own, unless one is running: Steam wrote an app manifest.
+  void ScanSteamLater();
+
   // Closes out any session a previous mirad left behind and tells clients those games are idle.
   void ReconcileSessions();
 

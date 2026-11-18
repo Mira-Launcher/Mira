@@ -36,7 +36,6 @@
 #include "steam/FriendsStatus.h"
 #include "steam/Shortcuts.h"
 #include "steam/SteamDetector.h"
-#include "steam/SteamScanner.h"
 
 namespace mira::api {
 namespace {
@@ -311,12 +310,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
 
   http.Post("/v1/steam/scan", [&s](const Request& req, Response& res) {
     s.StartJob(req, res, "import", "steam", "Importing from Steam",
-               [&s](JobRegistry::Progress&) -> Result<json> {
-                 steam::SteamScanner scanner(s.config, s.games, s.events);
-                 auto summary = scanner.Scan();
-                 if (!summary) return std::unexpected(summary.error());
-                 return s.FinishImport("steam", *summary);
-               });
+               [&s](JobRegistry::Progress&) { return s.ScanSteam(); });
   });
 
   http.Get("/v1/steam/accounts", [&s](const Request&, Response& res) {

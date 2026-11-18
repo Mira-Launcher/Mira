@@ -30,6 +30,7 @@ Result<std::vector<library::CatalogEntry>> SteamSource::Catalog(
     Result<std::vector<OwnedGame>> listed = ListOwnedGames(config);
     if (!listed) return std::unexpected(listed.error());
     owned = std::move(*listed);
+    SortLikeSteam(owned, FindSteamRoot(config));  // the Web API lists them by appid
   }
 
   for (const OwnedGame& game : owned) {

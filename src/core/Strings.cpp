@@ -44,6 +44,11 @@ std::string ToLower(std::string_view input) {
   return out;
 }
 
+bool EqualsIgnoreCase(std::string_view a, std::string_view b) {
+  return std::ranges::equal(
+      a, b, [](unsigned char x, unsigned char y) { return std::tolower(x) == std::tolower(y); });
+}
+
 std::string TitleCase(std::string_view input) {
   static constexpr std::array<std::string_view, 16> kSmall = {
       "a",  "an",  "and", "as", "at", "but", "by", "for",
