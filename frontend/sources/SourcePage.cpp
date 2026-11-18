@@ -1262,11 +1262,7 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
         library_->ShowingHidden() ? "Nothing hidden here." : "Everything you own is installed.",
         "muted");
   } else {
-    ShowLine(owned_note_,
-             id_ == "steam" ? "Install hands the game to the Steam client; scan the Steam library "
-                              "once it's done."
-                            : QString(),
-             "muted");
+    ShowLine(owned_note_, QString(), "muted");
   }
   RebuildOwnedTiles();
 }
@@ -1426,8 +1422,10 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
       // A path has no spaces to wrap at; it may break after each folder instead.
       status =
           "Downloaded to " + humble_paths_.value(ref).replace('/', QString("/") + QChar(0x200B));
-    } else if (index.data(GameTileDelegate::ActionEnabledRole).toBool()) {
-      status = id_ == "humble" ? "Not downloaded" : "Not installed";
+    } else {
+      // An install under way keeps its status line and still shows how big it is.
+      if (index.data(GameTileDelegate::ActionEnabledRole).toBool())
+        status = id_ == "humble" ? "Not downloaded" : "Not installed";
       size = TitleSize(grid, index);
     }
     hover_card_->ShowTitle(QString::fromStdString(id_), ref,
@@ -1447,16 +1445,16 @@ QString SourcePage::TitleSize(TileGrid* grid, const QModelIndex& index) {
                ? QString("%1 on disk · %2 download").arg(SizeText(install), SizeText(download))
                : SizeText(install) + " on disk";
   }
-  if (id_ != "epic" && id_ != "gog" && id_ != "amazon") return {};
   // Asked once per title; the card fills in when the store answers, if it's still showing it.
   title_sizes_.insert(ref, {-1, -1});
   api::GetInstallSizeAsync(
       this, id_, ref.toStdString(),
       [this, grid, ref, at = QPersistentModelIndex(index)](InstallSizeResult r) {
         // A store that couldn't be reached is asked again on the next hover; one that answered
-        // without a size isn't.
+        // without a size, or can't say one, isn't.
         if (!r.ok) {
-          if (r.error.code != "size_unknown") title_sizes_.remove(ref);
+          if (r.error.code != "size_unknown" && r.error.code != "size_unsupported")
+            title_sizes_.remove(ref);
           return;
         }
         title_sizes_.insert(ref, {r.download_bytes, r.install_bytes});

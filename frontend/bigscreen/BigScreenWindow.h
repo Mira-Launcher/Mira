@@ -59,6 +59,8 @@ class BigScreenWindow : public QWidget, public actions::SavesChooser {
   // Whether big screen lists this game or store title: never hidden ones, apps only when set to.
   bool Browsable(const GameSummary& game) const;
   bool Browsable(const StoreTitle& title) const;
+  // Whether the game or owned title with this key is hidden, so big screen leaves it out.
+  bool IsHiddenKey(const QString& key) const;
   Item ItemFor(const GameSummary& game) const;
   Item ItemFor(const StoreTitle& title) const;
   QPixmap Cover(const Item& item, QSize size) const;
@@ -124,6 +126,8 @@ class BigScreenWindow : public QWidget, public actions::SavesChooser {
 
  private:
   friend class Chrome;
+  // The store title whose key ("<source>-<ref>") this is, or null.
+  const StoreTitle* FindTitle(const QString& key) const;
   // The Guide button's menu over a running game.
   struct Menu {
     QString title;

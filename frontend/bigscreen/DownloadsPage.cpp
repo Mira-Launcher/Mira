@@ -65,6 +65,7 @@ void DownloadsPage::Refresh() {
       continue;
     const QString key =
         entry.kind == DownloadTracker::Kind::Game ? entry.ref : entry.source + "-" + entry.ref;
+    if (window_->IsHiddenKey(key)) continue;
     Item item = window_->Find(key);
     if (item.key.isEmpty()) {
       item = {key, window_->services().downloads->NameFor(entry), entry.source, entry.ref,
