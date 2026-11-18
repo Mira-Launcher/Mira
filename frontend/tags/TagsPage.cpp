@@ -43,10 +43,6 @@ bool g_fetching_steam = false;
 
 constexpr int kCountWidth = 64;
 
-QString Games(std::size_t count) {
-  return count == 1 ? QString("1 game") : QString("%1 games").arg(count);
-}
-
 QString FoldersMove(int count) {
   return count == 1 ? QString("1 game folder moves") : QString("%1 game folders move").arg(count);
 }
@@ -230,7 +226,7 @@ class CountPill : public QWidget {
   void Set(std::size_t games, std::size_t most) {
     games_ = games;
     most_ = most;
-    setToolTip(Games(games));
+    setToolTip(GamesCount(games));
     updateGeometry();
     update();
   }
@@ -691,7 +687,7 @@ void TagsPage::SyncMine() {
     KeepSpaceWhenHidden(entry.icon, any_folder);
     entry.icon->setVisible(folder);
     entry.count->setText(QString::number(ShownCount(tag.ids)));
-    entry.count->setToolTip(Games(ShownCount(tag.ids)));
+    entry.count->setToolTip(GamesCount(ShownCount(tag.ids)));
     const QSignalBlocker block(entry.folder);
     entry.folder->setChecked(folder);
     mine_->MoveRow(entry.row, static_cast<int>(i) + 1);
@@ -883,7 +879,7 @@ void TagsPage::ShowMenu(const std::string& name, QWidget* anchor) {
         Refresh();
       });
     };
-    bar_->SetText(QString("Remove %1 from %2?").arg(label, Games(count)), "Remove", "Cancel");
+    bar_->SetText(QString("Remove %1 from %2?").arg(label, GamesCount(count)), "Remove", "Cancel");
   });
   menu.exec(anchor->mapToGlobal(QPoint(0, anchor->height())));
   if (rename) StartRename(name);

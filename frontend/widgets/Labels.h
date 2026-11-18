@@ -25,6 +25,9 @@ QLabel* MakeTag(QWidget* parent, const QString& text, const char* tone = nullptr
 // "a, b and c".
 QString JoinAnd(QStringList items);
 
+// "1 game", "3 games".
+QString GamesCount(qsizetype count);
+
 // A size as every label shows one: "1.8 GB", "12.5 MB".
 QString SizeText(qint64 bytes);
 
