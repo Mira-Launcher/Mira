@@ -357,6 +357,10 @@ void SettingsPanel::BuildInterfacePage() {
   AddToggle(library, "Same tile size everywhere",
             "One tile size for the library and every source page. Off, each page keeps its own.",
             "tile size zoom synced source pages", &FrontendPrefs::tile_size_synced, false);
+  AddToggle(library, "Zoom by rows",
+            "Zoom sets how many rows of tiles fill the library's height, leaving any spare room "
+            "on the right instead of at the bottom.",
+            "tile size zoom rows columns height", &FrontendPrefs::zoom_by_rows, false);
 
   SettingsCard* layout = page->AddCard("Layout");
   layout_preview_ = new LayoutPreview(games, previews_.artwork);

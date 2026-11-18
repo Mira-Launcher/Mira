@@ -221,6 +221,7 @@ Settings takes over the window body, its nav column in the sidebar's place: the 
 | `window_width`, `window_height` | Window size. |
 | `sidebar_width` | Sidebar width. |
 | `tile_width` | The library's tile size, clamped to the zoom slider's range. |
+| `zoom_by_rows` | The library's zoom (and hidden mode's) snaps to sizes whose whole rows fill the grid's height inside its padding, up to 400 px wide, leaving the spare room on the right, and snaps again to the nearest such size when that height changes; off, to sizes whose tiles fill a row, up to 260 px, leaving it at the bottom (`widgets/TileFit`). |
 | `source_tile_widths`, `page_tile_widths`, `tile_size_synced` | Each source page's tile size and the Tags page's covers' (`tags`) and hidden mode's (`hidden`), which start at the library's until zoomed, or one size for every page. |
 | `library_filter`, `sort_by`, `sort_descending` | Selected filter and sort. |
 | `not_installed_sort` | The Library's Not installed tab's sort (`store`, `name`, `reviews` or `protondb`). |

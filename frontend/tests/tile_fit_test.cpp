@@ -59,3 +59,26 @@ TEST_CASE("A released zoom slider snaps to the nearest width that fills the row"
   // A row narrower than the smallest tile has no fit: the width is kept.
   CHECK(FitTileWidth(150, 160, TileRow{100, 0}, kMin, kMax) == 150);
 }
+
+TEST_CASE(
+    "Zooming by rows lands on sizes whose rows fill the height, one row more or less a step") {
+  const TileRow rows{850, 0, true};
+  constexpr int kRowsMax = 400;
+  const auto per_column = [&rows](int width) { return rows.room / TileHeight(width, rows); };
+  const int smallest = FitTileWidth(kMin, kMin, rows, kMin, kRowsMax);
+  const int largest = FitTileWidth(kRowsMax, kRowsMax, rows, kMin, kRowsMax);
+  CHECK(per_column(smallest) == 4);
+  CHECK(per_column(largest) == 2);
+  int width = smallest;
+  for (int expected = 3; expected >= 2; --expected) {
+    width = FitTileWidth(width + kStep, width, rows, kMin, kRowsMax);
+    CHECK(per_column(width) == expected);
+    // Whole rows, under a pixel a row short of the room: less than the gap a cover sits in.
+    CHECK(rows.room - per_column(width) * TileHeight(width, rows) < per_column(width));
+  }
+  CHECK(FitTileWidth(width + kStep, width, rows, kMin, kRowsMax) == width);
+  const TileRow tall{971, 0, true};
+  const int four = FitTileWidth(161, 161, tall, kMin, kRowsMax);
+  CHECK(tall.room - 4 * TileHeight(four, tall) < 4);
+  CHECK(TileHeight(four, TileRow{}) == four * 3 / 2);  // a width zoom keeps covers 2:3
+}

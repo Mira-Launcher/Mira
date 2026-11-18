@@ -166,6 +166,8 @@ class LibraryWindow : public QMainWindow,
   void Zoom(int width);
   // Ctrl+plus/minus and Ctrl+wheel: `steps` slider page steps, positive to grow.
   void StepZoom(int steps);
+  // Zooming by rows, the grid's height changed: its tiles snap to the nearest whole-row fit again.
+  void RefitRows();
   void ApplyTileWidth(int width);
   int ShownTileWidth() const;
   mira_gui::TileRow ShownTileRow() const;
@@ -174,7 +176,7 @@ class LibraryWindow : public QMainWindow,
   int PageTileWidth(const std::string& key) const;
   // Points the slider at the page on screen, and off where there's no grid.
   void SyncZoom();
-  // The same once the grids are laid out, after one resizes or a page shows.
+  // The same once the grids are laid out, after one resizes or a page shows, refitting rows first.
   void SyncZoomSoon();
   bool SourcePageShown() const;
   // The Tags page's game picker, whose covers have their own zoom.
@@ -320,6 +322,7 @@ class LibraryWindow : public QMainWindow,
   // The library's own width; the grid shows hidden mode's while in it.
   int library_tile_width_ = 0;
   bool tile_size_synced_ = false;
+  bool zoom_by_rows_ = false;
   mira_gui::SourcePage* source_page_ = nullptr;
   mira_gui::RunnersPage* runners_page_ = nullptr;
   mira_gui::TagsPage* tags_page_ = nullptr;
@@ -388,6 +391,9 @@ class LibraryWindow : public QMainWindow,
   static constexpr int kDefaultTileWidth = 168;
   static constexpr int kMinTileWidth = 120;
   static constexpr int kMaxTileWidth = 260;
+  // Zooming by rows goes bigger, so two rows can fill a tall window.
+  static constexpr int kMaxRowsTileWidth = 400;
+  static int MaxTileWidth(bool rows) { return rows ? kMaxRowsTileWidth : kMaxTileWidth; }
   static constexpr int kDefaultSourceTileWidth = 150;  // smaller: a source page holds two grids
   bool scan_on_startup_ = true;
   std::string

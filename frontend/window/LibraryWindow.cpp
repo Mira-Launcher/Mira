@@ -139,14 +139,15 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   if (prefs.window_maximized.value_or(false)) setWindowState(windowState() | Qt::WindowMaximized);
 
   // Before the widgets that show them are built, so they start right.
-  const int tile_width = prefs.tile_width
-                             ? std::clamp(*prefs.tile_width, kMinTileWidth, kMaxTileWidth)
-                             : kDefaultTileWidth;
+  const int max_width = MaxTileWidth(prefs.zoom_by_rows.value_or(false));
+  const int tile_width = prefs.tile_width ? std::clamp(*prefs.tile_width, kMinTileWidth, max_width)
+                                          : kDefaultTileWidth;
   for (const auto& [id, width] : prefs.source_tile_widths.value_or(std::map<std::string, int>{})) {
     source_tile_widths_[id] = std::clamp(width, kMinTileWidth, kMaxTileWidth);
   }
   for (const auto& [key, width] : prefs.page_tile_widths.value_or(std::map<std::string, int>{})) {
-    page_tile_widths_[key] = std::clamp(width, kMinTileWidth, kMaxTileWidth);
+    page_tile_widths_[key] =
+        std::clamp(width, kMinTileWidth, key == "hidden" ? max_width : kMaxTileWidth);
   }
   library_tile_width_ = tile_width;
 
@@ -297,7 +298,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   layout->setContentsMargins(mira_gui::kResizeMargin, mira_gui::kResizeMargin,
                              mira_gui::kResizeMargin, mira_gui::kResizeMargin);
   layout->setSpacing(0);
-  top_bar_ = new mira_gui::TopBar(kMinTileWidth, kMaxTileWidth, tile_width, chrome);
+  top_bar_ = new mira_gui::TopBar(kMinTileWidth, max_width, tile_width, chrome);
   zoom_ = top_bar_->zoom();
   connect(zoom_, &QSlider::valueChanged, this, &LibraryWindow::Zoom);
   connect(zoom_, &QSlider::sliderReleased, this, [this] { Zoom(zoom_->value()); });
@@ -542,7 +543,13 @@ void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   mira_gui::system::SetCopyCommands(prefs.copy_commands.value_or(false));
   if (source_page_ != nullptr) source_page_->SetDragSelectEnabled(drag_select_);
   UpdateLibraryNavActive();  // the slider follows tile_size_synced_
+  const bool rows = prefs.zoom_by_rows.value_or(false);
   grid_page_->ApplyPrefs(prefs);
+  // The other way of zooming snaps the tiles to its nearest fit now.
+  if (std::exchange(zoom_by_rows_, rows) != rows && GridShown()) {
+    SyncZoom();
+    Zoom(std::min(ShownTileWidth(), MaxTileWidth(rows)));
+  }
 }
 
 void LibraryWindow::ApplyChangedPrefs(const std::string& payload) {
@@ -998,6 +1005,7 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
           });
   connect(page, &mira_gui::LibraryPage::HoverEnded, this, &LibraryWindow::HideHoverCard);
   connect(page, &mira_gui::LibraryPage::ZoomStepped, this, [this](int steps) { StepZoom(steps); });
+  connect(page, &mira_gui::LibraryPage::RowRoomChanged, this, &LibraryWindow::SyncZoomSoon);
   return page;
 }
 
@@ -1014,7 +1022,8 @@ void LibraryWindow::Zoom(int width) {
   const bool animating =
       zoom_animation_ != nullptr && zoom_animation_->state() == QAbstractAnimation::Running;
   const int from = animating ? zoom_animation_->endValue().toInt() : ShownTileWidth();
-  const int fitted = mira_gui::FitTileWidth(width, from, row, kMinTileWidth, kMaxTileWidth);
+  const int fitted =
+      mira_gui::FitTileWidth(width, from, row, kMinTileWidth, MaxTileWidth(row.rows));
   {
     const QSignalBlocker block(zoom_);
     zoom_->setValue(fitted);
@@ -1042,6 +1051,22 @@ void LibraryWindow::StepZoom(int steps) {
   // Straight to Zoom, not through the slider: at its end the value doesn't change, and tiles a
   // resize left off the row's fits still snap to one.
   Zoom(std::clamp(zoom_->value() + steps * zoom_->pageStep(), zoom_->minimum(), zoom_->maximum()));
+}
+
+// Unlike a width zoom's spare on the right, rows that filled a taller grid leave part of a row.
+void LibraryWindow::RefitRows() {
+  if (zoom_ == nullptr || !zoom_by_rows_ || !GridShown() || zoom_->isSliderDown()) return;
+  if (zoom_animation_ != nullptr && zoom_animation_->state() == QAbstractAnimation::Running) return;
+  const mira_gui::TileRow row = ShownTileRow();
+  if (row.room <= 0) return;
+  const int width = ShownTileWidth();
+  const int fitted = mira_gui::FitTileWidth(width, width, row, kMinTileWidth, MaxTileWidth(true));
+  if (fitted != width) {
+    ApplyTileWidth(fitted);
+    ScheduleSavePrefs();
+  } else {
+    grid_page_->SetTileWidth(width);  // its height follows the room
+  }
 }
 
 void LibraryWindow::ApplyTileWidth(int width) {
@@ -1101,9 +1126,9 @@ void LibraryWindow::SyncZoom() {
   // From the smallest to the largest width that fills the row, so the slider's ends are the zoom's
   // and a drag never shows a size it won't keep.
   const mira_gui::TileRow row = ShownTileRow();
-  zoom_->setRange(
-      mira_gui::FitTileWidth(kMinTileWidth, kMinTileWidth, row, kMinTileWidth, kMaxTileWidth),
-      mira_gui::FitTileWidth(kMaxTileWidth, kMaxTileWidth, row, kMinTileWidth, kMaxTileWidth));
+  const int max = MaxTileWidth(row.rows);
+  zoom_->setRange(mira_gui::FitTileWidth(kMinTileWidth, kMinTileWidth, row, kMinTileWidth, max),
+                  mira_gui::FitTileWidth(max, max, row, kMinTileWidth, max));
   zoom_->setValue(ShownTileWidth());
   zoom_->setEnabled(!GameEditOpen() && (source || GridShown() || TagPickerShown()));
 }
@@ -1112,6 +1137,7 @@ void LibraryWindow::SyncZoomSoon() {
   if (!std::exchange(zoom_sync_queued_, true)) {
     QTimer::singleShot(0, this, [this] {
       zoom_sync_queued_ = false;
+      RefitRows();
       SyncZoom();
     });
   }

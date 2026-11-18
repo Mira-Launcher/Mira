@@ -103,7 +103,8 @@ class LibraryPage : public QWidget {
   void SetTileWidth(int width);
   // The covers on screen drawn ahead at `width`, the size a zoom is on its way to.
   void PrefetchTileWidth(int width);
-  // The row its tiles snap to fill; room 0 when none show.
+  // The row its tiles snap to fill, or with `zoom_by_rows` the height their rows fill; room 0 when
+  // none show.
   TileRow Row() const;
   // A new cover for `id`, for the Continue row (the tiles follow the model).
   void UpdateCover(const std::string& id);
@@ -131,6 +132,8 @@ class LibraryPage : public QWidget {
   void HoverEnded();
   // Ctrl+wheel over the grid, one step per notch, positive to grow.
   void ZoomStepped(int steps);
+  // With `zoom_by_rows`, the height its rows fill changed.
+  void RowRoomChanged();
 
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
@@ -182,6 +185,7 @@ class LibraryPage : public QWidget {
   std::set<QString> covers_asked_;  // "<source>-<ref>" whose cover fetch was queued
   int tile_width_ = 0;
   ZoomSettle* zoom_settle_ = nullptr;
+  bool zoom_by_rows_ = false;
   bool continue_row_enabled_ = true;
   int continue_count_ = 3;
   bool continue_apps_ = false;

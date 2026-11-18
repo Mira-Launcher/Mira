@@ -255,6 +255,7 @@ void LibraryPage::ApplyPrefs(const FrontendPrefs& prefs) {
   delegate_->SetShowStatus(prefs.tile_status.value_or(true));
   delegate_->SetShowSource(prefs.tile_source_mark.value_or(true));
   grid_->SetDragSelectEnabled(prefs.drag_select.value_or(true));
+  zoom_by_rows_ = prefs.zoom_by_rows.value_or(false);
   ApplyFilter();
 }
 
@@ -358,11 +359,12 @@ int LibraryPage::ShownCount() const {
 
 QSize LibraryPage::TileSize() const {
   // 2:3 portrait cover ratio, plus room for the title band over the bottom.
-  return QSize(tile_width_, tile_width_ * 3 / 2);
+  return QSize(tile_width_, TileHeight(tile_width_, zoom_by_rows_ ? Row() : TileRow{}));
 }
 
 void LibraryPage::SetTileWidth(int width) {
-  if (width == tile_width_) return;
+  // The same width can take a new height, zooming by rows in a resized grid.
+  if (width == tile_width_ && grid_->gridSize() == TileSize()) return;
   tile_width_ = width;
   zoom_settle_->Step(GameTileDelegate::CoverWidth(width));
   delegate_->SetTileSize(TileSize());
@@ -374,13 +376,21 @@ void LibraryPage::SetTileWidth(int width) {
 }
 
 void LibraryPage::PrefetchTileWidth(int width) {
-  const QSize tile(width, width * 3 / 2);
+  const QSize tile(width, TileHeight(width, zoom_by_rows_ ? Row() : TileRow{}));
   zoom_settle_->Prefetched(GameTileDelegate::CoverWidth(width));
   GameTileDelegate::PrefetchShown(grid_, artwork_, tile);
   GameTileDelegate::PrefetchShown(owned_grid_, artwork_, tile);
 }
 
 TileRow LibraryPage::Row() const {
+  if (zoom_by_rows_ && (grid_->isVisible() || owned_grid_->isVisible())) {
+    // The grid's own height while it scrolls itself, else the page's, which then scrolls; less the
+    // grid's padding either way. Not its viewport's: that grows when TileView trims the padding.
+    const bool own = grid_->isVisible() && !grid_->page_scrolls;
+    const int height = own ? grid_->height() : scroll_->viewport()->height();
+    const int padding = theme::Current().grid_margin + grid_->frameWidth();
+    return {height - 2 * padding, 0, true};
+  }
   if (grid_->isVisible()) return grid_->Row();
   if (owned_grid_->isVisible()) return owned_grid_->Row();
   return {};
@@ -406,6 +416,11 @@ bool LibraryPage::eventFilter(QObject* watched, QEvent* event) {
     const auto* resize = static_cast<QResizeEvent*>(event);
     if (resize->size().width() != resize->oldSize().width())
       QTimer::singleShot(0, this, &LibraryPage::FitGrid);
+  }
+  if (watched == this && event->type() == QEvent::Resize && zoom_by_rows_) {
+    const auto* resize = static_cast<QResizeEvent*>(event);
+    if (resize->size().height() != resize->oldSize().height())
+      QTimer::singleShot(0, this, [this] { emit RowRoomChanged(); });  // once the grid is laid out
   }
   // Clicks in the grid's own padding (outside its viewport) or around it deselect.
   if ((watched == grid_ || watched == this) && event->type() == QEvent::MouseButtonPress &&
