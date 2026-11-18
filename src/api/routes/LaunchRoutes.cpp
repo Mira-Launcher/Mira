@@ -34,6 +34,7 @@
 #include "library/Scanner.h"
 #include "library/ScriptPresets.h"
 #include "library/SourceRegistry.h"
+#include "library/WinePrefix.h"
 #include "proc/Session.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
@@ -837,7 +838,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     const bool needs_provisioning =
         game->platform == model::Platform::Windows &&
         (game->runner_ref.empty() ||
-         !std::filesystem::exists(std::filesystem::path(game->data_dir) / "drive_c", ec));
+         !std::filesystem::exists(library::PrefixRoot(game->data_dir) / "drive_c", ec));
     if (needs_provisioning) {
       const runner::RunnerRegistry provisioner(s.config);
       const model::Game provisioned = provisioner.ProvisionGame(*game);

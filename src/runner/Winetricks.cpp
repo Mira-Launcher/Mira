@@ -2,13 +2,18 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <json.hpp>
+#include <optional>
+#include <string_view>
 
 #include "core/Command.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
+#include "library/WinePrefix.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "steam/SteamDetector.h"
@@ -20,6 +25,39 @@ namespace fs = std::filesystem;
 
 fs::path BundledWinetricks() {
   return paths::UserDir() / "tools" / "winetricks" / "winetricks";
+}
+
+// The Visual C++ 14 runtime's least minor version a vcrun verb installs.
+std::optional<int> VcRuntimeMinor(std::string_view verb) {
+  if (verb == "vcrun2015") return 0;
+  if (verb == "vcrun2017") return 10;
+  if (verb == "vcrun2019") return 20;
+  if (verb == "vcrun2022") return 30;
+  return std::nullopt;
+}
+
+// Steam installs a game's Visual C++ runtime as a common redistributable, and the verb's
+// installer then refuses to put an older one over it, which aborts winetricks.
+bool HasVcRuntime(const fs::path& prefix, int minor) {
+  constexpr std::string_view kKey = "Software\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes";
+  constexpr std::string_view kWow =
+      "Software\\Wow6432Node\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes";
+  const auto has = [&](std::string_view parent, std::string_view arch) {
+    for (const auto& [name, values] : library::ReadRegSubkeys(prefix / "system.reg", parent)) {
+      if (!strings::EqualsIgnoreCase(name, arch)) continue;
+      const auto dword = [&values](const char* key) {
+        const auto it = values.find(key);
+        if (it == values.end() || !it->second.starts_with("dword:")) return -1L;
+        return std::strtol(it->second.c_str() + 6, nullptr, 16);
+      };
+      return dword("Installed") == 1 && dword("Major") == 14 && dword("Minor") >= minor;
+    }
+    return false;
+  };
+  std::error_code ec;
+  // A 32-bit prefix (no syswow64) has only the x86 runtime, in the plain key.
+  if (!fs::is_directory(prefix / "drive_c" / "windows" / "syswow64", ec)) return has(kKey, "x86");
+  return has(kKey, "x64") && has(kWow, "x86");
 }
 
 }  // namespace
@@ -108,8 +146,10 @@ Result<void> InstallWinetricks() {
 Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& game,
                            const std::string& verb, const OutputFn& on_output) {
   if (game.data_dir.empty()) return NoPrefix(game);
+  // A Steam game's data_dir is its compatdata folder, which holds the prefix as pfx/.
+  const fs::path prefix = library::PrefixRoot(game.data_dir);
   std::error_code ec;
-  if (!fs::exists(fs::path(game.data_dir) / "drive_c", ec)) {
+  if (!fs::exists(prefix / "drive_c", ec)) {
     return Err("not_provisioned", "this game's Wine prefix hasn't been created yet",
                "Launch the game once, or run something in its prefix, to create it.");
   }
@@ -129,12 +169,18 @@ Result<void> RunTricksVerb(const RunnerRegistry& runners, const model::Game& gam
       })) {
     return Err("invalid_verb", "that isn't a winetricks verb");
   }
+  if (const auto minor = VcRuntimeMinor(verb); minor && HasVcRuntime(prefix, *minor)) {
+    if (on_output)
+      on_output(
+          std::format("{}: this Visual C++ runtime or a newer one is already installed\n", verb));
+    return {};
+  }
   const auto prefix_lock = LockPrefix(game.data_dir);
 
   Command command;
   command.argv = {winetricks, "--unattended", verb};
   command.env["WINE"] = wine_binary->string();
-  command.env["WINEPREFIX"] = game.data_dir;
+  command.env["WINEPREFIX"] = prefix.string();
   const fs::path wineserver = wine_binary->parent_path() / "wineserver";
   if (fs::exists(wineserver, ec)) command.env["WINESERVER"] = wineserver.string();
 
@@ -156,7 +202,7 @@ Result<ExecResult> RunWine(const RunnerRegistry& runners, const model::Game& gam
   Command command;
   command.argv = {wine_binary->string()};
   command.argv.insert(command.argv.end(), args.begin(), args.end());
-  command.env["WINEPREFIX"] = game.data_dir;
+  command.env["WINEPREFIX"] = library::PrefixRoot(game.data_dir).string();
   command.env["WINEDEBUG"] = "-all";
   return RunAndWait(command);
 }
@@ -164,7 +210,7 @@ Result<ExecResult> RunWine(const RunnerRegistry& runners, const model::Game& gam
 std::vector<std::string> InstalledVerbs(const model::Game& game) {
   std::vector<std::string> verbs;
   if (game.data_dir.empty()) return verbs;
-  std::ifstream log(std::filesystem::path(game.data_dir) / "winetricks.log");
+  std::ifstream log(library::PrefixRoot(game.data_dir) / "winetricks.log");
   for (std::string line; std::getline(log, line);) {
     // A forced rerun logs the verb again, and some lines are winetricks' own options.
     if (line.empty() || line.starts_with('-') || std::ranges::contains(verbs, line)) continue;

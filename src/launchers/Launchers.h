@@ -147,11 +147,6 @@ void EndPrefixSession(const std::string& prefix, bool wait = false);
 // Host path of a Windows path inside `prefix`.
 std::filesystem::path HostPath(const std::filesystem::path& prefix, std::string_view windows_path);
 
-// Values of every subkey of `parent` in a Wine .reg file, by subkey name.
-using RegValues = std::map<std::string, std::string>;
-std::map<std::string, RegValues> ReadRegSubkeys(const std::filesystem::path& reg_file,
-                                                std::string_view parent);
-
 Result<library::ImportSummary> Import(config::Config& config, store::GameStore& games,
                                       api::EventBus& events, const Launcher& launcher);
 
