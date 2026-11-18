@@ -1396,12 +1396,17 @@ bool LibraryWindow::eventFilter(QObject* watched, QEvent* event) {
 }
 
 void LibraryWindow::UpdateFooter() {
-  // Out of what the library can list: store launchers (the EA app) live on their source pages.
-  const auto total =
-      std::ranges::count_if(library_->Games(), [this](const mira_gui::GameSummary& game) {
-        return library_->Shown(game) && mira_gui::GameFilterProxy::MatchesKey(game, "all");
-      });
-  sidebar_->SetFooter(grid_page_->ShownCount(), static_cast<int>(total), mirad_reachable_);
+  // Out of what the library can list (store launchers like the EA app live on their source pages):
+  // the Games and Apps tabs out of their own kind, the others out of both.
+  const QString key = grid_page_->FilterKey();
+  const QString kind = key == "games" || key == "apps" ? key : QString("all");
+  qsizetype games = 0;
+  qsizetype apps = 0;
+  for (const mira_gui::GameSummary& game : library_->Games()) {
+    if (!library_->Shown(game) || !mira_gui::GameFilterProxy::MatchesKey(game, kind)) continue;
+    ++(mira_gui::IsApp(game) ? apps : games);
+  }
+  sidebar_->SetFooter(mira_gui::ShownOf(grid_page_->ShownCount(), games, apps), mirad_reachable_);
 }
 
 const mira_gui::GameSummary* LibraryWindow::FindGame(const std::string& id) const {

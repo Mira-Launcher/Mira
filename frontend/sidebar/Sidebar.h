@@ -50,7 +50,8 @@ class Sidebar : public QWidget {
   void ApplyPrefs(const FrontendPrefs& prefs);
   // Highlights the row of the page on screen; none of them for Settings.
   void SetActive(bool library, bool runners, bool tags, const QString& source_id);
-  void SetFooter(int shown, int total, bool mirad_reachable);
+  // `shown` is the count's text ("43 of 45 games"), followed by "shown".
+  void SetFooter(const QString& shown, bool mirad_reachable);
   // Add games, Settings and fetch art, which act on a grid that's covered.
   void SetActionsEnabled(bool enabled);
 

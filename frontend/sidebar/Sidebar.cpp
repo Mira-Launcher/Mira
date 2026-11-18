@@ -359,9 +359,9 @@ void Sidebar::ShowActive() {
   }
 }
 
-void Sidebar::SetFooter(int shown, int total, bool mirad_reachable) {
+void Sidebar::SetFooter(const QString& shown, bool mirad_reachable) {
   // The connection only earns a line when it's gone.
-  QString text = QString("%1 of %2 games shown").arg(shown).arg(total);
+  QString text = shown + " shown";
   if (!mirad_reachable) {
     text += "<br>" + StatusDot(theme::Current().error) + "mirad isn't running";
   }
