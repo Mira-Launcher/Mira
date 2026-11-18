@@ -459,6 +459,10 @@ void LibraryWindow::BuildShortcuts() {
                  tags_page_->ClosePicker();
                  return;
                }
+               if (SourcePageShown() && source_page_->PickerOpen()) {
+                 source_page_->ClosePicker();
+                 return;
+               }
                grid_page_->ClearSearchOrSelection();
              });
 
@@ -2071,6 +2075,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   source_page_->setProperty("source_id", source.id);
   connect(source_page_, &mira_gui::SourcePage::ZoomRequested, this,
           [this](int steps) { StepZoom(steps); });
+  connect(source_page_, &mira_gui::SourcePage::PickerToggled, this, [this] { SyncZoomSoon(); });
   // The games themselves arrive as events.
   connect(source_page_, &mira_gui::SourcePage::LibraryChanged, this,
           [this, id = source.id] { sidebar_->NoteImported(id); });

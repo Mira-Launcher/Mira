@@ -14,12 +14,14 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QStackedWidget>
 #include <QStandardItemModel>
 #include <QTimer>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <memory>
 
 #include "../activity/DownloadTracker.h"
 #include "../activity/InstallActions.h"
@@ -55,6 +57,7 @@
 #include "../widgets/TabRow.h"
 #include "../widgets/WindowCards.h"
 #include "ItchCollectionsCard.h"
+#include "ModManagerPicker.h"
 #include "SourceRemoval.h"
 #include "SourceSettingsCard.h"
 #include "SourceSetupCard.h"
@@ -137,7 +140,18 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
       if (grid->selectionModel()->hasSelection()) other->clearSelection();
     });
   }
-  outer->addWidget(scroll);
+  if (IsModManager()) {
+    stack_ = new QStackedWidget(this);
+    stack_->addWidget(scroll);
+    picker_ = new ModManagerPicker(artwork_, source_.name, stack_);
+    stack_->addWidget(picker_);
+    connect(picker_, &ModManagerPicker::Closed, this, &SourcePage::ClosePicker);
+    connect(picker_, &ModManagerPicker::Picked, this, &SourcePage::AddToGames);
+    connect(picker_, &ModManagerPicker::ZoomRequested, this, &SourcePage::ZoomRequested);
+    outer->addWidget(stack_);
+  } else {
+    outer->addWidget(scroll);
+  }
 
   connect(EventHub::Instance(), &EventHub::Received, this,
           [this](const std::string& type, const std::string& data, bool live) {
@@ -150,6 +164,7 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   connect(library_, &GameLibraryModel::Changed, this, &SourcePage::LibraryUpdated);
   connect(library_, &GameLibraryModel::ShowingHiddenChanged, this, [this] {
     LibraryUpdated();
+    if (picker_ != nullptr) picker_->SetShowingHidden(library_->ShowingHidden());
     if (!owned_loaded_ || owned_section_ == nullptr) return;
     if (id_ == "humble") {
       ShowBundles(bundles_result_);
@@ -786,12 +801,15 @@ void SourcePage::LibraryUpdated() {
         return IsOwnGame(game) && library_->Shown(game);
       }));
   if (library_heading_ != nullptr)
-    library_heading_->setText(CountedHeading("In your library", library_count_));
+    library_heading_->setText(
+        CountedHeading(IsModManager() ? "Games with " + source_.name : QString("In your library"),
+                       library_count_));
   UpdateStatusLine();
   if (library_grid_ != nullptr) library_grid_->FitHeight();
 }
 
 TileRow SourcePage::Row() const {
+  if (PickerOpen()) return picker_->Row();
   if (library_grid_ != nullptr && library_grid_->isVisible()) return library_grid_->Row();
   if (owned_grid_ != nullptr && owned_grid_->isVisible()) return owned_grid_->Row();
   return {};
@@ -801,6 +819,7 @@ void SourcePage::SetTileWidth(int width) {
   const QSize tile(width, width * 3 / 2);
   if (tile == tile_) return;
   tile_ = tile;
+  if (picker_ != nullptr) picker_->SetTileWidth(width);
   zoom_settle_->Step(GameTileDelegate::CoverWidth(width));
   // The library grid's delegate draws its covers at its own size.
   if (library_grid_ != nullptr) library_grid_->SetTileSize(tile_);
@@ -885,8 +904,8 @@ void SourcePage::RefreshStatus() {
   }
 }
 
-// Picks a Windows game to add the mod manager to; adding readies its prefix, which can take
-// minutes.
+// Picks the Windows games to add the mod manager to, in the page's place; the ones it's on
+// already are the page's own tiles.
 void SourcePage::AddToGame() {
   std::vector<const GameSummary*> games;
   for (const GameSummary& game : library_->Games()) {
@@ -894,34 +913,67 @@ void SourcePage::AddToGame() {
   }
   if (games.empty()) {
     notify::Info(this, "No Windows games to add it to",
-                 source_.name + " runs in a Windows game's prefix. Add one first.");
+                 library_count_ > 0
+                     ? source_.name + " is on every Windows game in your library."
+                     : source_.name + " runs in a Windows game's prefix. Add one first.");
     return;
   }
-  std::ranges::sort(games, {}, &GameSummary::name);
-  PopupDialog dialog(this, notify::Level::Info, "Add " + source_.name + " to a game");
-  dialog.SetMessage(
-      source_.name +
-      " opens from the game's page and runs in its prefix. Mira first installs what it "
-      "needs there, which can take a few minutes.");
-  auto* picker = new FlatCombo(&dialog);
-  for (const GameSummary* game : games) {
-    picker->addItem(QString::fromStdString(game->name), QString::fromStdString(game->id));
-  }
-  dialog.AddWidget(picker);
-  dialog.AddButton("Cancel", false);
-  dialog.AddButton("Add", true, true);
-  if (dialog.exec() != QDialog::Accepted) return;
-  const std::string game_id = picker->currentData().toString().toStdString();
-  const QString name = picker->currentText();
+  picker_->SetTileWidth(tile_.width());
+  picker_->SetShowingHidden(library_->ShowingHidden());
+  picker_->Open(games);
+  stack_->setCurrentWidget(picker_);
+  emit PickerToggled();
+}
+
+bool SourcePage::PickerOpen() const {
+  return picker_ != nullptr && stack_->currentWidget() == picker_;
+}
+
+void SourcePage::ClosePicker() {
+  if (!PickerOpen()) return;
+  stack_->setCurrentIndex(0);
+  picker_->Clear();
+  emit PickerToggled();
+}
+
+// Each readies the game's prefix first, which can take minutes.
+void SourcePage::AddToGames(const std::vector<std::string>& ids) {
+  if (ids.empty()) return;
+  const auto name_of = [this](const std::string& id) {
+    const GameSummary* game = library_->Find(id);
+    return game != nullptr ? QString::fromStdString(game->name) : QString::fromStdString(id);
+  };
+  const QString what = ids.size() == 1 ? name_of(ids.front()) + "'s prefix"
+                                       : QString("%1 games' prefixes").arg(ids.size());
+  adding_ += static_cast<int>(ids.size());
   import_button_->setEnabled(false);
-  ShowLine(import_result_, "Getting " + name + "'s prefix ready for " + source_.name + "…",
-           "muted");
-  api::AddModManagerToGameAsync(this, id_, game_id, [this, name](StoreActionResult result) {
-    import_button_->setEnabled(manager_.installed);
-    if (!result.ok)
-      return ShowError(import_result_, "Could not add it to " + name + ".", result.error);
-    ShowLine(import_result_, "Added to " + name + ". Open it from the game's page.", "muted");
-  });
+  ShowLine(import_result_, "Getting " + what + " ready for " + source_.name + "…", "muted");
+  auto failed = std::make_shared<std::vector<std::pair<QString, ApiError>>>();
+  auto left = std::make_shared<int>(static_cast<int>(ids.size()));
+  const int count = static_cast<int>(ids.size());
+  for (const std::string& id : ids) {
+    const QString name = name_of(id);
+    api::AddModManagerToGameAsync(
+        this, id_, id, [this, name, failed, left, count](StoreActionResult result) {
+          --adding_;
+          if (!result.ok) failed->emplace_back(name, result.error);
+          if (--*left > 0) return;
+          import_button_->setEnabled(manager_.installed && adding_ == 0);
+          if (!failed->empty()) {
+            const auto& [first, error] = failed->front();
+            const size_t more = failed->size() - 1;
+            const QString others = more == 0   ? QString()
+                                   : more == 1 ? QString(" and 1 other game")
+                                               : QString(" and %1 other games").arg(more);
+            return ShowError(import_result_, "Could not add it to " + first + others + ".", error);
+          }
+          ShowLine(import_result_,
+                   count == 1
+                       ? "Added. Open it from the game's page."
+                       : QString("Added to %1 games. Open it from a game's page.").arg(count),
+                   "muted");
+        });
+  }
 }
 
 void SourcePage::ApplyEmulator(const EmulatorInfo& emulator) {
@@ -1063,7 +1115,9 @@ void SourcePage::UpdateStatusLine() {
               : manager_.installed ? StatusDot(tokens.success) + "Installed"
                                    : StatusDot(tokens.info) + "Installing…");
   }
-  if (id_ != "humble") {
+  if (IsModManager()) {
+    parts << "On " + GamesCount(library_count_);
+  } else if (id_ != "humble") {
     const QString item = CopyFor(id_).item;
     parts << (library_count_ == 1
                   ? QString("1 %1 in your library").arg(item)

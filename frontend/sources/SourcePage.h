@@ -23,6 +23,7 @@ class QModelIndex;
 class QStandardItemModel;
 class QPushButton;
 class QScrollArea;
+class QStackedWidget;
 class QToolButton;
 class QVBoxLayout;
 
@@ -35,6 +36,7 @@ class GameLibraryModel;
 class HoverCard;
 class ItchCollectionsCard;
 class ModalOverlay;
+class ModManagerPicker;
 class ProgressRail;
 class RatingChips;
 class SettingsCard;
@@ -77,6 +79,9 @@ class SourcePage : public QWidget {
   void OpenSettingsModal();
   // Esc: closes the settings dialog, asking first when it has unsaved edits.
   void CloseSettingsModal();
+  // A mod manager's game picker shows in the page's place.
+  bool PickerOpen() const;
+  void ClosePicker();
   // Files dropped on the window while an emulator's page shows: its games. False on any other page.
   bool TakesDroppedFiles() const { return IsEmulator(); }
   void AddDroppedFiles(const std::vector<std::string>& paths) { AddGames(paths); }
@@ -97,6 +102,8 @@ class SourcePage : public QWidget {
   void BatchMenuRequested(QStringList ids, QPoint global_pos);
   // Ctrl+wheel over a grid, one step per notch; the window owns the zoom.
   void ZoomRequested(int steps);
+  // The picker opened or closed, so the zoom sizes another row.
+  void PickerToggled();
 
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
@@ -108,6 +115,8 @@ class SourcePage : public QWidget {
   bool IsEmulator() const { return source_.kind == SourceInfo::Kind::Emulator; }
   bool IsModManager() const { return source_.kind == SourceInfo::Kind::ModManager; }
   void AddToGame();
+  // Adds the mod manager to each, one job a game.
+  void AddToGames(const std::vector<std::string>& ids);
   bool HasImport() const;
   bool HasOwned() const;
   // The source has a list of what the account owns, as opposed to a note saying it has none.
@@ -198,7 +207,10 @@ class SourcePage : public QWidget {
   QToolButton* more_button_ = nullptr;
   QWidget* content_ = nullptr;
   QVBoxLayout* content_layout_ = nullptr;
-  SourceSettingsCard* settings_card_ = nullptr;      // built on first open
+  QStackedWidget* stack_ = nullptr;              // the page, then a mod manager's picker
+  ModManagerPicker* picker_ = nullptr;           // mod managers only
+  int adding_ = 0;                               // games the mod manager is still being added to
+  SourceSettingsCard* settings_card_ = nullptr;  // built on first open
   ItchCollectionsCard* collections_card_ = nullptr;  // itch only, built on first open
   mira_gui::SettingsCard* modal_card_ = nullptr;     // the one the overlay shows
   ModalOverlay* settings_overlay_ = nullptr;
