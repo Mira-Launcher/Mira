@@ -1077,7 +1077,9 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
   for (int i = 0; i < layout->count(); ++i) {
     if (QWidget* row = layout->itemAt(i)->widget()) row->show();
   }
-  if (parent->layout() != nullptr) parent->layout()->activate();
+  // The scroll area grows the content only on a posted request, so until then the sections are
+  // squeezed into the old height and a frame paints them out of place.
+  SettleLayout(parent);
   parent->setUpdatesEnabled(true);
 }
 

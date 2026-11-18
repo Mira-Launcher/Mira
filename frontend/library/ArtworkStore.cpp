@@ -130,6 +130,13 @@ ArtworkStore::ArtworkStore(QObject* parent) : QObject(parent) {
 
 void ArtworkStore::SetQuickScaling(bool quick) {
   quick_ = quick;
+  if (quick || drawn_quickly_.isEmpty()) return;
+  // Queued: a view closed mid-zoom turns this off from its destructor, mid-teardown.
+  QTimer::singleShot(0, this, [this] {
+    if (quick_)
+      return;  // another zoom started: its end announces them    for (const QString& id :
+               // std::exchange(drawn_quickly_, {})) emit CoverChanged(id);
+  });
 }
 
 bool ArtworkStore::Drop(const QString& key) {
@@ -231,11 +238,15 @@ QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
                            qreal device_pixel_ratio, const QString& source) {
   const QString scaled_key = ScaledKey(id, tile, device_pixel_ratio);
   Touch(id);
+  // Only what zooms is drawn quickly. The sidebar's covers keep their size and are drawn when
+  // they change, so one drawn quickly in a grid's zoom would stay a stand-in.
+  const bool quick = quick_ && !kept_.contains(id);
+  if (quick) drawn_quickly_.insert(id);
   // Before the cached copy, which may be a placeholder drawn for a request since dropped.
   if (!answered_.contains(id)) {
     // Drawn at this size as soon as it lands, also when asked already without a size (the
     // sidebar's Keep, a CoverColor), which would otherwise take a second fetch for it.
-    if (!quick_) {
+    if (!quick) {
       QList<std::pair<QSize, qreal>>& sizes = wanted_[id];
       if (!queued_.contains(id)) {
         sizes = {{tile, device_pixel_ratio}};
@@ -249,14 +260,14 @@ QPixmap ArtworkStore::Draw(const QString& id, const QString& name, QSize tile,
     return *cached;
 
   // The zoom moving: the newest copy scaled quickly, and drawn smooth once it stops.
-  if (quick_) {
+  if (quick) {
     if (const auto last = last_drawn_.constFind(id); last != last_drawn_.constEnd())
       return FitToTile(*last, tile, device_pixel_ratio);
   }
   if (thumbs_.contains(id)) {
     // Fetched again for this size, the last sharp copy stretched meanwhile (a settled zoom), else
     // the placeholder; never kept as its cover.
-    if (!quick_) Refetch(id, tile, device_pixel_ratio);
+    if (!quick) Refetch(id, tile, device_pixel_ratio);
     if (const auto loading = loading_.constFind(scaled_key); loading != loading_.constEnd())
       return *loading;
     const auto last = last_drawn_.constFind(id);
@@ -330,7 +341,8 @@ void ArtworkStore::TrimTo(int keep, qint64 recent) {
   std::ranges::sort(by_use);
   for (const auto& [used, old] : by_use) {
     if (drawn_.size() <= keep || used > recent) break;
-    if (queued_.contains(old)) continue;
+    // A sidebar cover is on screen all along, however long since it was last drawn.
+    if (queued_.contains(old) || kept_.contains(old)) continue;
     drawn_.remove(old);
     // A game's small copy stays for the sidebar and its color; a store title's goes too.
     InvalidateRendering(old.toStdString());

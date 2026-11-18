@@ -115,7 +115,8 @@ class ArtworkStore : public QObject {
   void ThemeChanged();
 
   // While on (a zoom moving; see ZoomSettle), a cover not already scaled is scaled quickly and not
-  // kept, so each step costs little.
+  // kept, so each step costs little. Turned off, every cover drawn that way is announced as
+  // changed, so a view that didn't zoom draws it again too.
   void SetQuickScaling(bool quick);
 
   // The games whose sidebar-sized images stay (the sidebar's pinned and recently
@@ -188,6 +189,7 @@ class ArtworkStore : public QObject {
   std::tuple<int, int, int> drawn_with_;   // the theme values ThemeChanged compares
   QHash<QString, QString> slot_versions_;  // from NoteArt; empty for none
   bool quick_ = false;
+  QSet<QString> drawn_quickly_;       // stand-ins drawn while quick_, announced once it's off
   QSet<QString> answered_;            // asked and heard back, either way
   QSet<QString> queued_;              // in `pending_` or in flight
   QSet<QString> ask_again_;           // in flight when mirad said it has art now
