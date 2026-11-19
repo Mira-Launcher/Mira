@@ -10,6 +10,7 @@
 
 #include "api/EventBus.h"
 #include "config/Config.h"
+#include "core/Command.h"
 #include "store/GameStore.h"
 
 // Shared test setup. New tests should start from TestEnv rather than
@@ -29,6 +30,12 @@ bool Has(bool available, std::string_view what);
 
 // Whether `systemd-run --user --scope` works here, which game launches need.
 bool SystemdUserSession();
+
+// `program` under the mira-run next to the test binary, in its own systemd scope as the launch
+// routes start it, with the game's log next to `db`.
+Command MiraRunCommand(const std::string& game_id, const std::filesystem::path& db,
+                       const std::vector<std::string>& mira_run_args,
+                       const std::vector<std::string>& program);
 
 // A fresh directory on another disk than TestsRoot() (/dev/shm/mira-tests-<pid>/<name>), for what
 // Mira does differently per disk; nullopt, reported through Has, where /dev/shm isn't one.

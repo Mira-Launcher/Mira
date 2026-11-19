@@ -73,6 +73,22 @@ bool SystemdUserSession() {
   return available;
 }
 
+Command MiraRunCommand(const std::string& game_id, const std::filesystem::path& db,
+                       const std::vector<std::string>& mira_run_args,
+                       const std::vector<std::string>& program) {
+  const auto mira_run = std::filesystem::read_symlink("/proc/self/exe").parent_path() / "mira-run";
+  Command cmd;
+  cmd.argv = {"systemd-run",  "--user",     "--scope",
+              "--quiet",      "--collect",  "-p",
+              "Delegate=yes", "--",         mira_run.string(),
+              "--game-id",    game_id,      "--database",
+              db.string(),    "--log-file", (db.parent_path() / "game.log").string()};
+  cmd.argv.insert(cmd.argv.end(), mira_run_args.begin(), mira_run_args.end());
+  cmd.argv.push_back("--");
+  cmd.argv.insert(cmd.argv.end(), program.begin(), program.end());
+  return cmd;
+}
+
 bool WaitUntil(const std::function<bool()>& done, std::chrono::milliseconds timeout) {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (!done()) {
