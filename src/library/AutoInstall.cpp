@@ -135,13 +135,35 @@ void Finish(const std::string& id, const std::string& error) {
   progress.finished_at = model::NowSeconds();
 }
 
+// The folders `pattern` names under `root`, where a "*" part is any folder ("users/*/AppData").
+std::vector<fs::path> ExpandDirs(const fs::path& root, const fs::path& pattern) {
+  std::vector<fs::path> dirs = {root};
+  std::error_code ec;
+  for (const fs::path& part : pattern) {
+    std::vector<fs::path> next;
+    for (const fs::path& dir : dirs) {
+      if (part != "*") {
+        next.push_back(dir / part);
+        continue;
+      }
+      for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        if (entry.is_directory(ec)) next.push_back(entry.path());
+      }
+    }
+    dirs = std::move(next);
+  }
+  return dirs;
+}
+
 // Top-level folders under install.detect_dirs in the prefix's drive_c.
 std::set<fs::path> InstallDirs(const std::vector<std::string>& parents, const fs::path& prefix) {
   std::set<fs::path> dirs;
   std::error_code ec;
   for (const std::string& parent : parents) {
-    for (const auto& entry : fs::directory_iterator(prefix / "drive_c" / parent, ec)) {
-      if (entry.is_directory(ec)) dirs.insert(entry.path());
+    for (const fs::path& dir : ExpandDirs(prefix / "drive_c", parent)) {
+      for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        if (entry.is_directory(ec)) dirs.insert(entry.path());
+      }
     }
   }
   return dirs;
@@ -388,27 +410,97 @@ std::set<fs::path> InstallFolders(const config::Config& config, const fs::path& 
   return InstallDirs(config.GetStringArray("install.detect_dirs"), prefix);
 }
 
-std::optional<InstalledApp> NewInstall(const config::Config& config, const fs::path& prefix,
-                                       const std::set<fs::path>& before) {
-  // Wine's own, which a Proton or Wine update can add to an existing prefix.
+namespace {
+
+// Wine's own, which a Proton or Wine update can add to an existing prefix.
+bool IsWineFolder(const fs::path& dir) {
   static const std::set<std::string> kWineFolders = {"Common Files", "Internet Explorer",
                                                      "Windows Media Player", "Windows NT"};
+  return kWineFolders.contains(dir.filename().string());
+}
+
+// True when `name` matches one of `globs`, ignoring case.
+bool MatchesAny(const std::vector<std::string>& globs, const std::string& name) {
+  return std::ranges::any_of(globs, [&](const std::string& glob) {
+    return strings::GlobMatch(strings::ToLower(glob), strings::ToLower(name));
+  });
+}
+
+// The program in a new folder `dir`, inside the game's own folder under a publisher's. Installers
+// and programs named by `skip` aren't it.
+std::optional<InstalledApp> FindApp(const Detector& detector, const fs::path& dir,
+                                    const std::vector<std::string>& skip = {}) {
+  const auto pick = [&](const fs::path& folder) -> std::optional<std::string> {
+    for (const model::Candidate& candidate : detector.Detect(folder).candidates) {
+      if (!candidate.is_installer && !MatchesAny(skip, fs::path(candidate.rel_path).filename()))
+        return candidate.rel_path;
+    }
+    return std::nullopt;
+  };
+  const auto exe = pick(dir);
+  if (!exe) return std::nullopt;
+  const fs::path folder = GameFolder(dir, *exe);
+  if (folder == dir) return InstalledApp{dir, *exe};
+  const auto inner = pick(folder);
+  if (!inner) return std::nullopt;
+  return InstalledApp{folder, *inner};
+}
+
+}  // namespace
+
+std::optional<InstalledApp> NewInstall(const config::Config& config, const fs::path& prefix,
+                                       const std::set<fs::path>& before) {
   const Detector detector(SettingsFromConfig(config));
   std::optional<InstalledApp> found;
   for (const fs::path& dir : InstallFolders(config, prefix)) {
-    if (before.contains(dir) || kWineFolders.contains(dir.filename().string())) continue;
-    Detector::Result detected = detector.Detect(dir);
-    auto exe = std::ranges::find(detected.candidates, false, &model::Candidate::is_installer);
-    if (exe != detected.candidates.end()) {
-      const fs::path folder = GameFolder(dir, exe->rel_path);
-      if (folder == dir) return InstalledApp{dir, exe->rel_path};
-      detected = detector.Detect(folder);
-      exe = std::ranges::find(detected.candidates, false, &model::Candidate::is_installer);
-      if (exe != detected.candidates.end()) return InstalledApp{folder, exe->rel_path};
-    }
+    if (before.contains(dir) || IsWineFolder(dir)) continue;
+    if (auto app = FindApp(detector, dir)) return app;
     if (!found) found = InstalledApp{dir, ""};
   }
   return found;
+}
+
+std::set<fs::path> ProgramFolders(const config::Config& config, const fs::path& prefix) {
+  std::vector<std::string> parents = config.GetStringArray("install.detect_dirs");
+  // Where per-user installers put a program.
+  parents.insert(parents.end(), {"users/*/AppData/Local", "users/*/AppData/Local/Programs"});
+  return InstallDirs(parents, prefix);
+}
+
+std::vector<InstalledApp> NewPrograms(const config::Config& config, const fs::path& prefix,
+                                      const std::set<fs::path>& before) {
+  // What runtimes and redistributables install (.NET, the VC++ build tools, DirectX and XNA,
+  // PhysX, OpenAL), which nobody starts themselves.
+  static const std::vector<std::string> kRuntimeFolders = {"dotnet",       "microsoft*",
+                                                           "windows kits", "reference assemblies",
+                                                           "msbuild",      "nvidia corporation",
+                                                           "*physx*",      "openal*",
+                                                           "*redist*",     "temp"};
+  // Besides detect.deny_name_patterns' helpers: a program's updater and uninstaller.
+  static const std::vector<std::string> kNotOffered = {"update.exe", "*updater*", "*uninst*"};
+  const DetectorSettings settings = SettingsFromConfig(config);
+  std::vector<std::string> skip = settings.deny_name_patterns;
+  skip.insert(skip.end(), kNotOffered.begin(), kNotOffered.end());
+  const Detector detector(settings);
+  std::vector<InstalledApp> apps;
+  for (const fs::path& dir : ProgramFolders(config, prefix)) {
+    if (before.contains(dir) || IsWineFolder(dir) ||
+        MatchesAny(kRuntimeFolders, dir.filename().string()))
+      continue;
+    auto app = FindApp(detector, dir, skip);
+    if (!app) continue;
+    // The same program twice: a new folder holding another ("Local/Programs"), or one user's
+    // folder linked to another's (Proton's users/<name> to steamuser).
+    std::error_code ec;
+    const fs::path real = fs::weakly_canonical(app->dir, ec);
+    if (!ec) app->dir = real;
+    if (std::ranges::none_of(apps, [&](const InstalledApp& seen) {
+          return seen.dir / seen.exe_path == app->dir / app->exe_path;
+        })) {
+      apps.push_back(std::move(*app));
+    }
+  }
+  return apps;
 }
 
 Result<InstallerInfo> DescribeInstaller(const config::Config& config, const model::Game& game) {

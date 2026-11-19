@@ -110,7 +110,15 @@ class ProcessSupervisor {
     std::string id;  // the launch option's
     std::string name;
   };
-  Result<void> StartTool(const std::string& game_id, Tool tool, Command command, int output_fd);
+  // Called on another thread once the program a tool started exits, even if what it started runs
+  // on: the process whose own file is named `program` (Wine runs a Windows program as one, under
+  // launchers that wait for everything it started), else the one spawned.
+  struct ToolExit {
+    std::string program;
+    std::function<void()> call;
+  };
+  Result<void> StartTool(const std::string& game_id, Tool tool, Command command, int output_fd,
+                         ToolExit exited = {});
   std::vector<Tool> Tools(const std::string& game_id) const;
   // Closes the game's open tools; false when none is open.
   bool StopTools(const std::string& game_id);
@@ -167,7 +175,7 @@ class ProcessSupervisor {
   bool Forget(const std::string& game_id);
   // `group` is the tool's scope once systemd-run has joined it.
   void WatchTool(std::string game_id, std::string unit, pid_t pid,
-                 std::optional<std::filesystem::path> group);
+                 std::optional<std::filesystem::path> group, ToolExit exited);
   // game.updated for the game, so clients see its tools change.
   void PublishTools(const std::string& game_id);
   Result<void> TrackExternal(const model::Game& game, ExternalMatch match, std::string post_script);
