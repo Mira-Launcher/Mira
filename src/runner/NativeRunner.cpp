@@ -3,6 +3,7 @@
 #include <cctype>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <vector>
 
 #include "core/Strings.h"
@@ -10,6 +11,18 @@
 
 namespace mira::runner {
 namespace {
+
+// The absolute interpreter a "#!" script names, else empty.
+std::string Interpreter(const std::filesystem::path& exe) {
+  std::ifstream in(exe, std::ios::binary);
+  char magic[2] = {};
+  if (!in.read(magic, 2) || magic[0] != '#' || magic[1] != '!') return {};
+  std::string line;
+  std::getline(in, line);
+  const std::string rest = strings::Trim(line);
+  const std::string path = rest.substr(0, rest.find_first_of(" \t"));
+  return path.starts_with('/') ? path : std::string();
+}
 namespace fs = std::filesystem;
 
 // Only meaningful for a file that actually exists: a nonexistent exe_path
@@ -77,6 +90,13 @@ Result<Command> NativeRunner::BuildCommand(const model::Game& game,
                  std::format("\"{}\" isn't marked as a program that can run", exe.string()),
                  "Make it executable (chmod +x), or choose the game's real launcher instead.",
                  Fix::Game(game.id, "exe"));
+    }
+    // A missing interpreter fails exec out of sight when the program starts in a scope of its own.
+    if (const std::string interpreter = Interpreter(exe);
+        !interpreter.empty() && !std::filesystem::exists(interpreter)) {
+      return Err("exec_failed",
+                 std::format("\"{}\" needs {}, which isn't installed", exe.string(), interpreter),
+                 "Install it, or choose the game's real launcher instead.");
     }
     command.argv.push_back(exe.string());
   }

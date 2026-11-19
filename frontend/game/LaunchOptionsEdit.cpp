@@ -26,14 +26,8 @@
 namespace mira_gui {
 namespace {
 
-constexpr std::pair<const char*, const char*> kModes[] = {
-    {"play", "Starts the game"},
-    {"alongside", "Runs beside the game"},
-    {"tool", "Opens by itself"},
-};
-
 QString ModeText(const std::string& mode) {
-  for (const auto& [id, text] : kModes) {
+  for (const auto& [id, text] : kLaunchModes) {
     if (mode == id) return text;
   }
   return QString::fromStdString(mode);
@@ -197,7 +191,7 @@ bool LaunchOptionsEdit::Edit(LaunchOption& option) {
   auto* name = new QLineEdit(QString::fromStdString(option.name), form_widget);
   form->addRow("Name", name);
   auto* mode = new FlatCombo(form_widget);
-  for (const auto& [id, text] : kModes) mode->addItem(text, QString(id));
+  for (const auto& [id, text] : kLaunchModes) mode->addItem(text, QString(id));
   mode->setCurrentIndex(std::max(mode->findData(QString::fromStdString(option.mode)), 0));
   form->addRow("What it does", mode);
   auto* exe = new QLineEdit(QString::fromStdString(option.exe), form_widget);

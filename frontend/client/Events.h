@@ -88,6 +88,8 @@ bool ParseAutoInstall(const std::string& data);
 
 bool ParseInstallerLeftover(const std::string& data, InstallerLeftoverEvent* out);
 
+bool ParseProgramsFound(const std::string& data, ProgramsFoundEvent* out);
+
 bool ParseInstallEvent(const std::string& event_type, const std::string& data, InstallEvent* out);
 
 bool ParseStoreEvent(const std::string& event_type, const std::string& data, StoreEvent* out);

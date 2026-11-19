@@ -26,6 +26,15 @@
 namespace mira::proc {
 namespace {
 
+// The file name a process runs as, lowercase: a Wine process's is its Windows program's.
+std::string ProgramName(pid_t pid) {
+  std::ifstream in(std::format("/proc/{}/cmdline", pid), std::ios::binary);
+  std::string argv0;
+  std::getline(in, argv0, '\0');
+  std::ranges::replace(argv0, '\\', '/');
+  return strings::ToLower(argv0.substr(argv0.find_last_of('/') + 1));
+}
+
 using nlohmann::json;
 
 constexpr auto kPollInterval = std::chrono::milliseconds(1000);
@@ -371,7 +380,7 @@ std::string ProcessSupervisor::CompanionUnit(const std::string& game_id,
 }
 
 Result<void> ProcessSupervisor::StartTool(const std::string& game_id, Tool tool, Command command,
-                                          int output_fd) {
+                                          int output_fd, ToolExit exited) {
   const auto now = std::chrono::system_clock::now().time_since_epoch();
   const std::string unit =
       std::format("mira-tool-{}.{}-{}.scope", strings::Slugify(game_id), strings::Slugify(tool.id),
@@ -409,10 +418,11 @@ Result<void> ProcessSupervisor::StartTool(const std::string& game_id, Tool tool,
     });
     tools_[unit] = {game_id, std::move(tool)};
     auto done = std::make_shared<std::atomic<bool>>(false);
-    std::thread thread([this, game_id, unit, pid = *pid, group, done] {
-      WatchTool(game_id, unit, pid, group);
-      done->store(true);
-    });
+    std::thread thread(
+        [this, game_id, unit, pid = *pid, group, done, exited = std::move(exited)]() mutable {
+          WatchTool(game_id, unit, pid, group, std::move(exited));
+          done->store(true);
+        });
     tool_watchers_.push_back(Watcher{std::move(thread), std::move(done)});
   }
   PublishTools(game_id);
@@ -420,10 +430,15 @@ Result<void> ProcessSupervisor::StartTool(const std::string& game_id, Tool tool,
 }
 
 void ProcessSupervisor::WatchTool(std::string game_id, std::string unit, pid_t pid,
-                                  std::optional<std::filesystem::path> group) {
+                                  std::optional<std::filesystem::path> group, ToolExit exited) {
   // The tool is open while its scope has processes: a launcher that starts the real program and
   // exits leaves it running there. Until systemd-run has joined the scope, the pid says.
   bool reaped = false;
+  bool program_seen = false;
+  const std::string program = strings::ToLower(exited.program);
+  const auto call_exited = [&] {
+    if (exited.call) std::exchange(exited.call, nullptr)();
+  };
   while (!stopping_.load(std::memory_order_relaxed)) {
     if (!group) {
       if (const auto of = cgroup::Of(pid); of && of->filename() == unit) group = of;
@@ -432,6 +447,13 @@ void ProcessSupervisor::WatchTool(std::string game_id, std::string unit, pid_t p
       int status = 0;
       const pid_t waited = ::waitpid(pid, &status, WNOHANG);
       reaped = waited == pid || (waited < 0 && errno != EINTR);
+      if (reaped) call_exited();
+    }
+    if (exited.call && !program.empty() && group) {
+      const bool running = std::ranges::any_of(
+          cgroup::Pids(*group), [&](pid_t member) { return ProgramName(member) == program; });
+      if (running) program_seen = true;
+      if (program_seen && !running) call_exited();
     }
     // Reaped too when the scope empties: the tool's own pid can outlast it as a zombie.
     if (reaped && (!group || !cgroup::Populated(*group))) break;

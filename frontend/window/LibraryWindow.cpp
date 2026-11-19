@@ -1517,6 +1517,23 @@ void LibraryWindow::OfferInstallerDelete(const mira_gui::InstallerLeftoverEvent&
   });
 }
 
+void LibraryWindow::OfferPrograms(const mira_gui::ProgramsFoundEvent& event) {
+  QueueCard("programs-found:" + event.id, [this, event] {
+    const mira_gui::GameSummary* game = FindGame(event.id);
+    if (game == nullptr) {
+      ShowNextCard();
+      return;
+    }
+    auto* card = new mira_gui::ProgramsFoundCard(*game, event, artwork_, [this, id = event.id] {
+      const mira_gui::GameSummary* now = FindGame(id);
+      return now != nullptr ? now->launch : mira_gui::GameLaunch{};
+    });
+    connect(card, &mira_gui::ProgramsFoundCard::CloseRequested, this,
+            &LibraryWindow::CloseSidebarCard);
+    ShowSidebarCard(card);
+  });
+}
+
 void LibraryWindow::AskUnclearMove(const mira_gui::UnclearMove& move) {
   QueueCard("unclear:" + move.folder, [this, move] {
     auto* card = new mira_gui::UnclearMoveCard(move, library_, artwork_);
@@ -2496,6 +2513,12 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     // Asked once, as it happens; history would ask again after every reconnect.
     mira_gui::InstallerLeftoverEvent event;
     if (live && mira_gui::events::ParseInstallerLeftover(data, &event)) OfferInstallerDelete(event);
+    return;
+  }
+
+  if (type == "game.programs_found") {
+    mira_gui::ProgramsFoundEvent event;
+    if (live && mira_gui::events::ParseProgramsFound(data, &event)) OfferPrograms(event);
     return;
   }
 
