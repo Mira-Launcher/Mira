@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <string>
+#include <utility>
 
 #include "../client/Types.h"
 
@@ -13,6 +14,13 @@ namespace mira_gui {
 
 class FlatCombo;
 class Switch;
+
+// A launch option's modes, each with what it does.
+inline constexpr std::pair<const char*, const char*> kLaunchModes[] = {
+    {"play", "Starts the game"},
+    {"alongside", "Runs beside the game"},
+    {"tool", "Opens by itself"},
+};
 
 // A game's launch options as rows with Edit and Remove, to go under their SettingRow from one edge
 // of the card to the other, as ListEdit's. Its row shows EmptyLabel and AddButton; which one Play

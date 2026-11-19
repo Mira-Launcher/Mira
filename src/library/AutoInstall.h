@@ -5,6 +5,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "config/Config.h"
 #include "core/Result.h"
@@ -78,6 +79,15 @@ struct InstalledApp {
 std::optional<InstalledApp> NewInstall(const config::Config& config,
                                        const std::filesystem::path& prefix,
                                        const std::set<std::filesystem::path>& before);
+
+// InstallFolders plus the user's AppData/Local, where per-user installers put a program.
+std::set<std::filesystem::path> ProgramFolders(const config::Config& config,
+                                               const std::filesystem::path& prefix);
+// The program in each folder added to `prefix` since `before` (from ProgramFolders), leaving out
+// runtimes' folders (.NET's), helpers (detect.deny_name_patterns), updaters and uninstallers.
+std::vector<InstalledApp> NewPrograms(const config::Config& config,
+                                      const std::filesystem::path& prefix,
+                                      const std::set<std::filesystem::path>& before);
 
 // The latest install for `id` since mirad started, if any.
 std::optional<InstallProgress> Progress(const std::string& id);

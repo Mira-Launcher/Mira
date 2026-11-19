@@ -239,6 +239,21 @@ bool ParseInstallerLeftover(const std::string& data, InstallerLeftoverEvent* out
   return !out->id.empty() && !out->installer_dir.empty();
 }
 
+bool ParseProgramsFound(const std::string& data, ProgramsFoundEvent* out) {
+  const json entry = json::parse(data, nullptr, false);
+  if (!entry.is_object()) return false;
+  out->id = entry.value("id", std::string());
+  out->by = entry.value("by", std::string());
+  out->programs.clear();
+  for (const json& program : entry.value("programs", json::array())) {
+    if (!program.is_object()) continue;
+    ProgramsFoundEvent::Program found{program.value("name", std::string()),
+                                      program.value("exe", std::string())};
+    if (!found.exe.empty()) out->programs.push_back(std::move(found));
+  }
+  return !out->id.empty() && !out->programs.empty();
+}
+
 bool ParseInstallEvent(const std::string& event_type, const std::string& data, InstallEvent* out) {
   constexpr std::string_view kPrefix = "game.install.";
   if (!event_type.starts_with(kPrefix)) return false;

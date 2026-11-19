@@ -1908,16 +1908,22 @@ TEST_CASE("An installer on a disc gets its prefix off the disc, silent or shown"
     CHECK(event.type != "game.installer_leftover");
 }
 
-TEST_CASE("Running a picked program in a game with no prefix first makes one with its runner") {
+TEST_CASE(
+    "A program run in a game's prefix makes one first, isn't played, and offers what it installs") {
+  if (!test::Has(test::SystemdUserSession(), "systemd user session")) return;
   const fs::path state = TempDir("server-run-in-prefix");
   // A stand-in Wine: wineboot makes the prefix, reg is provisioning's too, anything else is logged
-  // as run.
+  // as run, and run with "Notes" installs a program for the user, an updater beside it and .NET.
   const fs::path log = state / "wine.log";
+  const std::string notes = "$WINEPREFIX/drive_c/users/me/AppData/Local/Notes";
   test::Touch(state / "runners" / "wine" / "wine-9.0-amd64" / "bin" / "wine",
               "#!/bin/sh\ncase \"$1\" in\n  --version) echo wine-9.0 ;;\n"
-              "  wineboot) mkdir -p \"$WINEPREFIX/drive_c\" ;;\n  reg) ;;\n"
-              "  *) echo \"$WINEPREFIX|$*\" >> '" +
-                  log.string() + "' ;;\nesac\n",
+              "  wineboot) mkdir -p \"$WINEPREFIX/drive_c/users/me/AppData/Local\" ;;\n"
+              "  reg) ;;\n  *) echo \"$WINEPREFIX|$PROTON_VERB|$*\" >> '" +
+                  log.string() + "'\n    [ \"$2\" = Notes ] && mkdir \"" + notes +
+                  "\" && touch \"" + notes + "/Notes.exe\" \"" + notes +
+                  "/Update.exe\" && mkdir -p \"$WINEPREFIX/drive_c/Program Files/dotnet\" && "
+                  "touch \"$WINEPREFIX/drive_c/Program Files/dotnet/dotnet.exe\" ;;\nesac\n",
               /*executable=*/true);
   LiveServer server(state);
   REQUIRE(server.MutableConfig().Set("default_runner.windows", "wine:wine-9.0-amd64"));
@@ -1945,10 +1951,30 @@ TEST_CASE("Running a picked program in a game with no prefix first makes one wit
     return !logged.empty();
   }));
   const std::string setup = (state / "Celeste" / "Setup.exe").string();
-  CHECK(logged == game.data_dir + "|" + setup + " /lang=en /x");
+  // Not waiting for what else runs in the prefix.
+  CHECK(logged == game.data_dir + "|run|" + setup + " /lang=en /x");
   const auto stored = server.games().Find("celeste");
   CHECK(stored->runner_ref == "wine:wine-9.0-amd64");
   CHECK(stored->exe_path == "Celeste.exe");  // running something else doesn't change the game
+  CHECK(nlohmann::json::parse(client.Get("/v1/games/celeste")->body)["running"] == false);
+
+  // In the prefix it had, what it installed is offered once it exits.
+  auto installed = client.Post("/v1/games/celeste/run",
+                               R"({"exe_path": "Setup.exe", "args": "Notes"})", "application/json");
+  REQUIRE(installed != nullptr);
+  CHECK(installed->status == 200);
+  std::optional<nlohmann::json> found;
+  CHECK(test::WaitUntil([&] {
+    for (const model::Event& event : server.events().Since(0))
+      if (event.type == "game.programs_found") found = event.payload;
+    return found.has_value();
+  }));
+  REQUIRE(found);
+  CHECK((*found)["by"] == "Setup.exe");
+  CHECK((*found)["programs"] ==
+        nlohmann::json::array(
+            {{{"name", "Notes"},
+              {"exe", "{prefix}/drive_c/users/me/AppData/Local/Notes/Notes.exe"}}}));
 
   auto missing =
       client.Post("/v1/games/celeste/run", R"({"exe_path": "Gone.exe"})", "application/json");
@@ -1958,6 +1984,7 @@ TEST_CASE("Running a picked program in a game with no prefix first makes one wit
 }
 
 TEST_CASE("POST /v1/games/{id}/run refuses a native program that can't start") {
+  if (!test::Has(test::SystemdUserSession(), "systemd user session")) return;
   const fs::path state = TempDir("server-run-cannot-start");
   LiveServer server(state);
   model::Game game;

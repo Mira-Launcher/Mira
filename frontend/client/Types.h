@@ -256,6 +256,18 @@ struct InstallerLeftoverEvent {
   std::int64_t bytes = 0;
 };
 
+// game.programs_found: a program run in a game's prefix installed these, to offer as launch
+// options.
+struct ProgramsFoundEvent {
+  struct Program {
+    std::string name;
+    std::string exe;  // as a launch option's
+  };
+  std::string id;
+  std::string by;  // the program that was run
+  std::vector<Program> programs;
+};
+
 // GET /v1/games/{id}/artwork: the cached cover image itself, as bytes.
 //
 // `missing` is the 404 case and is not an error: most games have no cached
