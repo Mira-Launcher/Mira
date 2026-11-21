@@ -4,6 +4,7 @@
 #include "api/Routes.h"
 #include "api/Services.h"
 #include "config/Schema.h"
+#include "display/Display.h"
 #include "runner/GameMode.h"
 #include "system/Packages.h"
 
@@ -48,6 +49,16 @@ void RegisterConfigRoutes(Router& http, Services& s) {
   http.Get("/v1/gamemode/status", [](const Request&, Response& res) {
     SendJson(res, {{"installed", gamemode::IsInstalled()},
                    {"daemon_running", gamemode::IsDaemonRunning()}});
+  });
+
+  // The primary monitor, for a game's HDR and resolution settings.
+  http.Get("/v1/display", [](const Request&, Response& res) {
+    const std::optional<display::Output> output = display::Primary();
+    if (!output) return SendJson(res, {{"supported", false}});
+    SendJson(res, {{"supported", true},
+                   {"output", output->name},
+                   {"hdr", output->hdr.has_value()},
+                   {"modes", display::ModeChoices(*output)}});
   });
 
   // --- settings -----------------------------------------------------------

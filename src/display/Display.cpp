@@ -6,6 +6,7 @@
 #include <json.hpp>
 #include <regex>
 #include <sstream>
+#include <tuple>
 
 #include "core/Command.h"
 #include "core/Log.h"
@@ -115,6 +116,35 @@ std::string FindMode(const Output& output, const std::string& wanted) {
     }
   }
   return best;
+}
+
+std::vector<std::string> ModeChoices(const Output& output) {
+  struct Mode {
+    int width, height, hz;
+  };
+  std::vector<Mode> modes;
+  static const std::regex kMode(R"((\d+)x(\d+)@(\d+(?:\.\d+)?))");
+  for (const auto& [id, name] : output.modes) {
+    std::smatch match;
+    if (!std::regex_match(name, match, kMode)) continue;
+    modes.push_back({std::stoi(match[1]), std::stoi(match[2]),
+                     static_cast<int>(std::lround(std::stod(match[3])))});
+  }
+  std::ranges::sort(modes, [](const Mode& a, const Mode& b) {
+    return std::tie(b.width, b.height, b.hz) < std::tie(a.width, a.height, a.hz);
+  });
+  std::vector<std::string> choices;
+  for (const Mode& mode : modes) {
+    std::string choice = std::format("{}x{}@{}", mode.width, mode.height, mode.hz);
+    if (std::ranges::find(choices, choice) == choices.end()) choices.push_back(std::move(choice));
+  }
+  return choices;
+}
+
+std::optional<Output> Primary() {
+  if (!Supported()) return std::nullopt;
+  auto listed = Doctor({"-o"});
+  return listed ? ParsePrimary(*listed) : std::nullopt;
 }
 
 Switcher::Switcher(store::GameStore& games) : games_(games) {}

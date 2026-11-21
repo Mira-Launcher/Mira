@@ -402,4 +402,20 @@ void GetGameModeStatusAsync(QObject* context, std::function<void(GameModeStatusR
   async::Run(context, [] { return GetGameModeStatusSync(); }, std::move(callback));
 }
 
+void GetDisplayAsync(QObject* context, std::function<void(DisplayResult)> callback) {
+  async::Run(
+      context,
+      [] {
+        return ReadReply<DisplayResult>(transport::Get("/v1/display"), "GET /v1/display",
+                                        Shape::Object, [](DisplayResult& result, const json& body) {
+                                          result.supported = body.value("supported", false);
+                                          result.output = body.value("output", std::string());
+                                          result.hdr = body.value("hdr", false);
+                                          result.modes =
+                                              body.value("modes", std::vector<std::string>());
+                                        });
+      },
+      std::move(callback));
+}
+
 }  // namespace mira_gui::api

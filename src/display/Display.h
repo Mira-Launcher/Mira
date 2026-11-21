@@ -27,6 +27,13 @@ std::optional<Output> ParsePrimary(const std::string& text);
 // one. Empty when it has no such size.
 std::string FindMode(const Output& output, const std::string& wanted);
 
+// The primary monitor's sizes and refresh rates as a game's display.resolution takes them
+// ("2560x1440@165"), largest and fastest first.
+std::vector<std::string> ModeChoices(const Output& output);
+
+// What a game's display settings can do here: nullopt off Plasma on Wayland or without a monitor.
+std::optional<Output> Primary();
+
 // Puts the primary monitor in a game's HDR and resolution while it runs, on Plasma, and back once
 // the last game that asked exits. What to go back to is kept in mira.db, so a crash or a restart
 // of mirad still restores it (RestoreLeftover).

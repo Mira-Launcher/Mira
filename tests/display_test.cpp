@@ -22,5 +22,8 @@ TEST_CASE("The primary monitor, its HDR and modes are read from kscreen-doctor")
   CHECK(display::FindMode(*primary, "2560x1440") == "2");  // the fastest
   CHECK(display::FindMode(*primary, "2560x1440@144") == "3");
   CHECK(display::FindMode(*primary, "1280x720").empty());
+  CHECK(display::ModeChoices(*primary) == std::vector<std::string>{"2560x1440@165", "2560x1440@144",
+                                                                   "2560x1440@60", "1920x1080@120",
+                                                                   "1920x1080@60"});
   CHECK_FALSE(display::ParsePrimary("Output: 1 DP-1 uuid\n\tpriority 2\n"));
 }

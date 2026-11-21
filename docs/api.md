@@ -786,6 +786,9 @@ The system packages Mira's features use and which are missing, for this distribu
 ### `GET /v1/gamemode/status`
 `{"installed": true, "daemon_running": false}`. `installed` means `gamemoded` or `gamemoderun` is on `PATH`; `daemon_running` means GameMode owns its D-Bus name. With `launch.gamemode` on, an unreachable daemon is logged and the game still launches.
 
+### `GET /v1/display`
+The primary monitor, for a game's `display.hdr` and `display.resolution`: `{"supported": true, "output": "DP-3", "hdr": false, "modes": ["2560x1440@165", "1920x1080@60"]}`. `hdr` is whether it can do HDR; `modes` are the values `display.resolution` takes, largest and fastest first. Off Plasma on Wayland, or with no monitor found, it's `{"supported": false}`.
+
 ## Metadata
 
 Store info is cached in `cache.db` in the config directory, and art as files under `artwork/<id>/`, with `cache.db` pointing at each slot's file. All of it can be fetched again, so a damaged `cache.db` is started over. Sources:

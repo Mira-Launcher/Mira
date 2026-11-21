@@ -11,12 +11,15 @@
 #include <QLineEdit>
 #include <QLocale>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QSignalBlocker>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <cmath>
 
 #include "../client/JsonMapping.h"
+#include "../client/api/Config.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../widgets/ChipToggles.h"
@@ -36,6 +39,43 @@ void ShowSecret(QLineEdit* line, QAction* clear, bool saved) {
   clear->setVisible(saved);
 }
 
+// "2560x1440@165" as "2560 × 1440 · 165 Hz".
+QString ModeLabel(const QString& mode) {
+  static const QRegularExpression kMode(R"(^(\d+)x(\d+)@(\d+)$)");
+  const QRegularExpressionMatch match = kMode.match(mode);
+  return match.hasMatch() ? QString("%1 × %2 · %3 Hz")
+                                .arg(match.captured(1), match.captured(2), match.captured(3))
+                          : mode;
+}
+
+// The display settings ask the primary monitor what it can do: its modes, and a note on HDR.
+void AskDisplay(const ConfigSchemaEntry& entry, SettingRow* row, Switch* toggle, QComboBox* combo) {
+  api::GetDisplayAsync(row, [row, toggle, combo, key = entry.key](DisplayResult display) {
+    QString note;
+    if (key != "display.hdr") {
+    } else if (!display.ok || !display.supported) {
+      note = "Needs Plasma on Wayland.";
+    } else if (!display.hdr) {
+      note = QString("%1, your main monitor, can't do HDR.")
+                 .arg(QString::fromStdString(display.output));
+    }
+    if (!note.isEmpty()) row->SetBelow(MakeLabel(row, note, "subtle"));
+    if (toggle != nullptr && display.ok && display.supported && !display.hdr &&
+        !toggle->isChecked())
+      toggle->setEnabled(false);
+    if (combo == nullptr) return;
+    const QString current = combo->currentData().toString();
+    const QSignalBlocker quiet(combo);
+    combo->clear();
+    combo->addItem("Unchanged", QString());
+    for (const std::string& mode : display.modes) {
+      const QString value = QString::fromStdString(mode);
+      combo->addItem(ModeLabel(value), value);
+    }
+    SelectOrKeep(combo, current);
+  });
+}
+
 }  // namespace
 
 SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
@@ -46,6 +86,12 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     toggle = new Switch(row);
     toggle->setAccessibleName(QString::fromStdString(label));
     row->AddControl(toggle);
+    if (entry.key == "display.hdr") AskDisplay(entry, row, toggle, nullptr);
+  } else if (entry.key == "display.resolution") {
+    combo = new FlatCombo(row);
+    combo->addItem("Unchanged", QString());
+    row->AddControl(combo);
+    AskDisplay(entry, row, nullptr, combo);
   } else if (!entry.one_of.empty()) {
     const auto option_label = [this](size_t i) {
       return QString::fromStdString(i < entry.option_labels.size() ? entry.option_labels[i]
