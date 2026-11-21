@@ -387,7 +387,7 @@ class LibraryWindow : public QMainWindow,
   // of these is worth a toast; the dozens from an automatic scan are not.
   std::set<std::string> awaiting_metadata_;
   bool steamgriddb_notice_shown_ = false;
-  // Set by "Fetch missing cover art": its fetches were asked for, so a
+  // Set by a refresh fetching missing art: its fetches were asked for, so a
   // missing SteamGridDB key is worth reporting.
   bool artwork_fetch_requested_ = false;
   // The tile width Ctrl+0 returns to, and the one a frontend.toml with

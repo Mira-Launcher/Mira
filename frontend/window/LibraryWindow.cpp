@@ -505,8 +505,6 @@ void LibraryWindow::BuildShortcuts() {
   add_action(this, "open_runners", "Runners", QKeySequence(), {}, [this] { OpenRunners(); });
   add_action(this, "open_downloads", "Downloads", QKeySequence(), {},
              [this] { OpenDownloadsPage(); });
-  add_action(this, "fetch_art", "Fetch missing cover art", QKeySequence(), {},
-             [this] { FetchMissingArtwork(); });
   // F5 is the platform's own Refresh; Ctrl+R is the one every browser
   // taught, and a second binding costs nothing.
   add_action(this, "refresh", "Refresh the library", QKeySequence(QKeySequence::Refresh),
@@ -1274,6 +1272,9 @@ void LibraryWindow::Reload(bool force_scan) {
 void LibraryWindow::RefreshLibrary() {
   Reload(/*force_scan=*/true);
   owned_titles_->Refresh(/*fresh=*/true);  // the stores asked now, not their lists from earlier
+  // mirad fetches art on its own only for a game it just found, so one that failed stays bare
+  // until asked again.
+  FetchMissingArtwork();
 }
 
 void LibraryWindow::RefreshGames(std::function<void()> done) {
