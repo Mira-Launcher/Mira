@@ -17,7 +17,9 @@
 #include <QPushButton>
 #include <QStorageInfo>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <memory>
+#include <vector>
 
 #include "../app/ErrorHelp.h"
 #include "../client/JsonMapping.h"
@@ -175,13 +177,15 @@ void AddGamesCard::ShowMenu() {
   SettingsCard* page = NewPage();
   AddCardHeading(page, "Add games", "Close", [this] { Close(); });
 
-  const auto add_row = [page](icons::Glyph glyph, const QString& label, const QString& detail,
-                              const QString& button) {
+  std::vector<QPushButton*> buttons;
+  const auto add_row = [page, &buttons](icons::Glyph glyph, const QString& label,
+                                        const QString& detail, const QString& button) {
     auto* row = new SettingRow(label, QString(), page);
     row->SetLeading(Tile(row, glyph));
     QLabel* line = Detail(row, detail);
     row->SetBelow(line);
     auto* choose = new QPushButton(button, row);
+    buttons.push_back(choose);
     row->AddControl(choose);
     page->AddRow(row);
     return std::pair{line, choose};
@@ -229,6 +233,10 @@ void AddGamesCard::ShowMenu() {
   menu_choose_ = menu;
   menu->setEnabled(false);
   connect(menu, &QPushButton::clicked, this, [this] { ShowAppMenu(); });
+  // One width, so the buttons line up down the card.
+  int widest = 0;
+  for (QPushButton* button : buttons) widest = std::max(widest, button->sizeHint().width());
+  for (QPushButton* button : buttons) button->setMinimumWidth(widest);
 
   ShowPage(page);
   FillMenuDetails();
@@ -542,11 +550,11 @@ void AddGamesCard::ShowLinks() {
   AddCardHeading(page, "Download from links", "Close", [this] { Close(); });
 
   auto* intro = new SettingRow("Links for one game", QString(), page);
-  intro->SetBelow(Detail(intro, "One per line. Add another game the same way afterwards."));
+  intro->SetBelow(Detail(intro, "One per line. Enter downloads, Shift+Enter adds a line."));
   page->AddRow(intro);
   auto* text = new QPlainTextEdit(page);
   text->setFixedHeight(120);
-  text->setPlaceholderText("https://…  (Enter downloads, Shift+Enter adds a line)");
+  text->setPlaceholderText("https://…");
   // What was just copied is most likely what's wanted.
   const std::vector<std::string> copied = downloads::ParseLinks(QApplication::clipboard()->text());
   for (const std::string& link : copied) text->appendPlainText(QString::fromStdString(link));
@@ -576,10 +584,11 @@ void AddGamesCard::ShowLinks() {
     auto* row = new SettingRow("Download to", QString(), page);
     target = new FlatCombo(row);
     for (const QString& folder : mira_folders_) {
-      const QStorageInfo storage(folder);
-      target->addItem(
-          QString("%1  ·  %2 free").arg(HomeRelative(folder), SizeText(storage.bytesAvailable())),
-          folder);
+      const qint64 free = QStorageInfo(folder).bytesAvailable();
+      target->addItem(free < 0
+                          ? HomeRelative(folder)
+                          : QString("%1  ·  %2 free").arg(HomeRelative(folder), SizeText(free)),
+                      folder);
       if (folder == default_folder_) target->setCurrentIndex(target->count() - 1);
     }
     row->AddControl(target);
@@ -627,8 +636,9 @@ void AddGamesCard::ShowLinks() {
         api::AddDownloadAsync(this, name->text().trimmed().toStdString(), links,
                               password->text().toStdString(), folder,
                               [=, this](StoreActionResult result) {
-                                if (result.ok) return Close();
-                                again(error_help::Describe(result.error));
+                                if (!result.ok) return again(error_help::Describe(result.error));
+                                emit DownloadStarted();
+                                Close();
                               });
       });
     };

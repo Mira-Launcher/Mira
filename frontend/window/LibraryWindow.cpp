@@ -691,6 +691,8 @@ void LibraryWindow::ImportDropped(const QString& path) {
 
 void LibraryWindow::OpenAddGames(const QString& path) {
   auto* card = new mira_gui::AddGamesCard();
+  connect(card, &mira_gui::AddGamesCard::DownloadStarted, this, &LibraryWindow::OpenDownloadsPage,
+          Qt::QueuedConnection);
   mira_gui::cards::Show(this, card);
   if (!path.isEmpty()) card->OpenPath(path);
 }

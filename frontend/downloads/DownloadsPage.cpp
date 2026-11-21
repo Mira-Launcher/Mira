@@ -178,15 +178,18 @@ void DownloadsPage::Refresh() {
 
 void DownloadsPage::UpdateHeader() {
   double speed = 0;
-  int running = 0;
+  int running = 0, waiting = 0, needs_you = 0;
   for (const Entry& entry : tracker_->Entries()) {
+    if (NeedsUser(entry)) ++needs_you;
+    if (Waiting(entry)) ++waiting;
     if (!InProgress(entry)) continue;
     ++running;
     speed += std::max(0.0, entry.bytes_per_second);
   }
   QStringList parts;
-  if (running > 0)
-    parts << (running == 1 ? QString("1 running") : QString("%1 running").arg(running));
+  if (needs_you > 0) parts << QString("%1 need you").arg(needs_you);
+  if (running > 0) parts << QString("%1 running").arg(running);
+  if (waiting > 0) parts << QString("%1 waiting").arg(waiting);
   if (speed > 0) parts << "↓ " + SizeText(static_cast<qint64>(speed)) + "/s";
   summary_->setText(parts.isEmpty() ? QString("Nothing running") : parts.join("  ·  "));
   const auto& list = links_->Downloads();

@@ -7,6 +7,7 @@
 
 #include "DownloadTracker.h"
 
+class QBoxLayout;
 class QVBoxLayout;
 
 namespace mira_gui {
@@ -47,7 +48,7 @@ class DownloadList : public QWidget {
 
  private:
   QWidget* BuildRow(const DownloadTracker::Entry& entry, bool first);
-  void AddLinkActions(const DownloadTracker::Entry& entry, QWidget* row, QVBoxLayout* actions,
+  void AddLinkActions(const DownloadTracker::Entry& entry, QWidget* row, QBoxLayout* actions,
                       QVBoxLayout* text);
   void UpdateCover(const QString& id);
   // Refreshes a still-running row in place; false when it needs a Rebuild.

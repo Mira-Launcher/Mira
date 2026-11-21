@@ -236,6 +236,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
 
   auto* text = new QVBoxLayout();
   text->setSpacing(3);
+  text->addStretch(1);
   // Elided, and the status below free to shrink: the panel is a fixed width, and a long name or
   // an unbreakable path would otherwise push the buttons past its right edge.
   auto* title = new ElidedLabel(name, row);
@@ -293,10 +294,11 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
     layout->addWidget(log, 0, Qt::AlignVCenter);
   }
 
-  // Stacked, so Pause or Resume sits over Cancel at the same width.
-  auto* actions = new QVBoxLayout();
-  actions->setSpacing(6);
-  actions->addStretch(1);
+  // Side by side on the page; stacked in the narrow popover, Pause over Cancel at the same width.
+  QBoxLayout* actions =
+      style_ == Style::Full ? static_cast<QBoxLayout*>(new QHBoxLayout()) : new QVBoxLayout();
+  actions->setSpacing(style_ == Style::Full ? 8 : 6);
+  if (style_ == Style::Compact) actions->addStretch(1);
   const QString game_id = DownloadTracker::GameIdFor(entry);
   const bool tracked = tracker_->game_name && !tracker_->game_name(game_id.toStdString()).isEmpty();
   if (entry.kind == Kind::Link) {
@@ -374,13 +376,14 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
       actions->addWidget(fix);
     }
   }
-  actions->addStretch(1);
+  if (style_ == Style::Compact) actions->addStretch(1);
   layout->addLayout(actions);
+  layout->setAlignment(actions, Qt::AlignVCenter);
   return row;
 }
 
 void DownloadList::AddLinkActions(const DownloadTracker::Entry& entry, QWidget* row,
-                                  QVBoxLayout* actions, QVBoxLayout* text) {
+                                  QBoxLayout* actions, QVBoxLayout* text) {
   const QString id = entry.ref;
   const QString& state = entry.link_state;
   const bool full = style_ == Style::Full;
