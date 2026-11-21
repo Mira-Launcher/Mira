@@ -245,14 +245,15 @@ QWidget#left_sidebar QToolButton#add_games::menu-indicator {
   width: 0px;
 }
 
-QWidget#left_sidebar QToolButton#fetch_art {
+QWidget#left_sidebar QToolButton#sidebar_square {
   background: transparent;
   border: 1px solid @border;
   border-radius: @radius_control;
   padding: 6px;
 }
 
-QWidget#left_sidebar QToolButton#fetch_art:hover {
+QWidget#left_sidebar QToolButton#sidebar_square:hover,
+QWidget#left_sidebar QToolButton#sidebar_square:checked {
   border-color: @accent;
   background: @surface_alt;
 }
@@ -1275,8 +1276,7 @@ QLabel#setup_tile_title {
 
 QFrame#setup_card,
 QFrame#setup_feature,
-QFrame#sources_card,
-QFrame#downloads_card {
+QFrame#sources_card {
   background: @surface;
   border: 1px solid @border;
   border-radius: @radius_panel;

@@ -49,10 +49,10 @@ class Sidebar : public QWidget {
   // rows' counts and covers, and how PINNED and RECENTLY PLAYED look.
   void ApplyPrefs(const FrontendPrefs& prefs);
   // Highlights the row of the page on screen; none of them for Settings.
-  void SetActive(bool library, bool runners, bool tags, const QString& source_id);
+  void SetActive(bool library, bool runners, bool tags, bool downloads, const QString& source_id);
   // `shown` is the count's text ("43 of 45 games"), followed by "shown".
   void SetFooter(const QString& shown, bool mirad_reachable);
-  // Add games, Settings and fetch art, which act on a grid that's covered.
+  // Add games, Downloads, Tags and Settings, while the grid is covered.
   void SetActionsEnabled(bool enabled);
 
   // Lists the set-up sources mirad reports, and asks
@@ -86,13 +86,13 @@ class Sidebar : public QWidget {
  signals:
   void LibraryClicked();
   void RunnersClicked();
-  void TagsClicked();
+  void DownloadsClicked();
   // Empty `focus_key` opens Settings at its start.
   void SettingsRequested(const QString& focus_key);
   void SourceClicked(const SourceInfo& source);
   void ManageSourcesRequested();
   void StyleRequested();
-  void FetchArtRequested();
+  void TagsClicked();
   // A pinned or recently played row's click.
   void PlayRequested(const std::string& id);
   void GameMenuRequested(const std::string& id, const QPoint& global_pos);
@@ -145,17 +145,16 @@ class Sidebar : public QWidget {
 
   QPushButton* library_nav_ = nullptr;
   QPushButton* runners_nav_ = nullptr;
-  QPushButton* tags_nav_ = nullptr;
   QPushButton* settings_button_ = nullptr;
   QWidget* sources_heading_ = nullptr;
   QToolButton* manage_sources_button_ = nullptr;
   QPushButton* add_source_button_ = nullptr;  // shown until another source is added
   QToolButton* add_games_ = nullptr;
-  QToolButton* fetch_art_button_ = nullptr;
+  QToolButton* tags_ = nullptr;       // beside the count of games, checked on the Tags page
+  QToolButton* downloads_ = nullptr;  // beside Add games, checked on the Downloads page
   QLabel* footer_ = nullptr;
   bool library_active_ = true;
   bool runners_active_ = false;
-  bool tags_active_ = false;
   QString active_source_;
 
   // A source's row: the button draws only the background, and its parts are the deck of covers

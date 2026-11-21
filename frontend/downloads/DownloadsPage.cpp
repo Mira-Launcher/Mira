@@ -17,6 +17,7 @@
 #include "../theme/Theme.h"
 #include "../widgets/Labels.h"
 #include "../widgets/ListEdit.h"
+#include "../widgets/PageHeader.h"
 #include "../widgets/PopupDialog.h"
 #include "../widgets/Scrolling.h"
 #include "LinkDownloads.h"
@@ -49,23 +50,13 @@ bool IsRunningLink(const DownloadInfo& download) {
 
 DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, ArtworkStore* artwork,
                              QWidget* parent)
-    : QFrame(parent), links_(links), tracker_(tracker) {
-  setObjectName("downloads_card");
+    : QWidget(parent), links_(links), tracker_(tracker) {
+  setObjectName("downloads_page");
   auto* outer = new QVBoxLayout(this);
   outer->setContentsMargins(0, 0, 0, 0);
   outer->setSpacing(0);
 
-  auto* header = new QHBoxLayout();
-  header->setContentsMargins(24, 18, 14, 14);
-  header->setSpacing(10);
-  auto* titles = new QVBoxLayout();
-  titles->setSpacing(2);
-  auto* title = new QLabel("Downloads", this);
-  title->setObjectName("page_title");
-  summary_ = MakeLabel(this, QString(), "subtle");
-  titles->addWidget(title);
-  titles->addWidget(summary_);
-  header->addLayout(titles, /*stretch=*/1);
+  header_ = new PageHeader("Downloads", this);
 
   pause_all_ = new QPushButton("Pause all", this);
   connect(pause_all_, &QPushButton::clicked, this, [this] {
@@ -76,35 +67,29 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
       if (!running && download.state == "paused") links_->Act(download.id, "resume");
     }
   });
-  header->addWidget(pause_all_, 0, Qt::AlignTop);
+  header_->AddControl(pause_all_);
   auto* passwords = new QPushButton("Passwords", this);
   passwords->setToolTip("The archive passwords Mira tries on what it downloads");
   connect(passwords, &QPushButton::clicked, this, &DownloadsPage::EditPasswords);
-  header->addWidget(passwords, 0, Qt::AlignTop);
-  const auto tool = [this, header](icons::Glyph glyph, const QString& tip) {
-    auto* button = new QToolButton(this);
-    button->setAutoRaise(true);
-    icons::Follow(button, glyph);
-    button->setToolTip(tip);
-    header->addWidget(button, 0, Qt::AlignTop);
-    return button;
-  };
-  connect(tool(icons::Glyph::Settings, "Download settings: speed limit, how many at once"),
-          &QToolButton::clicked, this, &DownloadsPage::SettingsRequested);
-  connect(tool(icons::Glyph::Close, "Close (Esc)"), &QToolButton::clicked, this,
-          &DownloadsPage::CloseRequested);
-  outer->addLayout(header);
-  outer->addWidget(MakeDivider(this, Qt::Horizontal));
+  header_->AddControl(passwords);
+  auto* settings = new QToolButton(this);
+  settings->setAutoRaise(true);
+  icons::Follow(settings, icons::Glyph::Settings);
+  settings->setToolTip("Download settings: speed limit, how many at once");
+  connect(settings, &QToolButton::clicked, this, &DownloadsPage::SettingsRequested);
+  header_->AddControl(settings);
+  outer->addWidget(header_);
 
   auto* scroll = new QScrollArea(this);
-  scroll->setObjectName("card_scroll");
+  scroll->setObjectName("settings_page");
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   SetUpScrolling(scroll, this);
   auto* body = new QWidget();
+  body->setObjectName("settings_canvas");
   auto* body_layout = new QVBoxLayout(body);
-  body_layout->setContentsMargins(24, 16, 24, 24);
+  body_layout->setContentsMargins(32, 12, 32, 22);
   body_layout->setSpacing(16);
   empty_ = MakeLabel(body,
                      "Nothing is downloading or installing. Add games from links with Add "
@@ -206,7 +191,7 @@ void DownloadsPage::UpdateHeader() {
   if (running > 0) parts << QString("%1 running").arg(running);
   if (waiting > 0) parts << QString("%1 waiting").arg(waiting);
   if (speed > 0) parts << "↓ " + SizeText(static_cast<qint64>(speed)) + "/s";
-  summary_->setText(parts.isEmpty() ? QString("Nothing running") : parts.join("  ·  "));
+  header_->SetSubtitle(parts.isEmpty() ? QString("Nothing running") : parts.join("  ·  "));
   const auto& list = links_->Downloads();
   const bool links_running = std::ranges::any_of(list, IsRunningLink);
   const bool links_paused = std::ranges::any_of(

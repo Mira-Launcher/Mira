@@ -242,6 +242,7 @@ class LibraryWindow : public QMainWindow,
   // Sources or Downloads, sized to the space beside the sidebar.
   void SizeSourcesCard();
   void OpenDownloadsPage();
+  void CloseDownloadsPage();
   // A card that changes the sidebar (the pinned and recently played style),
   // over the content with the sidebar left undimmed as its
   // preview. Showing one replaces any other.
@@ -329,11 +330,11 @@ class LibraryWindow : public QMainWindow,
   mira_gui::SourcePage* source_page_ = nullptr;
   mira_gui::RunnersPage* runners_page_ = nullptr;
   mira_gui::TagsPage* tags_page_ = nullptr;
-  QPointer<mira_gui::SourcesPage> sources_page_;      // the sidebar card while it shows Sources
-  QPointer<mira_gui::DownloadsPage> downloads_page_;  // or Downloads
+  QPointer<mira_gui::SourcesPage> sources_page_;  // the sidebar card while it shows Sources
+  mira_gui::DownloadsPage* downloads_page_ = nullptr;
 
   QSplitter* splitter_ = nullptr;
-  // The splitter's right side: grid_page_, source_page_, or runners_page_.
+  // The splitter's right side: grid_page_, source_page_, runners_page_ or downloads_page_.
   QStackedWidget* main_stack_ = nullptr;
   mira_gui::LibraryPage* grid_page_ = nullptr;
   // Swaps the splitter out for Settings, full-screen. A game's card is a

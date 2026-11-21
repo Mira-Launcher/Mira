@@ -74,8 +74,13 @@ class LogBar : public QWidget {
 
 void LogWindow::Open(QWidget* parent, const QString& channel, const QString& title) {
   QPointer<LogWindow>& existing = Windows()[channel];
-  if (existing == nullptr)
-    existing = new LogWindow(parent != nullptr ? parent->window() : nullptr, channel, title);
+  if (existing == nullptr) {
+    // A window of its own, not one tied to Mira's: the taskbar lists it as Mira's second window,
+    // so it can be tiled or moved like any other. It still goes when that window does.
+    existing = new LogWindow(nullptr, channel, title);
+    if (parent != nullptr)
+      QObject::connect(parent->window(), &QObject::destroyed, existing.data(), &QWidget::close);
+  }
   if (!existing->isVisible() && parent != nullptr) {
     // Beside the window it came from, offset a little per log so several don't sit on each other.
     const QRect from = parent->window()->frameGeometry();
