@@ -47,13 +47,14 @@ void RegisterDownloadRoutes(Router& http, Services& s) {
   });
 
   http.Post("/v1/downloads", [&s](const Request& req, Response& res) {
-    const auto body =
-        BodyObject(req, res, R"({"name": "...", "links": ["..."], "password": "..."})");
+    const auto body = BodyObject(
+        req, res, R"({"name"?: "...", "links": ["..."], "password"?: "...", "folder"?: "..."})");
     if (!body) return;
     const auto links = StringList(*body, "links");
     if (!links) return SendError(res, 400, "invalid_body", "links must be a list of strings");
     const auto added = s.downloads.Add(body->value("name", std::string()), *links,
-                                       body->value("password", std::string()));
+                                       body->value("password", std::string()),
+                                       body->value("folder", std::string()));
     if (!added) return SendError(res, 400, added.error());
     SendJson(res, *added, 201);
   });

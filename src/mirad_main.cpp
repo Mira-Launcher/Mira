@@ -24,6 +24,7 @@
 #include "core/Log.h"
 #include "core/LogHub.h"
 #include "core/Paths.h"
+#include "library/Drives.h"
 #include "library/Scanner.h"
 #include "library/Watcher.h"
 #include "metadata/MetadataFetcher.h"
@@ -178,6 +179,7 @@ int main(int argc, char** argv) {
   // it: provisioning a new Windows game takes seconds each, and clients must
   // not wait on that to connect. Scans and the watcher serialize on
   // GameStore::LockFolders.
+  mira::library::SetUpDrives(config, games);
   mira::library::CreateMissingRoots(config);
   std::thread startup_scan_thread([&] {
     // A client's scan asked for meanwhile waits for this one rather than scanning again.

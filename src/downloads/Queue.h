@@ -36,6 +36,8 @@ std::vector<QueuedFile> MergeMirrors(std::vector<QueuedFile> files);
 struct Download {
   std::string id;
   std::string name;
+  bool name_guessed = false;  // none was given: guessed from the link, then from the files
+  std::string folder;         // the Mira folder it goes into
   std::vector<std::string> links;
   // queued, resolving, service, downloading, paused, retrying, extracting, password, failed, done
   std::string state;
@@ -63,8 +65,9 @@ class Queue {
   nlohmann::json List() const;
   // The files `links` stand for, for the confirm step: their names, sizes and sources.
   Result<nlohmann::json> Check(const std::vector<std::string>& links) const;
+  // An empty name is guessed from what's downloaded, an empty folder is the default Mira folder.
   Result<nlohmann::json> Add(const std::string& name, const std::vector<std::string>& links,
-                             const std::string& password);
+                             const std::string& password, const std::string& folder = {});
   Result<void> Pause(const std::string& id);
   Result<void> Resume(const std::string& id);
   // Removes it and everything it downloaded. A finished one only leaves the list.
@@ -100,6 +103,8 @@ class Queue {
   Download* FindLocked(const std::string& id);
   void Announce(const Download& download);
   void Save();
+  // The Mira folder it goes into, and its work folder there.
+  std::filesystem::path HomeOf(const Download& download) const;
   std::filesystem::path WorkDir(const Download& download) const;
   void RememberPassword(const std::string& password);
 

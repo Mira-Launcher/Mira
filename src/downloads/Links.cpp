@@ -227,4 +227,10 @@ Result<std::vector<LinkFile>> Resolve(const std::string& link) {
   return files;
 }
 
+// "Some_Game.part1.rar" → "Some Game".
+std::string GuessGameName(std::string file) {
+  static const std::regex kVolume(R"((\.part\d+)?(\.[A-Za-z0-9]{1,5})(\.\d{3})?$)");
+  return strings::CleanGameName(std::regex_replace(file, kVolume, ""));
+}
+
 }  // namespace mira::downloads

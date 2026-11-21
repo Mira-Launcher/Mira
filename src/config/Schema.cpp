@@ -259,6 +259,22 @@ Schema::Schema() {
              "when it can't tell where it goes.",
          .path = PathKind::Folder});
 
+  s.Add({.key = "library.auto_drives",
+         .label = "Use every drive",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Gives each internal drive with 20 GB or more free a Mira folder of its own when "
+                "Mira starts. One you remove from the list isn't added again.",
+         .keywords = "disk partition mount"});
+
+  s.Add({.key = "default_mira_folder",
+         .label = "Default Mira folder",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Where downloads go unless you pick another. Empty is the one on your boot drive.",
+         .path = PathKind::Folder,
+         .keywords = "drive disk download location"});
+
   s.Add({.key = "library_roots",
          .label = "Library folders",
          .type = Type::StringArray,

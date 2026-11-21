@@ -32,6 +32,8 @@ std::string NameFromDisposition(const std::string& header);
 // A file's name as one safe path part. `name` comes from a remote server, so whatever folders it
 // claims go; with no name, the address's last part stands in.
 std::string CleanFileName(const std::string& name, const std::string& url);
+// A game's name from a downloaded file's: "Some_Game.part1.rar" is "Some Game".
+std::string GuessGameName(std::string file);
 
 // The files a direct or host link stands for. A link that leads to a web page Mira can't read
 // fails with link_is_a_page.

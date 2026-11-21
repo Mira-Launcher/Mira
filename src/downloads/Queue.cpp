@@ -8,13 +8,16 @@
 #include <iterator>
 #include <memory>
 #include <random>
+#include <regex>
 #include <stop_token>
 
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "downloads/Service.h"
 #include "library/ArchiveExtractor.h"
 #include "library/AutoInstall.h"
+#include "library/Drives.h"
 #include "library/Drops.h"
 #include "library/Import.h"
 #include "model/Types.h"
@@ -152,6 +155,7 @@ json ToJson(const Download& download) {
   }
   json out = {{"id", download.id},
               {"name", download.name},
+              {"folder", download.folder},
               {"links", download.links},
               {"state", download.state},
               {"files", files},
@@ -186,6 +190,8 @@ void Queue::Start() {
         Download download;
         download.id = item.value("id", std::string());
         download.name = item.value("name", std::string());
+        download.name_guessed = item.value("name_guessed", false);
+        download.folder = item.value("folder", std::string());
         download.state = item.value("state", std::string("queued"));
         download.password = item.value("password", std::string());
         download.use_service = item.value("use_service", false);
@@ -379,6 +385,13 @@ void Queue::Fetch(const std::string& id) {
 void Queue::StartFiles(Download& download) {
   const fs::path dir = WorkDir(download);
   download.files = MergeMirrors(std::move(download.files));
+  if (download.name_guessed && !download.files.empty()) {
+    if (std::string name = GuessGameName(download.files.front().name); !FolderName(name).empty()) {
+      download.name = std::move(name);
+      download.name_guessed = false;
+      Announce(download);
+    }
+  }
   for (QueuedFile& file : download.files) {
     auto gid = aria2_.Add(Addresses(file), dir, file.name);
     if (!gid) return Fail(download, gid.error());
@@ -562,8 +575,7 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
   if (auto placed = Place(download, dir, content); !placed) return placed;
 
   if (config_.GetBool("downloads.keep_archives")) {
-    const fs::path kept =
-        config_.GetPathArray("mira_folders").front() / "Archives" / FolderName(download.name);
+    const fs::path kept = HomeOf(download) / "Archives" / FolderName(download.name);
     fs::create_directories(kept, ec);
     for (const fs::path& path : entries) {
       if (fs::exists(path, ec)) fs::rename(path, kept / path.filename(), ec);
@@ -576,9 +588,7 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
 // A program goes straight to the library under the name the user confirmed, since they asked for it
 // to be added. A ROM or anything else goes to the Mira folder, for the usual sorting.
 Result<void> Queue::Place(const Download& download, const fs::path& dir, const fs::path& content) {
-  const auto folders = config_.GetPathArray("mira_folders");
-  if (folders.empty()) return Err("no_mira_folder", "Mira has no folder to put the game in");
-  const fs::path home = folders.front();
+  const fs::path home = HomeOf(download);
   std::error_code ec;
   const bool program = library::IsProgram(config_, content);
   const bool is_file = fs::is_regular_file(content, ec);
@@ -701,13 +711,22 @@ Result<nlohmann::json> Queue::Check(const std::vector<std::string>& links) const
 }
 
 Result<nlohmann::json> Queue::Add(const std::string& name, const std::vector<std::string>& links,
-                                  const std::string& password) {
-  if (FolderName(name).empty()) return Err("invalid_name", "the game needs a name");
+                                  const std::string& password, const std::string& folder) {
   if (links.empty()) return Err("invalid_links", "there are no links to download");
   if (auto valid = OnlyWebLinks(links); !valid) return std::unexpected(valid.error());
+  if (!folder.empty() && !library::IsMiraFolder(config_, folder))
+    return Err("invalid_folder", std::format("{} isn't one of the Mira folders", folder));
   Download download;
   download.id = NewId();
   download.name = name;
+  // Fixed now, so a later change of the default doesn't strand what's half downloaded.
+  download.folder =
+      (folder.empty() ? library::DefaultMiraFolder(config_) : paths::Expand(folder)).string();
+  if (FolderName(name).empty()) {
+    download.name = GuessGameName(CleanFileName("", links.front()));
+    download.name_guessed = true;
+  }
+  if (FolderName(download.name).empty()) download.name = "Download";
   download.links = links;
   download.state = "queued";
   download.password = password;
@@ -893,6 +912,7 @@ void Queue::Save() {
     json item = ToJson(download);
     item.erase("service");
     item["use_service"] = download.use_service;
+    item["name_guessed"] = download.name_guessed;
     item["retries"] = download.retries;
     saved.push_back(std::move(item));
   }
@@ -900,10 +920,14 @@ void Queue::Save() {
     log::Warn("couldn't save the download queue: {}", done.error().message);
 }
 
+fs::path Queue::HomeOf(const Download& download) const {
+  // One removed from the list since: the default instead.
+  if (library::IsMiraFolder(config_, download.folder)) return download.folder;
+  return library::DefaultMiraFolder(config_);
+}
+
 fs::path Queue::WorkDir(const Download& download) const {
-  const auto folders = config_.GetPathArray("mira_folders");
-  const fs::path home = folders.empty() ? paths::Home() / "Mira" : folders.front();
-  return home / ".mira-downloads" / download.id;
+  return HomeOf(download) / ".mira-downloads" / download.id;
 }
 
 }  // namespace mira::downloads
