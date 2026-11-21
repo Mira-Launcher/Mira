@@ -101,6 +101,14 @@ void ApplyMangoHud(Command& command, const config::Resolver& resolver, const mod
   config = "preset=" + preset->second + (config.empty() ? "" : "," + config);
 }
 
+// display.hdr: Proton draws through its Wayland driver, which passes HDR to Plasma, and DXVK and
+// vkd3d-proton output it. Values the env already has win.
+void ApplyHdr(Command& command, const config::Resolver& resolver) {
+  if (!resolver.GetBool("display.hdr")) return;
+  for (const char* key : {"PROTON_ENABLE_WAYLAND", "PROTON_ENABLE_HDR", "DXVK_HDR"})
+    command.env.try_emplace(key, "1");
+}
+
 // launch.shader_cache: drivers keep 10 GB of shaders rather than 1 GB, and a game outside Proton
 // (which caches in the prefix) gets a folder of its own. Values the env already has win.
 void ApplyShaderCache(Command& command, const config::Resolver& resolver, const model::Game& game) {
@@ -274,6 +282,7 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
   ApplyLaunchEnv(*command, resolver.GetStringArray("launch.env"));
   ApplyMangoHud(*command, resolver, game, game_mangohud);
   ApplyShaderCache(*command, resolver, game);
+  ApplyHdr(*command, resolver);
   ApplyCommandWrappers(*command, wrappers);
   return command;
 }
@@ -375,6 +384,20 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
     shared.started = true;
   }
   const config::Resolver resolver(s.config, game.overrides);
+  // The monitor in the game's HDR and resolution before it starts, put back if it doesn't.
+  if (const std::string said = s.display.Start(game.id, resolver.GetBool("display.hdr"),
+                                               resolver.GetString("display.resolution"));
+      !said.empty()) {
+    log::Warn("{}: {}", game.id, said);
+  }
+  struct Display {
+    Services& s;
+    const std::string& id;
+    bool tracked = false;
+    ~Display() {
+      if (!tracked) s.display.Stop(id);
+    }
+  } display{s, game.id};
   // mira-run owns the session so it survives mirad dying.
   const auto mira_run = runner::ResolveSiblingBinary(runner::OwnBinaryDir(), "mira-run");
   if (!mira_run) {
@@ -494,6 +517,7 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
     return SendError(res, 409, launched.error());
   }
   shared.tracked = true;
+  display.tracked = true;
   SendJson(res, {{"status", "running"}, {"tracked", true}});  // always true: Mira spawned it
 }
 

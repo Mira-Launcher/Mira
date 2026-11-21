@@ -1057,6 +1057,26 @@ Schema::Schema() {
          .game_doc = "Environment variables (KEY=VALUE) for this game, for example \"MANGOHUD=1\". "
                      "Once changed here, this list replaces the one in Settings for this game."});
 
+  s.Add({.key = "display.hdr",
+         .label = "HDR",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "Turns HDR on for the primary monitor while the game runs and off again after, "
+                "and has Proton pass the game's HDR through. Needs Plasma on Wayland and an HDR "
+                "monitor, and the game's own HDR option turned on.",
+         .keywords = "high dynamic range display monitor"});
+
+  s.Add({.key = "display.resolution",
+         .label = "Resolution",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::PerGame,
+         .doc = "Switches the primary monitor to this mode while the game runs, as WIDTHxHEIGHT "
+                "or WIDTHxHEIGHT@HZ, for example \"1920x1080@120\". Empty keeps the monitor as it "
+                "is. Needs Plasma on Wayland.",
+         .keywords = "display monitor refresh rate mode"});
+
   s.Add({.key = "launch.gamemode",
          .label = "Use GameMode",
          .type = Type::Bool,
