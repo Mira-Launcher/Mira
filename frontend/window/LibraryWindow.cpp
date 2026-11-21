@@ -2264,7 +2264,22 @@ void LibraryWindow::SyncUpdates() {
 }
 
 void LibraryWindow::DownloadChanged(const QString& key) {
-  top_bar_->SetActivityCount(downloads_->RunningCount());
+  const auto show_count = [this] {
+    activity_shown_ = downloads_->RunningCount();
+    top_bar_->SetActivityCount(activity_shown_);
+  };
+  if (activity_timer_ == nullptr) {
+    activity_timer_ = new QTimer(this);
+    activity_timer_->setSingleShot(true);
+    activity_timer_->setInterval(1200);
+    connect(activity_timer_, &QTimer::timeout, this, show_count);
+  }
+  if (downloads_->RunningCount() <= activity_shown_) {
+    activity_timer_->stop();
+    show_count();
+  } else if (!activity_timer_->isActive()) {
+    activity_timer_->start();
+  }
 
   // That game's row repaints with its new install text.
   if (key.startsWith("game:")) library_->Touch(key.mid(5).toStdString());
