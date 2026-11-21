@@ -19,12 +19,16 @@
 #include "library/ArchiveExtractor.h"
 #include "library/FolderTags.h"
 #include "library/Scanner.h"
+#include "steam/SteamDetector.h"
 
 namespace mira::library {
 namespace {
 namespace fs = std::filesystem;
 
 constexpr int kWatchMask = IN_CREATE | IN_MOVED_TO | IN_MOVED_FROM | IN_DELETE;
+// Steam rewrites a manifest in place (IN_CLOSE_WRITE) as a download goes, every few seconds.
+constexpr int kSteamMask = IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_DELETE;
+constexpr std::int64_t kSteamSettleMs = 3000;
 
 std::int64_t NowMs() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -171,6 +175,14 @@ void Watcher::WatchRoots() {
       if (drops_ != nullptr && !IsMiraFoldersOwn(config_, entry)) drops_->Sort(entry, /*ask=*/true);
     }
   }
+  if (const auto steam_root = steam::FindSteamRoot(config_); steam_root && on_steam_changed_) {
+    for (const fs::path& library : steam::LibraryFolders(*steam_root)) {
+      const fs::path steamapps = library / "steamapps";
+      const int wd = inotify_add_watch(inotify_fd_, steamapps.c_str(), kSteamMask);
+      if (wd < 0 || watches_.contains(wd)) continue;  // a library on a disk not mounted
+      watches_[wd] = {.root = steamapps, .dir = steamapps, .steam = true};
+    }
+  }
   ++roots_watched_;  // events queue in inotify from here, read once the loop runs
 }
 
@@ -206,7 +218,7 @@ void Watcher::Unwatch(const fs::path& dir) {
 
 void Watcher::RearmTimer() {
   itimerspec spec{};
-  if (pending_.empty()) {
+  if (pending_.empty() && steam_changed_ms_ == 0) {
     timerfd_settime(timer_fd_, 0, &spec, nullptr);  // all-zero disarms it
     return;
   }
@@ -339,6 +351,11 @@ void Watcher::HandleInotify() {
         continue;
       }
       if (event->len == 0) continue;
+      if (watched->second.steam) {
+        // Each write restarts the wait, so the scan comes once the install or uninstall is done.
+        if (std::string_view(event->name).starts_with("appmanifest_")) steam_changed_ms_ = NowMs();
+        continue;
+      }
       const fs::path root = watched->second.root;
       const fs::path path = watched->second.dir / event->name;
       if (watched->second.mira_folder) {
@@ -412,6 +429,11 @@ void Watcher::HandleDebounceTick() {
   const std::int64_t now = NowMs();
   const std::int64_t debounce_ms = config_.GetInt("scan.debounce_ms");
   std::vector<std::string> settled;
+  if (steam_changed_ms_ != 0 && now - steam_changed_ms_ >= kSteamSettleMs) {
+    steam_changed_ms_ = 0;
+    log::Info("Steam's installed games changed, importing");
+    on_steam_changed_();
+  }
 
   for (auto& [path, entry] : pending_) {
     // Walked once per debounce window, not every tick: a big tree's walk is slow.

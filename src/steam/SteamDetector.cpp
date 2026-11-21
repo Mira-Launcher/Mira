@@ -201,6 +201,13 @@ std::vector<SteamApp> ListApps(const fs::path& steam_root) {
       if (appid == nullptr || !appid->scalar || installdir == nullptr || !installdir->scalar)
         continue;
       if (*appid->scalar == kRedistAppId) continue;
+      // Still downloading or never finished: Steam sets bit 4 (fully installed) once it's whole.
+      if (const VdfValue* flags = state->Get({"StateFlags"}); flags != nullptr && flags->scalar) {
+        int value = 0;
+        std::from_chars(flags->scalar->data(), flags->scalar->data() + flags->scalar->size(),
+                        value);
+        if ((value & 4) == 0) continue;
+      }
       if (name && name->scalar && name->scalar->starts_with("Steam Linux Runtime")) continue;
       const fs::path install_rel = fs::path(*installdir->scalar).lexically_normal();
       if (install_rel.is_absolute() || install_rel.empty() || install_rel == "." ||

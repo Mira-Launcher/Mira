@@ -9,6 +9,8 @@
 namespace mira::strings {
 
 std::string ToLower(std::string_view input);
+// The same text once ToLower'd, without making either copy.
+bool EqualsIgnoreCase(std::string_view a, std::string_view b);
 // Each all-lowercase word capitalised, as Steam names its tags: "open world" is "Open World", but
 // "free to play" is "Free to Play" and "RPG", "eSports" or "Co-op" are left as they are.
 std::string TitleCase(std::string_view input);

@@ -1,8 +1,16 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
+#include <string>
+#include <string_view>
 
 namespace mira::library {
+
+// Values of every subkey of `parent` in a Wine .reg file, by subkey name.
+using RegValues = std::map<std::string, std::string>;
+std::map<std::string, RegValues> ReadRegSubkeys(const std::filesystem::path& reg_file,
+                                                std::string_view parent);
 
 // True for a directory that is itself a Wine/Proton prefix (system.reg +
 // drive_c, or a pfx/ subdirectory, umu's layout) rather than game content.

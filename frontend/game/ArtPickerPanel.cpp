@@ -280,11 +280,9 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
     slots_->AddTab("logo", "Logos");
     slots_->AddTab("icon", "Icons");
   }
-  connect(slots_, &TabRow::CurrentChanged, this, [this](const QString& slot) {
-    if (HasChange()) emit Previewed(QString::fromStdString(slot_), QPixmap());
-    Open(slot.toStdString());
-    emit PickChanged(false);
-  });
+  // A pick stays, and stays previewed, while another tab is open.
+  connect(slots_, &TabRow::CurrentChanged, this,
+          [this](const QString& slot) { Open(slot.toStdString()); });
   bar_layout->addWidget(slots_);
   bar_layout->addStretch(1);
   // Wraps when there are more styles than fit.
@@ -460,6 +458,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
 }
 
 void ArtPickerPanel::Open(const std::string& slot) {
+  if (!slot_.empty()) KeepPick();
   slot_ = slot;
   pick_.reset();
   candidates_.clear();
@@ -555,8 +554,66 @@ void ArtPickerPanel::Populate(const GameMetadataResult& result) {
   }
   // What the fetch cached is shown first; SteamGridDB's own pages replace it.
   RequestPage();
-  emit PickChanged(false);
+  if (RestorePick()) {
+    EmitPickChanged();
+    EmitPreview();
+    return;
+  }
+  EmitPickChanged();
   emit Previewed(QString::fromStdString(slot_), QPixmap());
+}
+
+void ArtPickerPanel::KeepPick() {
+  if (!HasChange()) {
+    kept_.erase(slot_);
+    return;
+  }
+  Kept kept{.pick = *pick_, .upload = upload_};
+  if (*pick_ == kUploadId) {
+    kept.image = thumbs_.count({slot_, kUploadId}) ? thumbs_.at({slot_, kUploadId}) : QPixmap();
+    if (QListWidgetItem* item = ItemFor(kUploadId)) kept.image_tooltip = item->toolTip();
+  }
+  if (preview_ && preview_->first == *pick_) {
+    kept.preview = preview_->second;
+  } else if (const auto thumb = thumbs_.find({slot_, *pick_}); thumb != thumbs_.end()) {
+    kept.preview = thumb->second;
+  }
+  kept_[slot_] = std::move(kept);
+}
+
+bool ArtPickerPanel::RestorePick() {
+  const auto found = kept_.find(slot_);
+  if (found == kept_.end()) return false;
+  Kept kept = std::move(found->second);
+  kept_.erase(found);
+  if (kept.pick == kUploadId && !kept.image.isNull()) {
+    // Back in the grid as it was picked; ShowUpload picks it.
+    upload_ = std::move(kept.upload);
+    QListWidgetItem* item = ItemFor(kUploadId);
+    if (item == nullptr) {
+      item = new QListWidgetItem();
+      item->setData(kIdRole, QVariant::fromValue<qlonglong>(kUploadId));
+      item->setData(kStyleRole, QString("Yours"));
+      grid_->insertItem(0, item);
+    }
+    thumbs_[{slot_, kUploadId}] = kept.image;
+    if (active_id_ == kUploadId && !upload_.empty()) active_id_.reset();
+    item->setData(Qt::DecorationRole, kept.image);
+    item->setData(kStateRole, kReady);
+    item->setData(kCurrentRole, false);
+    item->setToolTip(kept.image_tooltip);
+    item->setHidden(false);
+  }
+  if (!kept.preview.isNull()) preview_.emplace(kept.pick, kept.preview);
+  stack_->setCurrentWidget(grid_);
+  grid_->blockSignals(true);
+  // A candidate on a page not loaded yet is highlighted when its page arrives (ShowPage).
+  QListWidgetItem* item = ItemFor(kept.pick);
+  grid_->setCurrentItem(item);
+  grid_->blockSignals(false);
+  if (item != nullptr) grid_->scrollToItem(item);
+  pick_ = kept.pick;
+  return true;
 }
 
 void ArtPickerPanel::AddOwnItems(const std::string& source) {
@@ -920,8 +977,12 @@ void ArtPickerPanel::Pick(QListWidgetItem* item) {
   } else {
     pick_ = item->data(kIdRole).toLongLong();
   }
-  emit PickChanged(HasChange());
+  EmitPickChanged();
   EmitPreview();
+}
+
+void ArtPickerPanel::EmitPickChanged() {
+  emit PickChanged(HasChange() || !kept_.empty());
 }
 
 void ArtPickerPanel::EmitPreview() {
@@ -957,11 +1018,21 @@ bool ArtPickerPanel::HasChange() const {
   return pick_.has_value() && pick_ != active_id_;
 }
 
-bool ArtPickerPanel::PicksNone() const {
-  return pick_ == kNoneId;
+std::vector<std::pair<std::string, bool>> ArtPickerPanel::PendingSlots() const {
+  std::vector<std::pair<std::string, bool>> pending;
+  for (const char* slot : {"cover", "hero", "logo", "icon"}) {
+    if (slot == slot_) {
+      if (HasChange()) pending.emplace_back(slot, pick_ == kNoneId);
+    } else if (const auto kept = kept_.find(slot); kept != kept_.end()) {
+      pending.emplace_back(slot, kept->second.pick == kNoneId);
+    }
+  }
+  return pending;
 }
 
 void ArtPickerPanel::ResetPick() {
+  for (const auto& [slot, kept] : std::exchange(kept_, {}))
+    emit Previewed(QString::fromStdString(slot), QPixmap());
   QListWidgetItem* active = active_id_ ? ItemFor(*active_id_) : nullptr;
   if (active != nullptr) {
     grid_->setCurrentItem(active);  // picks it, through currentItemChanged
@@ -975,25 +1046,34 @@ void ArtPickerPanel::ResetPick() {
 }
 
 void ArtPickerPanel::Apply() {
-  if (!HasChange() || applying_) return;
-  const std::string slot = slot_;
-  const std::int64_t candidate_id = *pick_;
-  applying_ = {slot, candidate_id};
+  for (auto& [slot, kept] : std::exchange(kept_, {})) {
+    if (!applying_.contains(slot))
+      ApplySlot(slot, kept.pick, std::move(kept.upload), std::move(kept.image));
+  }
+  if (HasChange() && !applying_.contains(slot_)) {
+    const auto image = thumbs_.find({slot_, kUploadId});
+    ApplySlot(slot_, *pick_, upload_, image != thumbs_.end() ? image->second : QPixmap());
+  }
+  EmitPickChanged();
+}
+
+void ArtPickerPanel::ApplySlot(const std::string& slot, std::int64_t candidate_id,
+                               std::string upload, const QPixmap& image) {
+  applying_[slot] = candidate_id;
   auto done = [this, slot](ArtworkSelectResult result) {
     if (result.ok) return;  // game.artwork_selected follows
-    applying_.reset();
+    applying_.erase(slot);
     emit ApplyFailed(QString::fromStdString(slot), error_help::Describe(result.error));
   };
-  if (candidate_id == kUploadId && upload_.empty()) {
+  if (candidate_id == kUploadId && upload.empty()) {
     // The image saved earlier, shown from mirad's copy: sent back as it was read.
-    const auto found = thumbs_.find({slot, kUploadId});
-    if (found == thumbs_.end()) {
-      applying_.reset();
+    if (image.isNull()) {
+      applying_.erase(slot);
       return;
     }
     async::Run<std::string>(
         this,
-        [image = found->second.toImage()] {
+        [image = image.toImage()] {
           QByteArray png;
           QBuffer buffer(&png);
           buffer.open(QIODevice::WriteOnly);
@@ -1004,7 +1084,7 @@ void ArtPickerPanel::Apply() {
           api::UploadArtworkAsync(this, id_, slot, std::move(bytes), std::move(done));
         });
   } else if (candidate_id == kUploadId) {
-    api::UploadArtworkAsync(this, id_, slot, upload_, std::move(done));
+    api::UploadArtworkAsync(this, id_, slot, std::move(upload), std::move(done));
   } else if (candidate_id == kNoneId) {
     api::RemoveArtworkAsync(this, id_, slot, std::move(done));
   } else {
@@ -1368,9 +1448,10 @@ void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& dat
   if (type != "game.artwork_selected" && type != "game.artwork_select_failed") return;
   ArtworkSelectEvent event;
   if (!events::ParseArtworkSelectEvent(data, &event) || event.id != id_) return;
-  if (!applying_ || applying_->first != event.slot) return;
-  const std::int64_t applied = applying_->second;
-  applying_.reset();
+  const auto waiting = applying_.find(event.slot);
+  if (waiting == applying_.end()) return;
+  const std::int64_t applied = waiting->second;
+  applying_.erase(waiting);
   if (type == "game.artwork_select_failed") {
     emit ApplyFailed(QString::fromStdString(event.slot), error_help::Describe(event.error));
     return;
@@ -1380,7 +1461,7 @@ void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& dat
   for (int i = 0; i < grid_->count(); ++i) {
     grid_->item(i)->setData(kCurrentRole, grid_->item(i)->data(kIdRole).toLongLong() == applied);
   }
-  emit PickChanged(HasChange());
+  EmitPickChanged();
 }
 
 }  // namespace mira_gui

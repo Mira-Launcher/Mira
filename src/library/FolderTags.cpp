@@ -1,7 +1,6 @@
 #include "library/FolderTags.h"
 
 #include <algorithm>
-#include <cctype>
 #include <format>
 #include <system_error>
 
@@ -29,9 +28,7 @@ bool IsUnder(const fs::path& path, const fs::path& base) {
 }
 
 bool SameName(std::string_view a, std::string_view b) {
-  // strings::ToLower's comparison, without its two copies.
-  return std::ranges::equal(
-      a, b, [](unsigned char x, unsigned char y) { return std::tolower(x) == std::tolower(y); });
+  return strings::EqualsIgnoreCase(a, b);
 }
 
 bool IsApplications(const fs::path& root) {

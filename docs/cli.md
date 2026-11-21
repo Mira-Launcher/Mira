@@ -124,7 +124,7 @@ A source that isn't set up lists nothing. Steam needs `steam.web_api_key` and `s
 `POST /v1/library/hidden`. Hides or shows owned titles. An installed one's game gets or loses the `hidden` tag; one not installed stays hidden once it is.
 
 ### `mira library install <source> <ref>` / `mira library update <source> <ref>`
-`POST /v1/library/install` / `update`. `<ref>` is the id `mira library` prints. The download runs in the background; watch for `library.install.finished`. Steam installs are handed to the Steam client and show up on the next `mira steam scan`. Steam updates its own games.
+`POST /v1/library/install` / `update`. `<ref>` is the id `mira library` prints. The download runs in the background; watch for `library.install.finished`. Steam installs are handed to the Steam client and show up once it has finished. Steam updates its own games.
 
 ### `mira steam scan`
 `POST /v1/steam/scan`. Adds or updates installed Steam games and prints `added: N  updated: N`.

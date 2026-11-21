@@ -53,6 +53,10 @@ class Watcher {
   void UseMetadataQueue(metadata::FetchQueue& queue) { metadata_fetches_ = &queue; }
   // Runs on the watcher's thread when settings.toml is saved, by hand or by Mira. Before Run().
   void OnSettingsSaved(std::function<void()> callback) { on_settings_saved_ = std::move(callback); }
+  // Runs on the watcher's thread once Steam has stopped writing its app manifests for a few
+  // seconds: an install, update or uninstall in Steam is done. Without it Steam isn't watched.
+  // Before Run().
+  void OnSteamChanged(std::function<void()> callback) { on_steam_changed_ = std::move(callback); }
   // Where a scan runs an installer it starts on its own. Before Run().
   void UseInstallLane(Lane& lane) { installs_ = &lane; }
   // Where its scans keep the unclear moves they find. Before Run().
@@ -106,12 +110,15 @@ class Watcher {
   int reload_fd_ = -1;
   int settings_wd_ = -1;  // settings.toml's folder
   std::function<void()> on_settings_saved_;
+  std::function<void()> on_steam_changed_;
+  std::int64_t steam_changed_ms_ = 0;  // when Steam last wrote a manifest; 0 once scanned
 
   struct Watched {
     std::filesystem::path root;
     std::filesystem::path dir;  // the root, or a sorting folder in it
     std::string emulator = {};  // an emulator's games folder, not a library root
     bool mira_folder = false;   // a Mira folder's top, whose new entries are sorted
+    bool steam = false;         // a Steam library's steamapps, for its app manifests
   };
   std::map<int, Watched> watches_;  // inotify watch descriptor -> what it watches
   std::atomic<int> roots_watched_{0};

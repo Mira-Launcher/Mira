@@ -359,9 +359,9 @@ void Sidebar::ShowActive() {
   }
 }
 
-void Sidebar::SetFooter(int shown, int total, bool mirad_reachable) {
+void Sidebar::SetFooter(const QString& shown, bool mirad_reachable) {
   // The connection only earns a line when it's gone.
-  QString text = QString("%1 of %2 games shown").arg(shown).arg(total);
+  QString text = shown + " shown";
   if (!mirad_reachable) {
     text += "<br>" + StatusDot(theme::Current().error) + "mirad isn't running";
   }
@@ -1077,7 +1077,9 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
   for (int i = 0; i < layout->count(); ++i) {
     if (QWidget* row = layout->itemAt(i)->widget()) row->show();
   }
-  if (parent->layout() != nullptr) parent->layout()->activate();
+  // The scroll area grows the content only on a posted request, so until then the sections are
+  // squeezed into the old height and a frame paints them out of place.
+  SettleLayout(parent);
   parent->setUpdatesEnabled(true);
 }
 

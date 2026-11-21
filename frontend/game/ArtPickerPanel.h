@@ -52,11 +52,12 @@ class ArtPickerPanel : public QWidget {
 
   // True when the pick isn't the candidate already in use.
   bool HasChange() const;
-  // True when the pick is no art at all.
-  bool PicksNone() const;
-  // Back to the candidate in use, dropping the pick.
+  // The slots with a pick to apply, this one and those picked on other tabs, in tab order, each
+  // with whether its pick is no art at all.
+  std::vector<std::pair<std::string, bool>> PendingSlots() const;
+  // Back to the candidates in use on every tab, dropping the picks and their previews.
   void ResetPick();
-  // Switches the slot to the pick. game.artwork_selected follows on success;
+  // Switches each slot with a pick to it. game.artwork_selected follows on success;
   // ApplyFailed on failure.
   void Apply();
 
@@ -111,6 +112,8 @@ class ArtPickerPanel : public QWidget {
   QListWidgetItem* ItemFor(std::int64_t id) const;
   void Pick(QListWidgetItem* item);
   void EmitPreview();
+  // Whether any tab has a pick to apply.
+  void EmitPickChanged();
   void UpdateGridSize();
   void UpdatePulse();
   void ShowMessage(const QString& text, bool offer_fetch);
@@ -155,8 +158,25 @@ class ArtPickerPanel : public QWidget {
   // What the pages loaded are for (a style, adult only), and the candidates they brought.
   std::pair<std::string, bool> paged_;
   std::set<std::int64_t> query_loaded_;
-  // The slot and candidate an Apply() is waiting to hear back on.
-  std::optional<std::pair<std::string, std::int64_t>> applying_;
+  // The candidate each slot's Apply() is waiting to hear back on.
+  std::map<std::string, std::int64_t> applying_;
+  // A pick made on another tab, kept until Apply or Cancel, with what it needs to be shown and
+  // applied again.
+  struct Kept {
+    std::int64_t pick = 0;
+    std::string upload;  // the user's own image, as for upload_
+    QPixmap image;       // the "Yours" tile's image when the pick is the user's own
+    QString image_tooltip;
+    QPixmap preview;  // the host's preview of it
+  };
+  std::map<std::string, Kept> kept_;
+  // Moves this tab's pick into kept_, or drops what kept_ had for it when there's none.
+  void KeepPick();
+  // Picks again what kept_ holds for this tab, once its grid is filled. Returns whether it did.
+  bool RestorePick();
+  // Sends one slot's pick to mirad.
+  void ApplySlot(const std::string& slot, std::int64_t candidate_id, std::string upload,
+                 const QPixmap& image);
 
   TabRow* slots_ = nullptr;  // one tab per slot, each with its count once known
   FlowLayout* chips_layout_ = nullptr;

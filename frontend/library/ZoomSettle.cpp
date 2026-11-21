@@ -25,6 +25,10 @@ ZoomSettle::ZoomSettle(QObject* parent, ArtworkStore* artwork, int width,
   });
 }
 
+ZoomSettle::~ZoomSettle() {
+  if (timer_->isActive()) artwork_->SetQuickScaling(false);
+}
+
 void ZoomSettle::Step(int width) {
   if (width == width_) return;
   widths_.insert(width_);

@@ -353,20 +353,36 @@ void GameCard::OpenArtPicker() {
               if (preview_slot == "cover") cover_->SetPreview(preview);
             });
     // The change bar is the picker's only while it's open; an apply can land after.
-    connect(picker_, &ArtPickerPanel::PickChanged, this, [this](bool has_change) {
+    connect(picker_, &ArtPickerPanel::PickChanged, this, [this] {
       if (!ArtPickerOpen()) return;
-      const std::string& slot = picker_->slot();
-      const QString noun = slot == "hero"   ? "hero"
-                           : slot == "logo" ? "logo"
-                           : slot == "icon" ? "icon"
-                                            : "cover";
-      const QString what = slot == "hero" ? "hero art" : noun;
-      if (has_change && picker_->PicksNone()) {
-        bar_->SetText(QString("No %1 picked").arg(what), "Use no " + what, "Cancel");
-        return;
+      const auto noun = [](const std::string& slot) -> QString {
+        return slot == "hero"   ? "hero"
+               : slot == "logo" ? "logo"
+               : slot == "icon" ? "icon"
+                                : "cover";
+      };
+      const auto what = [&noun](const std::string& slot) {
+        return slot == "hero" ? QString("hero art") : noun(slot);
+      };
+      const std::vector<std::pair<std::string, bool>> pending = picker_->PendingSlots();
+      if (pending.empty()) {
+        bar_->SetText(QString(), "Use this " + noun(picker_->slot()), "Cancel");
+      } else if (pending.size() == 1) {
+        const auto& [slot, none] = pending.front();
+        if (none) {
+          bar_->SetText(QString("No %1 picked").arg(what(slot)), "Use no " + what(slot), "Cancel");
+        } else {
+          bar_->SetText(QString("New %1 picked").arg(what(slot)), "Use this " + noun(slot),
+                        "Cancel");
+        }
+      } else {
+        // Picks on several tabs: "New cover, hero art and logo picked".
+        QStringList names;
+        for (const auto& [slot, none] : pending) names << what(slot);
+        const QString last = names.takeLast();
+        bar_->SetText(QString("New %1 and %2 picked").arg(names.join(", "), last), "Use these",
+                      "Cancel");
       }
-      bar_->SetText(has_change ? QString("New %1 picked").arg(what) : QString(), "Use this " + noun,
-                    "Cancel");
     });
     connect(picker_, &ArtPickerPanel::PickActivated, this, [this] {
       if (ArtPickerOpen()) picker_->Apply();
@@ -387,10 +403,7 @@ void GameCard::OpenArtPicker() {
 void GameCard::CloseArtPicker(bool applied) {
   if (!ArtPickerOpen()) return;
   // An applied pick stays on screen until its art arrives in its place.
-  if (!applied) {
-    SetPreview(QString::fromStdString(picker_->slot()), QPixmap());
-    cover_->SetPreview(QPixmap());
-  }
+  if (!applied) picker_->ResetPick();  // every tab's pick, and its preview
   art_button_->setChecked(false);
   stack_->setCurrentIndex(0);
   UpdateBar();

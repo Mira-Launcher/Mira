@@ -41,6 +41,7 @@
 #include "saves/Manifest.h"
 #include "steam/GridArt.h"
 #include "steam/SteamDetector.h"
+#include "steam/SteamScanner.h"
 
 namespace mira::api {
 namespace {
@@ -619,6 +620,19 @@ Result<json> Services::RefreshMetadata(std::vector<model::Game> games,
     lock.lock();
   }
   return json{{"refreshed", total - tally->failed}, {"failed", tally->failed}};
+}
+
+Result<json> Services::ScanSteam() {
+  steam::SteamScanner scanner(config, games, events);
+  auto summary = scanner.Scan();
+  if (!summary) return std::unexpected(summary.error());
+  return FinishImport("steam", *summary);
+}
+
+void Services::ScanSteamLater() {
+  if (jobs.RunningFor("steam")) return;
+  jobs.Start("import", "steam", "Importing from Steam",
+             [this](JobRegistry::Progress&) { return ScanSteam(); });
 }
 
 void Services::ProvisionLater(const model::Game& game) {

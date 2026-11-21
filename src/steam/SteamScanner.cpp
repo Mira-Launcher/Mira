@@ -80,6 +80,12 @@ Result<library::ImportSummary> SteamScanner::Scan() {
         game.last_played_at = it->second.last_played_at;
       }
     }
+    // Steam rewrites manifests all the time (updates, playtime), and the watcher rescans for each:
+    // a game Steam says nothing new about isn't saved or announced again.
+    if (existing && model::ToJson(game) == model::ToJson(*existing)) {
+      summary.listed.insert(id);
+      continue;
+    }
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
 

@@ -1136,6 +1136,8 @@ struct FrontendPrefs {
   // tile_width.
   std::optional<std::map<std::string, int>> page_tile_widths;
   std::optional<bool> tile_size_synced;
+  // The library's zoom snaps to sizes whose rows fill its height, not whose tiles fill a row.
+  std::optional<bool> zoom_by_rows;
   // Keys to delete from frontend.toml on save (sent as null), so they read
   // as unset again, e.g. a shape override going back to the theme's.
   std::vector<std::string> clear;

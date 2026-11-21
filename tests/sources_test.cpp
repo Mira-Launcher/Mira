@@ -89,7 +89,7 @@ TEST_CASE("A Steam scan adds games from every library but Valve's tools, and kee
                        "application/json"));
   const json again = AwaitJob(client, client.Post("/v1/steam/scan"));
   CHECK(again["result"]["added"] == 0);
-  CHECK(again["result"]["updated"] == 2);
+  CHECK(again["result"]["updated"] == 0);  // Steam says nothing new about either
   const json kept = GetJson(client, "/v1/games/steam-570");
   CHECK(kept["tags"] == json::array({"favorite"}));
   CHECK(kept["args"] == "-novid");

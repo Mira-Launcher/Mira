@@ -10,6 +10,7 @@
 #include "launchers/Autodesk.h"
 #include "launchers/Launchers.h"
 #include "launchers/Office.h"
+#include "library/WinePrefix.h"
 #include "migrate/GameEnv.h"
 #include "runner/WindowsTheme.h"
 #include "support/TestEnv.h"
@@ -29,7 +30,7 @@ TEST_CASE("launchers: Ubisoft installs are read from system.reg") {
          "1700000000\n"
          "\"InstallDir\"=\"C:\\\\nope\"\n";
 
-  const auto installs = launchers::ReadRegSubkeys(
+  const auto installs = library::ReadRegSubkeys(
       prefix / "system.reg", "Software\\Wow6432Node\\Ubisoft\\Launcher\\Installs");
   REQUIRE(installs.size() == 1);
   const std::string dir = installs.at("5595").at("InstallDir");

@@ -16,9 +16,9 @@ struct InstallSize {
 };
 
 // What installing a store title downloads and takes on disk, as its store tool reports it: Epic
-// through `legendary info`, GOG through `gogdl info`, Amazon through `nile install --info`. Kept
-// for the session, so an install's progress knows its total; other stores answer
-// `size_unsupported`.
+// through `legendary info`, GOG through `gogdl info`, Amazon through `nile install --info`, Steam
+// from its depots in the local app cache. Kept for the session, so an install's progress knows its
+// total; other stores answer `size_unsupported`.
 Result<InstallSize> FetchInstallSize(const config::Config& config, const std::string& source,
                                      const std::string& ref);
 

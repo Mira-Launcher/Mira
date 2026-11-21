@@ -83,7 +83,7 @@ SourceCopy CopyFor(const std::string& id) {
         "Mods your Windows games. Mira downloads " + name +
             " and runs it in each game's own prefix, where it "
             "sees the game as the game does. Add it to a game, then open it from that game's page.",
-        "", "Add to a game"};
+        "", "Add to games"};
   }
   if (id == "ea") {
     return {"The EA app runs in its own Wine prefix. Games you install in it show up here.", "",

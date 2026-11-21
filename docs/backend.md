@@ -100,7 +100,7 @@ The daemon should cost nothing when idle:
 - Background work runs on `Lane`s (`src/core/Lane.h`): named pools whose threads start when work arrives and exit after 30 idle seconds, so an idle mirad keeps only a handful of threads.
 - `butlerd` (itch.io) stops after five quiet minutes and starts again on the next call.
 - The external-game watcher scans `/proc` every 3 seconds while there are Steam or store-launcher games to look for, and every 15 otherwise. It rebuilds that list only when `GameStore::Revision()` or `Config::Revision()` changes.
-- `library::Watcher` blocks in `epoll_wait` on inotify, an eventfd and a timerfd. The timer is armed only while a new folder is still growing, to wait until a copy finishes. There is one non-recursive watch per library root and per sorting folder in it.
+- `library::Watcher` blocks in `epoll_wait` on inotify, an eventfd and a timerfd. The timer is armed only while a new folder is still growing, to wait until a copy finishes, or while Steam is still writing an app manifest. There is one non-recursive watch per library root and per sorting folder in it, and one per Steam library's `steamapps`, whose manifest writes start a Steam import (`Services::ScanSteamLater`) once they stop for 3 seconds.
 
 ## Detection and scanning
 

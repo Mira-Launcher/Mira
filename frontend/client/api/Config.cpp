@@ -191,6 +191,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_bool("big_screen_show_apps", result.prefs.big_screen_show_apps);
   read_bool("onboarded", result.prefs.onboarded);
   read_bool("tile_size_synced", result.prefs.tile_size_synced);
+  read_bool("zoom_by_rows", result.prefs.zoom_by_rows);
   const auto read_widths = [&table](const char* key,
                                     std::optional<std::map<std::string, int>>& out) {
     if (!table.contains(key) || !table[key].is_object()) return;
@@ -292,6 +293,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.big_screen_show_apps) table["big_screen_show_apps"] = *prefs.big_screen_show_apps;
   if (prefs.onboarded) table["onboarded"] = *prefs.onboarded;
   if (prefs.tile_size_synced) table["tile_size_synced"] = *prefs.tile_size_synced;
+  if (prefs.zoom_by_rows) table["zoom_by_rows"] = *prefs.zoom_by_rows;
   if (prefs.source_tile_widths) table["source_tile_widths"] = *prefs.source_tile_widths;
   if (prefs.page_tile_widths) table["page_tile_widths"] = *prefs.page_tile_widths;
   for (const std::string& key : prefs.clear) table[key] = nullptr;  // merge-patch: null deletes

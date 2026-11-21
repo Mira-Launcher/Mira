@@ -25,6 +25,12 @@ QLabel* MakeTag(QWidget* parent, const QString& text, const char* tone = nullptr
 // "a, b and c".
 QString JoinAnd(QStringList items);
 
+// "1 game", "3 games".
+QString GamesCount(qsizetype count);
+// "43 of 45 games", "2 of 2 apps", "45 of 47 games and apps": `shown` out of a set of `games`
+// games and `apps` apps, named for what's in it.
+QString ShownOf(qsizetype shown, qsizetype games, qsizetype apps);
+
 // A size as every label shows one: "1.8 GB", "12.5 MB".
 QString SizeText(qint64 bytes);
 

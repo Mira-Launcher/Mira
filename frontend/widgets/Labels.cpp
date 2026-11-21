@@ -34,6 +34,18 @@ QLabel* MakeTag(QWidget* parent, const QString& text, const char* tone) {
   return tag;
 }
 
+QString GamesCount(qsizetype count) {
+  return count == 1 ? QString("1 game") : QString("%1 games").arg(count);
+}
+
+QString ShownOf(qsizetype shown, qsizetype games, qsizetype apps) {
+  const qsizetype total = games + apps;
+  const QString noun = apps == 0    ? (total == 1 ? "game" : "games")
+                       : games == 0 ? (total == 1 ? "app" : "apps")
+                                    : "games and apps";
+  return QString("%1 of %2 %3").arg(shown).arg(total).arg(noun);
+}
+
 QString JoinAnd(QStringList items) {
   if (items.size() < 2) return items.join(QString());
   const QString last = items.takeLast();

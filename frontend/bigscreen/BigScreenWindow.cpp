@@ -557,11 +557,16 @@ Item BigScreenWindow::ItemFor(const StoreTitle& title) const {
   return {source + "-" + ref, QString::fromStdString(title.title), source, ref, std::nullopt};
 }
 
+const StoreTitle* BigScreenWindow::FindTitle(const QString& key) const {
+  for (const StoreTitle& title : services_.owned_titles->Titles()) {
+    if (QString::fromStdString(title.source + "-" + title.ref) == key) return &title;
+  }
+  return nullptr;
+}
+
 Item BigScreenWindow::Find(const QString& key) const {
   if (const GameSummary* game = services_.library->Find(key.toStdString())) return ItemFor(*game);
-  for (const StoreTitle& title : services_.owned_titles->Titles()) {
-    if (QString::fromStdString(title.source + "-" + title.ref) == key) return ItemFor(title);
-  }
+  if (const StoreTitle* title = FindTitle(key)) return ItemFor(*title);
   return {};
 }
 
@@ -573,7 +578,13 @@ bool BigScreenWindow::Browsable(const GameSummary& game) const {
 
 bool BigScreenWindow::Browsable(const StoreTitle& title) const {
   // Microsoft 365 is the one store whose titles are applications.
-  return title.source != "office" || prefs_.big_screen_show_apps.value_or(false);
+  return !title.hidden && (title.source != "office" || prefs_.big_screen_show_apps.value_or(false));
+}
+
+bool BigScreenWindow::IsHiddenKey(const QString& key) const {
+  if (const GameSummary* game = services_.library->Find(key.toStdString())) return IsHidden(*game);
+  const StoreTitle* title = FindTitle(key);
+  return title != nullptr && title->hidden;
 }
 
 QPixmap BigScreenWindow::Logo(const Item& item) const {

@@ -2,12 +2,15 @@
 
 #include <doctest.h>
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <thread>
 
 #include "config/Config.h"
+#include "steam/SteamScanner.h"
 #include "store/GameStore.h"
 #include "support/TestEnv.h"
 
@@ -258,4 +261,36 @@ TEST_CASE(
 
   CHECK(fs::is_directory(home / "Mira" / "Games"));
   CHECK_FALSE(fs::exists(outside / "Games"));
+}
+
+TEST_CASE("Watcher imports a Steam game once Steam has finished installing it") {
+  test::TestEnv env("watch-steam");
+  const fs::path steamapps = env.config.GetPath("steam.root") / "steamapps";
+  fs::create_directories(steamapps);
+  std::atomic<int> scans = 0;
+  library::Watcher watcher(env.config, env.games, env.events);
+  watcher.OnSteamChanged([&] {
+    steam::SteamScanner scanner(env.config, env.games, env.events);
+    REQUIRE(scanner.Scan().has_value());
+    ++scans;
+  });
+  std::thread watcher_thread([&] { watcher.Run(); });
+  REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 0; }));
+
+  const auto write_manifest = [&](int state_flags) {
+    Touch(steamapps / "appmanifest_504230.acf",
+          std::format(R"("AppState" {{ "appid" "504230" "name" "Celeste" "installdir" "Celeste" )"
+                      R"("StateFlags" "{}" }})",
+                      state_flags));
+  };
+  Touch(steamapps / "common" / "Celeste" / "Celeste", "", /*executable=*/true);
+  write_manifest(1026);  // downloading
+  REQUIRE(test::WaitUntil([&] { return scans == 1; }));
+  CHECK_FALSE(env.games.Find("steam-504230").has_value());
+
+  write_manifest(4);  // fully installed
+  CHECK(test::WaitUntil([&] { return env.games.Find("steam-504230").has_value(); }));
+
+  watcher.Stop();
+  watcher_thread.join();
 }

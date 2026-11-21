@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <format>
 #include <fstream>
 
 #include "config/Config.h"
@@ -115,4 +116,43 @@ TEST_CASE("RunTricksVerb runs winetricks unattended against the game's own Wine 
   std::string second, third;
   std::getline(in, second);
   CHECK_FALSE(std::getline(in, third));  // the two valid verbs, nothing else
+
+  // A Steam game's data_dir is its compatdata folder, with the prefix inside it as pfx.
+  model::Game steam = game;
+  steam.data_dir = (env.dir / "compatdata" / "2379780").string();
+  const fs::path pfx = fs::path(steam.data_dir) / "pfx";
+  fs::create_directories(pfx / "drive_c");
+  REQUIRE(runner::RunTricksVerb(registry, steam, "corefonts"));
+  in.clear();
+  std::string steam_run;
+  std::getline(in, steam_run);
+  CHECK(steam_run.find("|" + pfx.string() + "|") != std::string::npos);
+
+  // Steam's own redistributable put Visual C++ 14.51 there: vcrun2022 has nothing to add, and its
+  // installer would refuse. An older runtime is still upgraded.
+  fs::create_directories(pfx / "drive_c" / "windows" / "syswow64");
+  const auto runtime = [&](const char* minor) {
+    std::string reg = "WINE REGISTRY Version 2\n#arch=win64\n\n";
+    for (const char* key :
+         {"Software\\\\Microsoft\\\\VisualStudio\\\\14.0\\\\VC\\\\Runtimes\\\\x64",
+          "Software\\\\Wow6432Node\\\\Microsoft\\\\VisualStudio\\\\14.0\\\\VC\\\\"
+          "Runtimes\\\\x86"}) {
+      reg += std::format(
+          "[{}] 1790973961\n\"Installed\"=dword:00000001\n\"Major\"=dword:0000000e\n"
+          "\"Minor\"=dword:{}\n\n",
+          key, minor);
+    }
+    test::Touch(pfx / "system.reg", reg);
+  };
+  runtime("00000033");
+  REQUIRE(runner::RunTricksVerb(registry, steam, "vcrun2022"));
+  in.clear();
+  std::string skipped;
+  CHECK_FALSE(std::getline(in, skipped));
+  runtime("00000014");
+  REQUIRE(runner::RunTricksVerb(registry, steam, "vcrun2022"));
+  in.clear();
+  std::string upgraded;
+  REQUIRE(std::getline(in, upgraded));
+  CHECK(upgraded.ends_with("vcrun2022"));
 }

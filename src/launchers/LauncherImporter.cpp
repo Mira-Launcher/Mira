@@ -13,6 +13,7 @@
 #include "launchers/Launchers.h"
 #include "launchers/Office.h"
 #include "library/Detector.h"
+#include "library/WinePrefix.h"
 #include "runner/Exec.h"
 
 namespace mira::launchers {
@@ -66,7 +67,7 @@ std::vector<Found> FindUbisoft(const fs::path& prefix) {
   std::error_code ec;
   for (const char* key : {"Software\\Wow6432Node\\Ubisoft\\Launcher\\Installs",
                           "Software\\Ubisoft\\Launcher\\Installs"}) {
-    for (const auto& [id, values] : ReadRegSubkeys(prefix / "system.reg", key)) {
+    for (const auto& [id, values] : library::ReadRegSubkeys(prefix / "system.reg", key)) {
       const auto install_dir = values.find("InstallDir");
       if (install_dir == values.end()) continue;
       const fs::path dir = HostPath(prefix, install_dir->second);

@@ -15,6 +15,8 @@ class ArtworkStore;
 class ZoomSettle : public QObject {
  public:
   ZoomSettle(QObject* parent, ArtworkStore* artwork, int width, std::function<void()> settled);
+  // A view closed mid-zoom ends the quick scaling it started, which is the whole app's.
+  ~ZoomSettle() override;
 
   // The view's tiles are now `width` wide.
   void Step(int width);
