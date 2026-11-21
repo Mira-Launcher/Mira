@@ -140,7 +140,7 @@ class TorBox : public Service {
                                 runner::CurlConfigLine("url", kTorBoxBase + route);
     const auto result = runner::RunCurlWithSecrets(argv, secrets);
     if (!result || result->exit_code != 0)
-      return Err("service_failed", "couldn't reach TorBox", kConnectionHint);
+      return Err("service_unreachable", "couldn't reach TorBox", kConnectionHint);
     const json answer = json::parse(result->output, nullptr, false);
     if (!answer.is_object()) return Err("service_failed", "TorBox gave an unreadable answer");
     if (answer.value("success", false)) return answer.value("data", json());

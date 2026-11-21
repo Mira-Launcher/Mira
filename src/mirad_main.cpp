@@ -125,6 +125,7 @@ int main(int argc, char** argv) {
 
   mira::api::EventBus events;
   mira::loghub::SetJournalDirectory(mira::paths::UserDir() / "logs");
+  mira::log::SetFile(mira::paths::UserDir() / "logs" / "mirad.log");
   mira::api::Services services(config, games, events);
   mira::api::Server server(services);
 

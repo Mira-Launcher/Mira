@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <format>
 #include <string_view>
 
@@ -8,6 +9,8 @@ namespace mira::log {
 enum class Level { Debug, Info, Warn, Error };
 
 void SetLevel(Level level);
+// Also writes each line to `file`, keeping the previous run's as <file>.1.
+void SetFile(const std::filesystem::path& file);
 void Write(Level level, std::string_view message);
 
 template <typename... Args>

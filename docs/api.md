@@ -696,7 +696,7 @@ One game's links, downloaded with aria2 (a system package) into `.mira-downloads
 With `downloads.torbox_key` set, torrents go through TorBox. Other links use it when it already has them ready, and fall back to it when they can't be read or their download fails. Items Mira adds stay in the TorBox account.
 
 ### `GET /v1/downloads`
-A list of `{id, name, links, state, files, total, done, speed, password, error?}`. `state` is `queued`, `resolving`, `service`, `downloading`, `paused`, `extracting`, `password`, `failed` or `done`. Each of `files` is `{name, source, total, done, state}`. While `state` is `service`, a download service is fetching it and `service` is `{name, progress}`. `error` is `{code, message, hint}`; while `state` is `password`, `wrong_password` means the last one tried didn't open it.
+A list of `{id, name, links, state, files, total, done, speed, password, error?}`. `state` is `queued`, `resolving`, `service`, `downloading`, `paused`, `retrying`, `extracting`, `password`, `failed` or `done`. `retrying` is a download the network dropped (a suspend, lost Wi-Fi): mirad queues it again by itself at `retry_at` (seconds since the epoch), waiting 15 s and doubling to 5 minutes, and it continues what's on disk. After 20 tries in a row it fails. Errors from the files themselves (a 404, a full disk) are `failed`. Each of `files` is `{name, source, total, done, state}`. While `state` is `service`, a download service is fetching it and `service` is `{name, progress}`. `error` is `{code, message, hint}`; while `state` is `password`, `wrong_password` means the last one tried didn't open it.
 
 Events: `download.changed` carries one of these whenever it changes, and `download.removed` carries `{id}`.
 
@@ -708,9 +708,9 @@ Events: `download.changed` carries one of these whenever it changes, and `downlo
 
 ### Controlling a download
 - `POST /v1/downloads/{id}/pause` and `/resume`
-- `POST /v1/downloads/{id}/retry`: one that failed
+- `POST /v1/downloads/{id}/retry`: one that failed, or a `retrying` one now
 - `POST /v1/downloads/{id}/front`: moves a queued one ahead of the others waiting
-- `POST /v1/downloads/{id}/password`: `{"password": "..."}` for one waiting on it. A password that works is saved and tried on later archives.
+- `POST /v1/downloads/{id}/password`: `{"password": "..."}` for one waiting on it (`400 invalid_password` when empty). A password that works is saved and tried on later archives.
 - `DELETE /v1/downloads/{id}`: cancels it and deletes what it downloaded. A finished one just leaves the list.
 
 These answer `404` for an unknown id, `409` when it isn't in a state to do that.
