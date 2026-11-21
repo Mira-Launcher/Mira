@@ -42,7 +42,13 @@ TEST_CASE("CleanGameName turns an installer's folder into the game's name") {
   CHECK(CleanGameName("setup_crate_escape") == "Crate Escape");
   CHECK(CleanGameName("setup_clustertruck_2.1.0_(64bit)_(12345)") == "Clustertruck");
   CHECK(CleanGameName("Install Celeste") == "Celeste");
-  CHECK(CleanGameName("Setup") == "Setup");        // nothing else to name it by
+  CHECK(CleanGameName("Setup") == "Setup");  // nothing else to name it by
+  CHECK(CleanGameName("Hitman.Absolution.Setup") == "Hitman Absolution");
+  CHECK(CleanGameName("Celeste-Installer") == "Celeste");
+  CHECK(CleanGameName("Offline Chronicles Setup") == "Offline Chronicles");
+  CHECK(IsGenericName("Setup"));
+  CHECK(IsGenericName("Downloads"));
+  CHECK_FALSE(IsGenericName("Celeste"));
   CHECK(CleanGameName("inFAMOUS") == "inFAMOUS");  // mixed case is deliberate, kept
 }
 

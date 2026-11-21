@@ -55,6 +55,14 @@ TEST_CASE("A game installed elsewhere takes the installed folder's name unless i
   older.name = "setup crate escape (64bit)";
   library::AdoptInstallFolder(older, "/prefixes/ce/drive_c/GOG Games/Crate Escape");
   CHECK(older.name == "Crate Escape");
+
+  // Loose in Downloads: named after its file, not the folder.
+  model::Game loose;
+  loose.install_path = "/home/me/Downloads";
+  loose.exe_path = "Hitman.Absolution.Setup.exe";
+  loose.name = strings::CleanGameName("Hitman.Absolution.Setup");
+  library::AdoptInstallFolder(loose, "/prefixes/ha/drive_c/Games/Hitman Absolution HD");
+  CHECK(loose.name == "Hitman Absolution HD");
 }
 
 TEST_CASE("DetectInstallerFormat recognizes Inno Setup near the head") {

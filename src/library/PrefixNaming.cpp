@@ -81,7 +81,9 @@ std::vector<std::filesystem::path> PrefixRoots(const config::Config& config) {
 std::optional<std::filesystem::path> PrefixInGameFolder(const config::Config& config,
                                                         const model::Game& game) {
   std::error_code ec;
-  if (game.install_path.empty() || !std::filesystem::is_directory(game.install_path, ec))
+  // An installer's folder (Downloads, a disc) isn't the game's: the game goes into its prefix.
+  if (game.status == model::GameStatus::NeedsInstall || game.install_path.empty() ||
+      !std::filesystem::is_directory(game.install_path, ec))
     return std::nullopt;
   const std::optional<dev_t> disk = DiskOf(game.install_path);
   if (!disk || disk == DiskOf(config.GetPath("prefix_root")) || MiraPrefixesOn(config, *disk))

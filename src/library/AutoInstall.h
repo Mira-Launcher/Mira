@@ -135,7 +135,9 @@ Result<void> DeleteInstallerFolder(const config::Config& config, const model::Ga
 bool AutoInstalls(const config::Config& config, const model::Game& game);
 
 // Points `game` at the folder its installer put it in, remembering the installer's folder
-// in installer_dir, and renames it after that folder while it still has its automatic name.
-void AdoptInstallFolder(model::Game& game, const std::string& install_path);
+// in installer_dir, and renames it after that folder (or, for a folder named "Game" or "bin",
+// `exe_path`'s product name) while it still has its automatic name.
+void AdoptInstallFolder(model::Game& game, const std::string& install_path,
+                        const std::string& exe_path = {});
 
 }  // namespace mira::library
