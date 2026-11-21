@@ -57,7 +57,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/LogWindow.h"
-#include "../downloads/DownloadsWindow.h"
+#include "../downloads/DownloadsPage.h"
 #include "../downloads/LinkDownloads.h"
 #include "../downloads/PasswordPopup.h"
 #include "../game/GameCard.h"
@@ -227,7 +227,6 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
   link_downloads_ = new mira_gui::LinkDownloads(this);
   password_popup_ = new mira_gui::PasswordPopup(link_downloads_, this);
-  downloads_window_ = new mira_gui::DownloadsWindow(link_downloads_, downloads_, this);
   connect(link_downloads_, &mira_gui::LinkDownloads::Changed, this, [this](const QString& id) {
     for (const mira_gui::DownloadInfo& download : link_downloads_->Downloads()) {
       if (id.isEmpty() || QString::fromStdString(download.id) == id) downloads_->SetLink(download);
@@ -246,8 +245,8 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
             link_downloads_->Unskip(id.toStdString());
             password_popup_->ShowBelow(top_bar_->activity_button(), id.toStdString());
           });
-  connect(downloads_panel_, &mira_gui::DownloadsPanel::ManageRequested, downloads_window_,
-          &mira_gui::DownloadsWindow::Open);
+  connect(downloads_panel_, &mira_gui::DownloadsPanel::ManageRequested, this,
+          &LibraryWindow::OpenDownloadsPage);
   connect(downloads_panel_, &mira_gui::DownloadsPanel::FinishedCleared, link_downloads_,
           &mira_gui::LinkDownloads::ClearFinished);
 
@@ -317,7 +316,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
         password_popup_->ShowBelow(top_bar_->notice_button());
         break;
       case Notice::Failed:
-        downloads_window_->Open();
+        OpenDownloadsPage();
         break;
       case Notice::Update:
         updates_panel_->StartMira(top_bar_->updates_button());
@@ -2017,6 +2016,7 @@ void LibraryWindow::CloseSidebarCard() {
     sidebar_card_ = nullptr;
   }
   sources_page_ = nullptr;
+  downloads_page_ = nullptr;
   UpdateLibraryNavActive();
   ShowNextCard();
 }
@@ -2322,10 +2322,31 @@ void LibraryWindow::CloseSourcesPage() {
 
 // Over the content beside the sidebar, with the library showing around it.
 void LibraryWindow::SizeSourcesCard() {
-  if (sources_page_ == nullptr) return;
   const int content = width() - splitter_->widget(0)->width() - mira_gui::kResizeMargin;
-  sources_page_->setFixedSize(std::clamp(content - 120, 320, 960),
-                              std::clamp(height() - 120, 320, 720));
+  const QSize size(std::clamp(content - 120, 320, 960), std::clamp(height() - 120, 320, 720));
+  if (sources_page_ != nullptr) sources_page_->setFixedSize(size);
+  if (downloads_page_ != nullptr) downloads_page_->setFixedSize(size);
+}
+
+void LibraryWindow::OpenDownloadsPage() {
+  if (downloads_page_ != nullptr || !LeaveOverlays()) return;
+  auto* page = new mira_gui::DownloadsPage(link_downloads_, downloads_, artwork_);
+  downloads_page_ = page;
+  connect(page, &mira_gui::DownloadsPage::CloseRequested, this, &LibraryWindow::CloseSidebarCard);
+  connect(page, &mira_gui::DownloadsPage::SettingsRequested, this, [this] {
+    CloseSidebarCard();
+    OpenSettings("downloads.speed_limit_mb");
+  });
+  connect(page, &mira_gui::DownloadsPage::ShowGameRequested, this, [this](const QString& id) {
+    CloseSidebarCard();
+    ShowGame(id.toStdString());
+  });
+  connect(page, &mira_gui::DownloadsPage::LogRequested, this,
+          [this](const QString& channel, const QString& title) {
+            mira_gui::LogWindow::Open(this, channel, title);
+          });
+  SizeSourcesCard();
+  ShowSidebarCard(page);
 }
 
 void LibraryWindow::RowClicked(const std::string& id) {

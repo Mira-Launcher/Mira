@@ -1275,7 +1275,8 @@ QLabel#setup_tile_title {
 
 QFrame#setup_card,
 QFrame#setup_feature,
-QFrame#sources_card {
+QFrame#sources_card,
+QFrame#downloads_card {
   background: @surface;
   border: 1px solid @border;
   border-radius: @radius_panel;
@@ -1429,13 +1430,11 @@ QPlainTextEdit#log_view {
 }
 
 /* dialogs/LogWindow: the task's name in the window's own bar. */
-QLabel#log_title,
-QLabel#downloads_title {
+QLabel#log_title {
   font-weight: 600;
 }
 
-QWidget#log_frame,
-QWidget#downloads_frame {
+QWidget#log_frame {
   background: @window;
   border: 1px solid @border;
 }

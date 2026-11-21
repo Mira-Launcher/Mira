@@ -230,7 +230,12 @@ DownloadTracker::Entry DownloadTracker::FromLink(const DownloadInfo& download) {
   }
   if (state == "extracting") entry.message = "Extracting…";
   if (state == "password") entry.message = "Waiting for a password";
-  if ((state == "downloading" || state == "paused") && download.total > 0) {
+  if (state == "retrying") {
+    entry.message = QString("Connection lost · trying again at %1")
+                        .arg(QDateTime::fromSecsSinceEpoch(download.retry_at)
+                                 .toString(QLocale().timeFormat(QLocale::ShortFormat)));
+  }
+  if ((state == "downloading" || state == "paused" || state == "retrying") && download.total > 0) {
     entry.progress = static_cast<double>(download.done) / static_cast<double>(download.total);
     entry.downloaded_bytes = download.done;
     entry.total_bytes = download.total;
@@ -436,8 +441,9 @@ int DownloadTracker::RunningCount() const {
 }
 
 void DownloadTracker::ClearFinished() {
+  // A link's row leaves when LinkDownloads removes it, so the two never disagree.
   std::erase_if(entries_, [](const Entry& e) {
-    return e.state != State::Running && e.state != State::Paused;
+    return e.kind != Kind::Link && e.state != State::Running && e.state != State::Paused;
   });
   emit Changed(QString());
 }

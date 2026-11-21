@@ -33,6 +33,7 @@ DownloadInfo ParseDownload(const json& entry) {
   info.total = entry.value("total", std::int64_t{0});
   info.done = entry.value("done", std::int64_t{0});
   info.speed = entry.value("speed", std::int64_t{0});
+  info.retry_at = entry.value("retry_at", std::int64_t{0});
   if (entry.contains("service") && entry["service"].is_object()) {
     info.service = entry["service"].value("name", std::string());
     info.service_progress = entry["service"].value("progress", 0.0);

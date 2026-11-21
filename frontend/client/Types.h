@@ -1496,6 +1496,7 @@ struct DownloadInfo {
   std::int64_t speed = 0;
   std::string service;          // while a download service is fetching it
   double service_progress = 0;  // 0 to 1
+  std::int64_t retry_at = 0;    // retrying: when mirad tries again, seconds since the epoch
 };
 
 struct DownloadsResult {

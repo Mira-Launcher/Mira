@@ -1,0 +1,223 @@
+#include "DownloadsPage.h"
+
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QScrollArea>
+#include <QToolButton>
+#include <QVBoxLayout>
+#include <algorithm>
+
+#include "../activity/DownloadList.h"
+#include "../activity/DownloadTracker.h"
+#include "../app/Notify.h"
+#include "../client/api/Downloads.h"
+#include "../settings/SettingsCard.h"
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
+#include "../widgets/Labels.h"
+#include "../widgets/ListEdit.h"
+#include "../widgets/PopupDialog.h"
+#include "../widgets/Scrolling.h"
+#include "LinkDownloads.h"
+
+namespace mira_gui {
+namespace {
+
+using Entry = DownloadTracker::Entry;
+using State = DownloadTracker::State;
+
+bool NeedsUser(const Entry& entry) {
+  return entry.state == State::Failed || entry.link_state == "password";
+}
+
+bool Waiting(const Entry& entry) {
+  return !NeedsUser(entry) && (entry.state == State::Paused || entry.link_state == "queued" ||
+                               entry.link_state == "retrying");
+}
+
+bool InProgress(const Entry& entry) {
+  return entry.state == State::Running && !Waiting(entry);
+}
+
+bool IsRunningLink(const DownloadInfo& download) {
+  return download.state == "downloading" || download.state == "service" ||
+         download.state == "queued" || download.state == "retrying";
+}
+
+}  // namespace
+
+DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, ArtworkStore* artwork,
+                             QWidget* parent)
+    : QFrame(parent), links_(links), tracker_(tracker) {
+  setObjectName("downloads_card");
+  auto* outer = new QVBoxLayout(this);
+  outer->setContentsMargins(0, 0, 0, 0);
+  outer->setSpacing(0);
+
+  auto* header = new QHBoxLayout();
+  header->setContentsMargins(24, 18, 14, 14);
+  header->setSpacing(10);
+  auto* titles = new QVBoxLayout();
+  titles->setSpacing(2);
+  auto* title = new QLabel("Downloads", this);
+  title->setObjectName("page_title");
+  summary_ = MakeLabel(this, QString(), "subtle");
+  titles->addWidget(title);
+  titles->addWidget(summary_);
+  header->addLayout(titles, /*stretch=*/1);
+
+  pause_all_ = new QPushButton("Pause all", this);
+  connect(pause_all_, &QPushButton::clicked, this, [this] {
+    const auto& list = links_->Downloads();
+    const bool running = std::ranges::any_of(list, IsRunningLink);
+    for (const DownloadInfo& download : list) {
+      if (running && IsRunningLink(download)) links_->Act(download.id, "pause");
+      if (!running && download.state == "paused") links_->Act(download.id, "resume");
+    }
+  });
+  header->addWidget(pause_all_, 0, Qt::AlignTop);
+  auto* passwords = new QPushButton("Passwords", this);
+  passwords->setToolTip("The archive passwords Mira tries on what it downloads");
+  connect(passwords, &QPushButton::clicked, this, &DownloadsPage::EditPasswords);
+  header->addWidget(passwords, 0, Qt::AlignTop);
+  const auto tool = [this, header](icons::Glyph glyph, const QString& tip) {
+    auto* button = new QToolButton(this);
+    button->setAutoRaise(true);
+    icons::Follow(button, glyph);
+    button->setToolTip(tip);
+    header->addWidget(button, 0, Qt::AlignTop);
+    return button;
+  };
+  connect(tool(icons::Glyph::Settings, "Download settings: speed limit, how many at once"),
+          &QToolButton::clicked, this, &DownloadsPage::SettingsRequested);
+  connect(tool(icons::Glyph::Close, "Close (Esc)"), &QToolButton::clicked, this,
+          &DownloadsPage::CloseRequested);
+  outer->addLayout(header);
+  outer->addWidget(MakeDivider(this, Qt::Horizontal));
+
+  auto* scroll = new QScrollArea(this);
+  scroll->setObjectName("card_scroll");
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+  scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  SetUpScrolling(scroll, this);
+  auto* body = new QWidget();
+  auto* body_layout = new QVBoxLayout(body);
+  body_layout->setContentsMargins(24, 16, 24, 24);
+  body_layout->setSpacing(16);
+  empty_ = MakeLabel(body,
+                     "Nothing is downloading or installing. Add games from links with Add "
+                     "games › Download from links.",
+                     "subtle");
+  empty_->setWordWrap(true);
+  body_layout->addWidget(empty_);
+
+  const auto add_section = [&](const QString& heading,
+                               std::function<bool(const Entry&)> filter) -> Section& {
+    Section section;
+    section.card = new SettingsCard(heading, body);
+    section.list = new DownloadList(tracker_, artwork, DownloadList::Style::Full, section.card);
+    section.list->SetFilter(std::move(filter));
+    section.card->AddRow(section.list);
+    body_layout->addWidget(section.card);
+    connect(section.list, &DownloadList::Rebuilt, this, &DownloadsPage::Refresh);
+    connect(section.list, &DownloadList::ShowGameRequested, this,
+            &DownloadsPage::ShowGameRequested);
+    connect(section.list, &DownloadList::LogRequested, this, &DownloadsPage::LogRequested);
+    connect(section.list, &DownloadList::LinkAction, this,
+            [this](const QString& id, const QString& action) {
+              links_->Act(id.toStdString(), action.toStdString());
+            });
+    connect(section.list, &DownloadList::LinkPasswordEntered, this,
+            [this](const QString& id, const QString& password) {
+              links_->Unskip(id.toStdString());
+              links_->SubmitPassword(id.toStdString(), password.toStdString());
+            });
+    connect(section.list, &DownloadList::LinkRemoveRequested, this, [this](const QString& id) {
+      const DownloadInfo* download = links_->Find(id.toStdString());
+      if (download != nullptr && download->state != "done" &&
+          !notify::Confirm(this, "Cancel this download?", "What it downloaded so far is deleted.",
+                           "Cancel download"))
+        return;
+      links_->Remove(id.toStdString());
+    });
+    sections_.push_back(section);
+    return sections_.back();
+  };
+  add_section("Needs you", NeedsUser);
+  add_section("Downloading and installing", InProgress);
+  add_section("Waiting", Waiting);
+  Section& finished =
+      add_section("Finished", [](const Entry& entry) { return entry.state == State::Finished; });
+  auto* clear = new QPushButton("Clear", finished.card);
+  clear->setObjectName("text_button");
+  connect(clear, &QPushButton::clicked, this, [this] {
+    tracker_->ClearFinished();
+    links_->ClearFinished();
+  });
+  finished.card->Header()->addWidget(clear);
+  body_layout->addStretch(1);
+  scroll->setWidget(body);
+  outer->addWidget(scroll, /*stretch=*/1);
+
+  connect(tracker_, &DownloadTracker::Changed, this, &DownloadsPage::UpdateHeader);
+  links_->SeenFailures();
+  for (Section& section : sections_) section.list->Rebuild();
+}
+
+void DownloadsPage::Refresh() {
+  bool any = false;
+  for (const Section& section : sections_) {
+    section.card->setVisible(section.list->Count() > 0);
+    any = any || section.list->Count() > 0;
+  }
+  empty_->setVisible(!any);
+  UpdateHeader();
+}
+
+void DownloadsPage::UpdateHeader() {
+  double speed = 0;
+  int running = 0;
+  for (const Entry& entry : tracker_->Entries()) {
+    if (!InProgress(entry)) continue;
+    ++running;
+    speed += std::max(0.0, entry.bytes_per_second);
+  }
+  QStringList parts;
+  if (running > 0)
+    parts << (running == 1 ? QString("1 running") : QString("%1 running").arg(running));
+  if (speed > 0) parts << "↓ " + SizeText(static_cast<qint64>(speed)) + "/s";
+  summary_->setText(parts.isEmpty() ? QString("Nothing running") : parts.join("  ·  "));
+  const auto& list = links_->Downloads();
+  const bool links_running = std::ranges::any_of(list, IsRunningLink);
+  const bool links_paused = std::ranges::any_of(
+      list, [](const DownloadInfo& download) { return download.state == "paused"; });
+  pause_all_->setText(links_running || !links_paused ? "Pause all" : "Resume all");
+  pause_all_->setVisible(links_running || links_paused);
+}
+
+void DownloadsPage::EditPasswords() {
+  api::GetDownloadPasswordsAsync(this, [this](DownloadPasswordsResult result) {
+    if (!result.ok)
+      return notify::FailedRequest(this, "Could not read the saved passwords.", result.error);
+    PopupDialog dialog(this, notify::Level::Info, "Saved passwords");
+    dialog.SetMessage("Tried on every encrypted archive, most recently working first.");
+    dialog.SetWidth(460);
+    auto* list = new ListEdit(ListEdit::Kind::Text, "Add password", &dialog);
+    QStringList items;
+    for (const std::string& password : result.passwords) items << QString::fromStdString(password);
+    list->SetItems(items);
+    dialog.AddWidget(list);
+    dialog.AddButton("Cancel", /*accept=*/false);
+    dialog.AddButton("Save", /*accept=*/true, /*default_button=*/true);
+    if (dialog.exec() != QDialog::Accepted) return;
+    std::vector<std::string> edited;
+    for (const QString& item : list->Items()) edited.push_back(item.toStdString());
+    api::SetDownloadPasswordsAsync(this, edited, [this](StoreActionResult saved) {
+      if (!saved.ok) notify::FailedRequest(this, "Could not save the passwords.", saved.error);
+    });
+  });
+}
+
+}  // namespace mira_gui
