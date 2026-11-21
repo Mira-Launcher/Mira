@@ -43,7 +43,7 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   header->addWidget(clear_);
   layout->addLayout(header);
 
-  empty_ = new QLabel("Nothing installing, downloading or running.", this);
+  empty_ = new QLabel("Nothing installing, downloading or running", this);
   empty_->setProperty("role", "subtle");
   empty_->setContentsMargins(18, 6, 18, 10);
   layout->addWidget(empty_);

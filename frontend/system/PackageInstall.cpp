@@ -68,8 +68,7 @@ void ShowCommand(QWidget* parent, const QString& title, const QString& message,
   QPushButton* terminal = dialog.AddButton("Open terminal", false, true);
   QObject::connect(terminal, &QPushButton::clicked, &dialog, [parent, argv] {
     if (!OpenTerminal(argv)) {
-      notify::Notice(parent, "No terminal found; copy the command instead.",
-                     notify::Level::Warning);
+      notify::Notice(parent, "No terminal found; copy the command instead", notify::Level::Warning);
     }
   });
   dialog.exec();
@@ -95,7 +94,7 @@ void RunAsRoot(QWidget* parent, const std::vector<std::string>& command, const Q
   title_verb[0] = title_verb[0].toUpper();
   // Test sandboxes share the real system.
   if (qEnvironmentVariableIsSet("MIRA_NO_POWER")) {
-    notify::Info(parent, "Not done", "Changing system packages is off here (MIRA_NO_POWER).");
+    notify::Info(parent, "Not done", "Changing system packages is off here (MIRA_NO_POWER)");
     return done(false);
   }
   if (copy_commands || QStandardPaths::findExecutable("pkexec").isEmpty()) {
@@ -121,7 +120,7 @@ void RunAsRoot(QWidget* parent, const std::vector<std::string>& command, const Q
           const QStringList lines =
               output.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
           ShowCommand(guard.data(), "Could not " + verb + " " + names,
-                      "Run it from a terminal instead.",
+                      "Run it from a terminal instead",
                       lines.isEmpty() ? QString() : lines.last().trimmed(), argv);
           return done(false);
         }
@@ -139,7 +138,7 @@ void RunAsRoot(QWidget* parent, const std::vector<std::string>& command, const Q
                      process->deleteLater();
                      if (guard.isNull()) return;
                      ShowCommand(guard.data(), "Could not " + verb + " " + names,
-                                 "Run it from a terminal instead.", process->errorString(), argv);
+                                 "Run it from a terminal instead", process->errorString(), argv);
                      done(false);
                    });
   process->start("pkexec", argv);

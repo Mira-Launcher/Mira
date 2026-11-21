@@ -177,15 +177,15 @@ int main(int argc, char** argv) {
       });
   QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Failed, &app, [](QString error) {
     mira_gui::notify::FailedWithHint(
-        nullptr, "Could not start mirad.", error,
+        nullptr, "Could not start mirad", error,
         "Mira looks for \"mirad\" next to its own binary, then on PATH. Build it "
         "(cmake --build build --target mirad) or reinstall Mira.");
     QApplication::quit();
   });
   QObject::connect(supervisor, &mira_gui::DaemonSupervisor::Outdated, &app, [](int api) {
     mira_gui::notify::FailedWithHint(
-        nullptr, "The running mirad doesn't match this version of Mira.",
-        QString("It speaks API %1; this app needs API %2.")
+        nullptr, "The running mirad doesn't match this version of Mira",
+        QString("It speaks API %1; this app needs API %2")
             .arg(api)
             .arg(mira_gui::kExpectedApiVersion),
         "Quit Mira from the tray, or stop the mirad process, and start Mira again.");

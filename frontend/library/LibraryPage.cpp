@@ -649,7 +649,7 @@ void LibraryPage::ShowTitleMenu(const QModelIndex& index, const QPoint& global_p
                                 [this, hide](StoreActionResult result) {
                                   if (!result.ok)
                                     notify::FailedRequest(
-                                        this, hide ? "Could not hide it." : "Could not unhide it.",
+                                        this, hide ? "Could not hide it" : "Could not unhide it",
                                         result.error);
                                 });
     }
@@ -751,12 +751,12 @@ void LibraryPage::UpdateEmptyState() {
     const bool listed = owned_titles_ != nullptr && owned_titles_->Listed();
     empty_hint_->setVisible(owned_matches_.empty());
     empty_hint_->setText(!listed ? (owned_titles_ != nullptr && owned_titles_->Failed()
-                                        ? QString("Couldn't reach your stores.")
+                                        ? QString("Couldn't reach your stores")
                                         : QString("Asking your stores…"))
                          : !title_filters_->Filter().Empty() || !search_->text().trimmed().isEmpty()
-                             ? QString("No games match.")
-                         : library_->ShowingHidden() ? QString("Nothing hidden here.")
-                                                     : QString("Everything you own is installed."));
+                             ? QString("No games match")
+                         : library_->ShowingHidden() ? QString("Nothing hidden here")
+                                                     : QString("Everything you own is installed"));
     return;
   }
   const int shown = games_->rowCount();
@@ -765,11 +765,10 @@ void LibraryPage::UpdateEmptyState() {
     const QString items = FilterKey() == "apps" ? "apps" : "games";
     const bool none_hidden =
         std::ranges::none_of(library_->Games(), [](const GameSummary& g) { return IsHidden(g); });
-    empty_hint_->setText(library_->Games().empty() ? QString("No %1 in the library yet.").arg(items)
-                         : library_->ShowingHidden() && none_hidden ? QString("No hidden games.")
-                         : !owned_matches_.empty()
-                             ? QString("Nothing installed matches.")
-                             : QString("No %1 match this filter.").arg(items));
+    empty_hint_->setText(library_->Games().empty() ? QString("No %1 in the library yet").arg(items)
+                         : library_->ShowingHidden() && none_hidden ? QString("No hidden games")
+                         : !owned_matches_.empty() ? QString("Nothing installed matches")
+                                                   : QString("No %1 match this filter").arg(items));
   }
 }
 

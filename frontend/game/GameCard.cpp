@@ -270,7 +270,7 @@ void GameCard::Build(const GameSummary* title) {
   connect(form_, &GameEditForm::Loaded, title_, &QLabel::setText);
   connect(form_, &GameEditForm::TagFilterRequested, this, &GameCard::TagFilterRequested);
   connect(form_, &GameEditForm::LoadFailed, this, [this](QString error, bool first) {
-    notify::Failed(window(), QString("Could not load this %1.").arg(Noun()), error);
+    notify::Failed(window(), QString("Could not load this %1").arg(Noun()), error);
     if (first) emit CloseRequested();
   });
   connect(form_, &GameEditForm::SaveFinished, this, [this](bool ok, QString error) {
@@ -278,7 +278,7 @@ void GameCard::Build(const GameSummary* title) {
     saving_ = false;
     bar_->SetBusy(false);
     if (!ok) {
-      notify::Failed(window(), QString("Could not save this %1.").arg(Noun()), error);
+      notify::Failed(window(), QString("Could not save this %1").arg(Noun()), error);
       return;
     }
     // The change bar going away is the feedback; no notice for a save the user just made.
@@ -319,7 +319,7 @@ void GameCard::RequestClose() {
     return;
   }
   if (!IsDirty() ||
-      notify::LeaveUnsaved(window(), QString("This %1's edits aren't saved.").arg(Noun()), [this] {
+      notify::LeaveUnsaved(window(), QString("This %1's edits aren't saved").arg(Noun()), [this] {
         close_after_save_ = true;
         Save();
       })) {
@@ -391,7 +391,7 @@ void GameCard::OpenArtPicker() {
             [this](const QString& failed_slot, const QString& error) {
               SetPreview(failed_slot, QPixmap());
               if (failed_slot == "cover") cover_->SetPreview(QPixmap());
-              notify::Failed(window(), "Could not change the art.", error);
+              notify::Failed(window(), "Could not change the art", error);
             });
   }
   art_button_->setChecked(true);

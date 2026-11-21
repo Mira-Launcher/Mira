@@ -14,7 +14,7 @@ namespace mira_gui::actions {
 void ScanLibrary(QWidget* parent) {
   api::ScanLibraryAsync(parent, [parent](ScanResult result) {
     if (!result.ok) {
-      notify::FailedRequest(parent, "Could not scan the library.", result.error);
+      notify::FailedRequest(parent, "Could not scan the library", result.error);
       return;
     }
     // New games show up in the grid on their own; only "nothing happened"
@@ -28,7 +28,7 @@ void ScanLibrary(QWidget* parent) {
 void SyncDesktopEntries(QWidget* parent) {
   api::SyncDesktopEntriesAsync(parent, [parent](DesktopEntrySyncResult result) {
     if (!result.ok)
-      notify::FailedRequest(parent, "Could not regenerate desktop entries.", result.error);
+      notify::FailedRequest(parent, "Could not regenerate desktop entries", result.error);
   });
 }
 
@@ -46,12 +46,12 @@ void RemoveAllDesktopEntries(QWidget* parent) {
   const ConfigEdit edit{"desktop_entries.enabled", "a boolean", "false"};
   api::PatchConfigAsync(parent, {edit}, [parent](PatchConfigResult patch_result) {
     if (!patch_result.ok) {
-      notify::FailedRequest(parent, "Could not turn off desktop entries.", patch_result.error);
+      notify::FailedRequest(parent, "Could not turn off desktop entries", patch_result.error);
       return;
     }
     api::SyncDesktopEntriesAsync(parent, [parent](DesktopEntrySyncResult sync_result) {
       if (!sync_result.ok)
-        notify::FailedRequest(parent, "Could not remove the desktop entries.", sync_result.error);
+        notify::FailedRequest(parent, "Could not remove the desktop entries", sync_result.error);
     });
   });
 }
@@ -68,7 +68,7 @@ void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& i
   }
   api::RelocateLibraryAsync(parent, [parent, game_name](RelocateLibraryResult result) {
     if (!result.ok) {
-      notify::FailedRequest(parent, "Could not move the games.", result.error);
+      notify::FailedRequest(parent, "Could not move the games", result.error);
       return;
     }
     // The moved games arrive as game.updated events.
@@ -76,8 +76,8 @@ void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& i
       notify::Notice(
           parent,
           result.moved == 0
-              ? QString("Every game was already in place.")
-              : QString("Moved %1 game%2.").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
+              ? QString("Every game was already in place")
+              : QString("Moved %1 game%2").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
     }
     if (!result.errors.empty()) {
       QStringList failed;
@@ -85,7 +85,7 @@ void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& i
         const QString name = game_name(failure.id);
         failed << (name.isEmpty() ? QString::fromStdString(failure.id) : name);
       }
-      notify::FailedRequest(parent, QString("Could not move %1.").arg(failed.join(", ")),
+      notify::FailedRequest(parent, QString("Could not move %1").arg(failed.join(", ")),
                             result.errors.front().error);
     }
   });

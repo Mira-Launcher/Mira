@@ -302,9 +302,9 @@ void SignInPanel::ShowSteps() {
     open->setDefault(!opened_);
     connect(open, &QPushButton::clicked, this, &SignInPanel::OpenPage);
   }
-  steps_->addWidget(
-      StepRow(body_, 1, opened_ || done_ ? "Opened the page." : "Open the page in your browser.",
-              state(0, current), open));
+  steps_->addWidget(StepRow(body_, 1,
+                            opened_ || done_ ? "Opened the page" : "Open the page in your browser",
+                            state(0, current), open));
   for (int i = 0; i < steps.size(); ++i) {
     steps_->addWidget(StepRow(body_, i + 2, steps[i], state(i + 1, current), nullptr));
   }
@@ -339,7 +339,7 @@ void SignInPanel::Refresh() {
   const std::string id = id_.toStdString();
   if (mode_ == Mode::Store) {
     api::GetStoreStatusAsync(this, id, [this, id](StoreStatusResult status) {
-      if (!status.ok) return ShowFailure("Could not ask Mira about it.", status.error);
+      if (!status.ok) return ShowFailure("Could not ask Mira about it", status.error);
       if (status.tool_installed) {
         SetPreparing(false);
         ShowDone(status.authenticated, QString::fromStdString(status.account));
@@ -350,27 +350,27 @@ void SignInPanel::Refresh() {
       api::SetupStoreToolAsync(this, id, [this](StoreActionResult result) {
         if (result.ok) return Refresh();
         SetPreparing(false);
-        ShowFailure("Could not get ready.", result.error);
+        ShowFailure("Could not get ready", result.error);
         log_->ShowLast();
       });
     });
   } else if (mode_ == Mode::Launcher) {
     api::GetLaunchersAsync(this, [this](LaunchersResult result) {
-      if (!result.ok) return ShowFailure("Could not ask Mira about it.", result.error);
+      if (!result.ok) return ShowFailure("Could not ask Mira about it", result.error);
       for (const LauncherInfo& launcher : result.launchers) {
         if (QString::fromStdString(launcher.id) != id_) continue;
         installing_ = launcher.install_state == "running";
         ShowDone(launcher.installed);
         log_->Watch(installing_);
         if (launcher.install_state == "failed" && !launcher.error.empty()) {
-          ShowFailure("The last install failed.", launcher.error);
+          ShowFailure("The last install failed", launcher.error);
           log_->ShowLast();
         }
       }
     });
   } else {
     api::GetConfigAsync(this, [this](ConfigResult result) {
-      if (!result.ok) return ShowFailure("Could not ask Mira about it.", result.error);
+      if (!result.ok) return ShowFailure("Could not ask Mira about it", result.error);
       const auto key = result.values.find("steam.web_api_key");
       ShowDone(key != result.values.end() && !key->second.empty());
     });
@@ -413,7 +413,7 @@ void SignInPanel::OpenPage() {
   };
   if (mode_ == Mode::SteamKey) {
     api::GetConfigSchemaAsync(this, [this, opened](ConfigSchemaResult result) {
-      if (!result.ok) return ShowFailure("Could not find the page.", result.error);
+      if (!result.ok) return ShowFailure("Could not find the page", result.error);
       for (const ConfigSchemaEntry& entry : result.entries) {
         if (entry.key == "steam.web_api_key" && !entry.link.empty()) return opened(entry.link);
       }
@@ -421,7 +421,7 @@ void SignInPanel::OpenPage() {
     return;
   }
   api::BeginStoreLoginAsync(this, id_.toStdString(), [this, opened](LoginUrlResult result) {
-    if (!result.ok) return ShowFailure("Could not start signing in.", result.error);
+    if (!result.ok) return ShowFailure("Could not start signing in", result.error);
     opened(result.url);
   });
 }
@@ -448,8 +448,8 @@ void SignInPanel::SignIn(const QString& text, bool from_clipboard) {
                           sign_in_->setText("Sign in");
                           if (!result.ok) {
                             return ShowFailure(from_clipboard
-                                                   ? "Found what you copied, but signing in failed."
-                                                   : "Could not sign in.",
+                                                   ? "Found what you copied, but signing in failed"
+                                                   : "Could not sign in",
                                                result.error);
                           }
                           paste_->clear();
@@ -468,7 +468,7 @@ void SignInPanel::SaveSteamKey(const QString& key) {
   sign_in_->setEnabled(false);
   api::PatchConfigAsync(this, edits, [this](PatchConfigResult result) {
     sign_in_->setEnabled(true);
-    if (!result.ok) return ShowFailure("Could not save the key.", result.error);
+    if (!result.ok) return ShowFailure("Could not save the key", result.error);
     paste_->clear();
     ShowDone(true);
   });
@@ -483,7 +483,7 @@ void SignInPanel::Install() {
     // Without the list, the packages it needs aren't known: installing anyway would fail midway.
     if (!result.ok) {
       starting_ = false;
-      return ShowFailure("Could not start installing.", result.error);
+      return ShowFailure("Could not start installing", result.error);
     }
     std::string packages;
     std::string needs_installer;
@@ -517,7 +517,7 @@ void SignInPanel::Install() {
             installing_ = false;
             ShowSteps();
             log_->Watch(false);
-            ShowFailure("Could not start installing.", started.error);
+            ShowFailure("Could not start installing", started.error);
             emit InstallFailed();
           },
           installer);
@@ -551,7 +551,7 @@ void SignInPanel::HandleEvent(const std::string& type, const std::string& data) 
     installing_ = false;
     ShowSteps();
     log_->Watch(false);
-    if (event.error.code != "cancelled") ShowFailure("Installing failed.", event.error);
+    if (event.error.code != "cancelled") ShowFailure("Installing failed", event.error);
   }
 }
 

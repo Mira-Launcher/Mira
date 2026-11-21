@@ -48,7 +48,7 @@ void NotifyFailures(QWidget* parent, const std::vector<GameFailure>& failures,
     const auto it = names.find(failure.id);
     failed << (it != names.end() ? it->second : QString::fromStdString(failure.id));
   }
-  notify::FailedRequest(parent, QString("%1 %2.").arg(verb, failed.join(", ")),
+  notify::FailedRequest(parent, QString("%1 %2").arg(verb, failed.join(", ")),
                         failures.front().error);
 }
 
@@ -89,7 +89,7 @@ void Launch(QWidget* parent, const std::string& id, const std::string& option,
         done();
         if (!result.ok) {
           if (on_failed) on_failed();
-          notify::FailedRequest(parent, "Could not launch the game.", result.error);
+          notify::FailedRequest(parent, "Could not launch the game", result.error);
           return;
         }
         if (on_launched) on_launched(result.tracked);
@@ -122,7 +122,7 @@ void ChoosePlay(QWidget* parent, const GameSummary& game,
 void Stop(QWidget* parent, const std::string& id) {
   api::StopGameAsync(parent, id, [parent, id](StopResult result) {
     if (!result.ok) {
-      notify::FailedRequest(parent, "Could not stop the game.", result.error);
+      notify::FailedRequest(parent, "Could not stop the game", result.error);
     }
   });
 }
@@ -143,7 +143,7 @@ void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool de
     api::DeleteGamesAsync(
         parent, ids, files, delete_prefix, delete_saves, [parent, names](DeleteGamesResult result) {
           if (!result.ok) {
-            notify::FailedRequest(parent, "Could not remove the games.", result.error);
+            notify::FailedRequest(parent, "Could not remove the games", result.error);
           } else if (!result.failed.empty()) {
             NotifyFailures(parent, result.failed, names, "Could not remove");
           }
@@ -159,7 +159,7 @@ void RunInPrefix(QWidget* parent, const std::string& id, const std::string& inst
 void FinishInstall(QWidget* parent, const std::string& id, std::function<void()> on_finished) {
   api::FinishInstallAsync(parent, id, [parent, id, on_finished](FinishInstallResult result) {
     if (!result.ok) {
-      notify::FailedRequest(parent, "Could not mark this game as installed.", result.error);
+      notify::FailedRequest(parent, "Could not mark this game as installed", result.error);
       return;
     }
     if (on_finished) on_finished();
@@ -170,7 +170,7 @@ void OpenInstallFolder(QWidget* parent, const std::string& install_path) {
   // install_path is already on GameSummary, so a fetch here would only ever
   // reproduce what the caller already has.
   if (install_path.empty()) {
-    notify::Failed(parent, "Could not open the install folder.", "This game has no install path.");
+    notify::Failed(parent, "Could not open the install folder", "This game has no install path");
     return;
   }
   QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(install_path)));
@@ -184,12 +184,12 @@ void ViewLog(QWidget* parent, const std::string& id, const QString& name) {
 void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) {
   api::GetGameAsync(parent, id, [parent, id, name](GameDetailResult result) {
     if (!result.ok) {
-      notify::FailedRequest(parent, "Could not run winetricks.", result.error);
+      notify::FailedRequest(parent, "Could not run winetricks", result.error);
       return;
     }
     if (result.game.data_dir.empty()) {
-      notify::FailedWithHint(parent, "Can't run winetricks yet.",
-                             "This game has no Wine/Proton prefix provisioned.",
+      notify::FailedWithHint(parent, "Can't run winetricks yet",
+                             "This game has no Wine/Proton prefix provisioned",
                              "Run something in its prefix first (\"Run in prefix…\"), which "
                              "provisions one on demand.");
       return;
@@ -204,7 +204,7 @@ void ToggleDesktopEntry(QWidget* parent, const std::string& id, bool currently_e
   // Success needs no notice: the menu entry itself appears or goes.
   api::PatchGameConfigAsync(parent, id, {edit}, [parent](PatchGameConfigResult result) {
     if (!result.ok)
-      notify::FailedRequest(parent, "Could not update the desktop entry.", result.error);
+      notify::FailedRequest(parent, "Could not update the desktop entry", result.error);
   });
 }
 
@@ -244,7 +244,7 @@ void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>
   api::GetRelocationPlansAsync(
       parent, Ids(games), [parent, games, on_done](RelocationPlansResult result) {
         if (!result.ok) {
-          notify::FailedRequest(parent, "Could not move the games.", result.error);
+          notify::FailedRequest(parent, "Could not move the games", result.error);
           return;
         }
         if (result.plans.empty()) return;  // removed while asking
@@ -272,20 +272,19 @@ void MoveGames(QWidget* parent, const std::vector<std::string>& ids,
                const std::map<std::string, QString>& names, std::function<void()> on_done) {
   api::RelocateGamesAsync(parent, ids, [parent, names, on_done](RelocateLibraryResult result) {
     if (!result.ok) {
-      notify::FailedRequest(parent, "Could not move the games.", result.error);
+      notify::FailedRequest(parent, "Could not move the games", result.error);
     } else {
       // Nothing on screen shows a path, so success gets a notice.
       if (result.moved > 0) {
         notify::Notice(
-            parent,
-            QString("Moved %1 game%2.").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
+            parent, QString("Moved %1 game%2").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
       } else if (result.skipped > 0) {
         notify::Notice(parent,
                        result.skipped == 1
-                           ? QString("That game was removed meanwhile.")
-                           : QString("Those %1 games were removed meanwhile.").arg(result.skipped));
+                           ? QString("That game was removed meanwhile")
+                           : QString("Those %1 games were removed meanwhile").arg(result.skipped));
       } else if (result.errors.empty()) {
-        notify::Notice(parent, "Already in Mira's folders.");
+        notify::Notice(parent, "Already in Mira's folders");
       }
       NotifyFailures(parent, result.errors, names, "Could not move");
     }
@@ -302,7 +301,7 @@ void BatchSetDesktopEntry(QWidget* parent, const std::vector<std::string>& ids, 
   patch.config = {{"desktop_entries.enabled", "a boolean", enabled ? "true" : "false", false}};
   api::PatchGamesAsync(parent, patch, [parent](PatchGamesResult result) {
     if (!result.ok)
-      notify::FailedRequest(parent, "Could not update the application menu.", result.error);
+      notify::FailedRequest(parent, "Could not update the application menu", result.error);
   });
 }
 

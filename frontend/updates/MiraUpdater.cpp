@@ -110,7 +110,7 @@ void MiraUpdater::Start(const QString& latest) {
 void MiraUpdater::Cancel() {
   if (state_ != State::Downloading || job_.empty()) return;
   jobs::Cancel(this, job_, [this](ApiError error) {
-    if (!error.message.empty()) notify::FailedRequest(window_, "Could not cancel it.", error);
+    if (!error.message.empty()) notify::FailedRequest(window_, "Could not cancel it", error);
   });
 }
 

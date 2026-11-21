@@ -35,7 +35,7 @@ PasswordPopup::PasswordPopup(LinkDownloads* downloads, QWidget* parent)
   password_ = new QLineEdit(this);
   password_->setPlaceholderText("Password");
   layout->addWidget(password_);
-  error_ = MakeLabel(this, "That password didn't open it.", "error");
+  error_ = MakeLabel(this, "That password didn't open it", "error");
   layout->addWidget(error_);
 
   auto* buttons = new QHBoxLayout();

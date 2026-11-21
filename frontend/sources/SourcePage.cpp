@@ -282,7 +282,7 @@ QWidget* SourcePage::BuildTopRow() {
     api::SignOutStoreAsync(this, id_, [this](StoreActionResult result) {
       banner_primary_->setEnabled(true);
       if (!result.ok) {
-        setup_card_->ShowError("Could not sign out.", result.error);
+        setup_card_->ShowError("Could not sign out", result.error);
         return;
       }
       RefreshStatus();
@@ -301,7 +301,7 @@ QWidget* SourcePage::BuildTopRow() {
         api::SetSteamStatusAsync(this, status, [this, button](StoreActionResult result) {
           button->setEnabled(true);
           if (!result.ok)
-            notify::FailedRequest(this, "Could not set your Steam status.", result.error);
+            notify::FailedRequest(this, "Could not set your Steam status", result.error);
         });
       });
       tabs_->SetTrailing(button);
@@ -432,7 +432,7 @@ void SourcePage::CloseSettingsModal() {
   if (!SettingsModalOpen()) return;
   if (modal_card_ == settings_card_ && settings_card_->IsDirty()) {
     const bool leave =
-        notify::LeaveUnsaved(this, "This source's settings changed but aren't saved.", [this] {
+        notify::LeaveUnsaved(this, "This source's settings changed but aren't saved", [this] {
           connect(
               settings_card_, &SourceSettingsCard::SaveFinished, this,
               [this](bool ok) {
@@ -778,7 +778,7 @@ QWidget* SourcePage::BuildOwnedSection() {
         owned_state_.insert(ref, "Nothing to download");  // e.g. only a Steam key
       } else {
         owned_state_.remove(ref);
-        ShowError(owned_note_, "The download failed.", r.error);
+        ShowError(owned_note_, "The download failed", r.error);
       }
       RebuildOwnedTiles();
     });
@@ -1007,7 +1007,7 @@ void SourcePage::AddGames(const std::vector<std::string>& paths) {
   import_result_->setVisible(false);
   api::AddEmulatorFilesAsync(this, id_, paths, [this](StoreImportResult result) {
     import_button_->setEnabled(true);
-    if (!result.ok) return ShowError(import_result_, "Could not add those games.", result.error);
+    if (!result.ok) return ShowError(import_result_, "Could not add those games", result.error);
     ShowLine(import_result_, ImportOutcome(result.added, result.updated, "game"), "muted");
     if (result.added > 0 || result.updated > 0) emit LibraryChanged();
     for (const StartChoice& choice : result.choose) AskStartFile(choice);
@@ -1029,7 +1029,7 @@ void SourcePage::AskStartFile(const StartChoice& choice) {
   patch.exe_path = files->currentText().toStdString();
   api::PatchGameAsync(this, choice.id, patch, [this](PatchGameResult result) {
     if (!result.ok)
-      notify::FailedRequest(this, "Could not change which file starts it.", result.error);
+      notify::FailedRequest(this, "Could not change which file starts it", result.error);
   });
 }
 
@@ -1169,7 +1169,7 @@ void SourcePage::Import() {
     if (ok) {
       ShowLine(import_result_, ImportOutcome(added, updated, CopyFor(id_).item), "muted");
     } else {
-      ShowError(import_result_, "Could not import.", error);
+      ShowError(import_result_, "Could not import", error);
     }
     if (ok && (added > 0 || updated > 0)) emit LibraryChanged();
   };
@@ -1270,7 +1270,7 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   review_percents_.clear();
   if (steam_settings_ != nullptr) steam_settings_->setVisible(false);
   if (!result.ok) {
-    ShowError(owned_note_, "Could not list your games.", result.error);
+    ShowError(owned_note_, "Could not list your games", result.error);
     RebuildOwnedTiles();
     return;
   }
@@ -1311,10 +1311,9 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
              "muted");
     if (steam_settings_ != nullptr) steam_settings_->setVisible(true);
   } else if (owned_.empty()) {
-    ShowLine(
-        owned_note_,
-        library_->ShowingHidden() ? "Nothing hidden here." : "Everything you own is installed.",
-        "muted");
+    ShowLine(owned_note_,
+             library_->ShowingHidden() ? "Nothing hidden here" : "Everything you own is installed",
+             "muted");
   } else {
     ShowLine(owned_note_, QString(), "muted");
   }
@@ -1325,13 +1324,13 @@ void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
   if (&result != &bundles_result_) bundles_result_ = result;
   owned_.clear();
   if (!result.ok) {
-    ShowError(owned_note_, "Could not list your purchases.", result.error);
+    ShowError(owned_note_, "Could not list your purchases", result.error);
     RebuildOwnedTiles();
     return;
   }
   // A bundle can't be hidden.
   if (library_->ShowingHidden()) {
-    ShowLine(owned_note_, "Nothing hidden here.", "muted");
+    ShowLine(owned_note_, "Nothing hidden here", "muted");
     RebuildOwnedTiles();
     return;
   }
@@ -1341,7 +1340,7 @@ void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
                           QString::fromStdString(bundle.name));
   }
   ShowLine(owned_note_,
-           owned_.empty() ? QString("No purchases on this account.")
+           owned_.empty() ? QString("No purchases on this account")
                           : QString("Downloads land in your games folder, where Mira picks up "
                                     "anything it recognizes."),
            "muted");
@@ -1425,7 +1424,7 @@ void SourcePage::StartInstall(const QString& ref, bool update) {
         if (owned_grid_ != nullptr) RebuildOwnedTiles();
         // An update starts from "In your library", an install from below.
         ShowError(update || owned_note_ == nullptr ? import_result_ : owned_note_,
-                  "Could not start it.", r.error);
+                  "Could not start it", r.error);
       });
 }
 
@@ -1602,7 +1601,7 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   }
   if (chosen != nullptr && chosen == hide_action) {
     api::SetTitlesHiddenAsync(this, id_, std::move(selected), hide, [this](StoreActionResult r) {
-      if (!r.ok) ShowError(owned_note_, "Could not change what's hidden.", r.error);
+      if (!r.ok) ShowError(owned_note_, "Could not change what's hidden", r.error);
     });
     return;
   }
@@ -1679,7 +1678,7 @@ void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
   if (event.state == "failed") {
     owned_state_.remove(ref);
     if (event.error.code != "cancelled") {
-      ShowError(owned_note_ != nullptr ? owned_note_ : import_result_, "It failed.", event.error);
+      ShowError(owned_note_ != nullptr ? owned_note_ : import_result_, "It failed", event.error);
     }
   } else if (event.state == "finished") {
     if (id_ == "steam") {

@@ -778,7 +778,7 @@ void ArtPickerPanel::ShowNothingFound() {
     stack_->setCurrentWidget(grid_);
     return;
   }
-  ShowMessage(QString("No other %1 found for this game.").arg(SlotNoun(slot_)), true);
+  ShowMessage(QString("No other %1 found for this game").arg(SlotNoun(slot_)), true);
 }
 
 void ArtPickerPanel::ShowPage(const ArtCandidatesEvent& event) {

@@ -160,8 +160,8 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
   }
   tile.in_sidebar = new Switch(tile.tile);
   tile.in_sidebar->setAccessibleName(name + " in the sidebar");
-  AddLine(tile.tile, "Shown in sidebar",
-          QString("Lists %1 under Sources in the sidebar.").arg(name), tile.in_sidebar);
+  AddLine(tile.tile, "Shown in sidebar", QString("Lists %1 under Sources in the sidebar").arg(name),
+          tile.in_sidebar);
   connect(tile.in_sidebar, &Switch::toggled, this,
           [this, id](bool shown) { emit SidebarToggled(id, shown); });
 

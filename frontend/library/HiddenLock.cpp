@@ -79,7 +79,7 @@ void HiddenUnlockCard::Unlock() {
       emit Unlocked();
       return;
     }
-    error_->setText(Problem(state.error, "That isn't the password."));
+    error_->setText(Problem(state.error, "That isn't the password"));
     error_->show();
     password_->selectAll();
     password_->setFocus();
@@ -133,7 +133,7 @@ HiddenPasswordRow::HiddenPasswordRow(QWidget* parent)
 
   api::GetHiddenStateAsync(this, [this](api::HiddenState state) {
     if (!state.ok)
-      return notify::FailedRequest(this, "Could not check the hidden-games password.", state.error);
+      return notify::FailedRequest(this, "Could not check the hidden-games password", state.error);
     ShowState(state.password);
   });
 }
@@ -167,12 +167,12 @@ void HiddenPasswordRow::Submit() {
   if (form_ == Form::None || !submit_->isEnabled()) return;
   const bool keeps = form_ != Form::Remove;
   if (keeps && next_->text().isEmpty()) {
-    error_->setText("Type a new password.");
+    error_->setText("Type a new password");
     error_->show();
     return;
   }
   if (keeps && next_->text() != repeat_->text()) {
-    error_->setText("The two new passwords differ.");
+    error_->setText("The two new passwords differ");
     error_->show();
     return;
   }
@@ -183,7 +183,7 @@ void HiddenPasswordRow::Submit() {
       this, current_->text().toStdString(), next, [this](api::HiddenState state) {
         submit_->setEnabled(true);
         if (!state.ok) {
-          error_->setText(Problem(state.error, "That isn't the current password."));
+          error_->setText(Problem(state.error, "That isn't the current password"));
           error_->show();
           return;
         }

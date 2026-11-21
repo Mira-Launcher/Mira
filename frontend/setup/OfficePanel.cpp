@@ -89,7 +89,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
         this,
         {{"launchers.office.plan", "a string", button->property("plan").toString().toStdString()}},
         [this](PatchConfigResult result) {
-          if (!result.ok) ShowError(error_, "Could not save the plan.", result.error);
+          if (!result.ok) ShowError(error_, "Could not save the plan", result.error);
         });
   });
   install_ = new QPushButton("Install Office", plan_box_);
@@ -160,7 +160,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
 
 void OfficePanel::Refresh() {
   api::GetLaunchersAsync(this, [this](LaunchersResult result) {
-    if (!result.ok) return ShowError(error_, "Could not ask Mira about it.", result.error);
+    if (!result.ok) return ShowError(error_, "Could not ask Mira about it", result.error);
     for (const LauncherInfo& launcher : result.launchers) {
       if (launcher.id != "office") continue;
       const bool newly = launcher.installed && !installed_;
@@ -171,7 +171,7 @@ void OfficePanel::Refresh() {
     ShowState();
     if (!installed_) return;
     api::GetStoreLibraryAsync(this, "office", false, [this](StoreLibraryResult listed) {
-      if (!listed.ok) return ShowError(error_, "Could not list the apps.", listed.error);
+      if (!listed.ok) return ShowError(error_, "Could not list the apps", listed.error);
       apps_ = listed.titles;
       if (picked_.isEmpty()) {
         for (const StoreTitle& app : apps_) {
@@ -247,7 +247,7 @@ void OfficePanel::Install() {
       if (started.ok) return;
       installing_ = false;
       ShowState();
-      ShowError(error_, "Could not start installing.", started.error);
+      ShowError(error_, "Could not start installing", started.error);
       emit InstallFailed();
     });
   });
@@ -272,7 +272,7 @@ void OfficePanel::InstallNext() {
                                 if (started.ok) return;
                                 queue_.clear();
                                 ShowState();
-                                ShowError(error_, "Could not add the app.", started.error);
+                                ShowError(error_, "Could not add the app", started.error);
                               });
 }
 
@@ -287,7 +287,7 @@ void OfficePanel::HandleEvent(const std::string& type, const std::string& data) 
     } else if (event.state == "finished" || event.state == "failed") {
       installing_ = false;
       if (event.state == "failed" && event.error.code != "cancelled") {
-        ShowError(error_, "Installing failed.", event.error);
+        ShowError(error_, "Installing failed", event.error);
         log_->ShowLast();
       }
       Refresh();
@@ -301,7 +301,7 @@ void OfficePanel::HandleEvent(const std::string& type, const std::string& data) 
     } else if (event.state == "failed") {
       queue_.clear();
       ShowState();
-      if (event.error.code != "cancelled") ShowError(error_, "Adding the app failed.", event.error);
+      if (event.error.code != "cancelled") ShowError(error_, "Adding the app failed", event.error);
     }
   }
 }

@@ -786,7 +786,7 @@ void LibraryWindow::closeEvent(QCloseEvent* event) {
   if ((settings_dirty || game_dirty) &&
       !mira_gui::notify::LeaveUnsaved(
           this,
-          settings_dirty ? "Settings changed but not saved." : "This game's edits aren't saved.",
+          settings_dirty ? "Settings changed but not saved" : "This game's edits aren't saved",
           save)) {
     event->ignore();
     return;
@@ -995,7 +995,7 @@ mira_gui::LibraryPage* LibraryWindow::BuildLibraryPage(const mira_gui::FrontendP
                 [this](mira_gui::StoreActionResult result) {
                   // Progress and the outcome arrive as events.
                   if (!result.ok)
-                    mira_gui::notify::FailedRequest(this, "Could not start the install.",
+                    mira_gui::notify::FailedRequest(this, "Could not start the install",
                                                     result.error);
                 });
           });
@@ -1216,8 +1216,8 @@ void LibraryWindow::InstallErrorNavigator() {
       connect(self->daemon_supervisor_, &mira_gui::DaemonSupervisor::Failed, self,
               [self](const QString& error) {
                 mira_gui::notify::FailedWithHint(
-                    self, "Could not start mirad.", error,
-                    "Mira looks for mirad next to itself, then on PATH.");
+                    self, "Could not start mirad", error,
+                    "Mira looks for mirad next to itself, then on PATH");
               });
     }
     self->daemon_supervisor_->EnsureRunning();
@@ -1235,7 +1235,7 @@ void LibraryWindow::ShowSteamGridDbNotice(bool asked_for, const mira_gui::ApiErr
   // however many games report it. mirad's hint and fix say what to do.
   if (!asked_for || steamgriddb_notice_shown_) return;
   steamgriddb_notice_shown_ = true;
-  mira_gui::notify::FailedRequest(this, "No cover art without a SteamGridDB API key.", error);
+  mira_gui::notify::FailedRequest(this, "No cover art without a SteamGridDB API key", error);
 }
 
 void LibraryWindow::FetchMissingArtwork() {
@@ -1249,7 +1249,7 @@ void LibraryWindow::RefreshMetadata(const std::string& id, bool announce) {
       this, id, announce, [this, id, announce](mira_gui::MetadataRefreshResult result) {
         if (!result.ok) {
           if (announce) {
-            mira_gui::notify::FailedRequest(this, "Could not refresh metadata.", result.error);
+            mira_gui::notify::FailedRequest(this, "Could not refresh metadata", result.error);
           }
           return;
         }
@@ -1287,7 +1287,7 @@ void LibraryWindow::RefreshGames(std::function<void()> done) {
     if (request != games_request_) return;  // a newer refresh is on its way
     mirad_reachable_ = result.ok;
     if (!result.ok) {
-      mira_gui::notify::FailedRequest(this, "Could not list games.", result.error);
+      mira_gui::notify::FailedRequest(this, "Could not list games", result.error);
       return;  // what's shown stays, and the callbacks wait for the next refresh
     }
     const auto waiting = std::exchange(refresh_done_, {});
@@ -1566,7 +1566,7 @@ void LibraryWindow::AskUnclearMove(const mira_gui::UnclearMove& move) {
               mira_gui::api::SettleUnclearMoveAsync(
                   this, folder, id, [this](mira_gui::SettleMoveResult result) {
                     if (!result.ok)
-                      mira_gui::notify::FailedRequest(this, "Could not settle that folder.",
+                      mira_gui::notify::FailedRequest(this, "Could not settle that folder",
                                                       result.error);
                   });
             });
@@ -1585,7 +1585,7 @@ void LibraryWindow::AskUnclearDrop(const mira_gui::UnclearDrop& drop) {
               mira_gui::api::SortDropAsync(
                   this, path, choice, [this](mira_gui::ImportPathResult result) {
                     if (!result.ok)
-                      mira_gui::notify::FailedRequest(this, "Could not sort that.", result.error);
+                      mira_gui::notify::FailedRequest(this, "Could not sort that", result.error);
                   });
             });
     ShowSidebarCard(card);
@@ -1612,7 +1612,7 @@ void LibraryWindow::ShowInstallPrompt(const mira_gui::InstallDetectedEvent& even
                   [this, id, is_app](mira_gui::FinishInstallResult result) {
                     if (!result.ok) {
                       mira_gui::notify::FailedRequest(
-                          this, "Could not switch to the installed program.", result.error);
+                          this, "Could not switch to the installed program", result.error);
                       return;
                     }
                     if (is_app) menus_->SetTag({id}, mira_gui::tags::kApp, true);
@@ -1840,7 +1840,7 @@ void LibraryWindow::UpdateLibraryNavActive() {
 
 void LibraryWindow::RequestCloseSettings() {
   if (settings_panel_ == nullptr || !settings_panel_->IsDirty() ||
-      mira_gui::notify::LeaveUnsaved(this, "Settings changed but not saved.", [this] {
+      mira_gui::notify::LeaveUnsaved(this, "Settings changed but not saved", [this] {
         close_settings_after_save_ = true;
         settings_panel_->Save();  // SaveFinished, connected in BuildSettingsPage, closes on success
       })) {
@@ -1863,14 +1863,14 @@ QWidget* LibraryWindow::BuildSettingsPage() {
   settings_panel_ = new mira_gui::SettingsPanel(std::move(previews), page);
   close_settings_after_save_ = false;
   connect(settings_panel_, &mira_gui::SettingsPanel::LoadFailed, this, [this](QString error) {
-    mira_gui::notify::Failed(this, "Could not load the settings.", error);
+    mira_gui::notify::Failed(this, "Could not load the settings", error);
     CloseSettings();
   });
   connect(settings_panel_, &mira_gui::SettingsPanel::SaveFinished, this,
           [this](bool ok, QString error) {
             const bool close = std::exchange(close_settings_after_save_, false);
             if (!ok) {
-              mira_gui::notify::Failed(this, "Could not save the settings.", error);
+              mira_gui::notify::Failed(this, "Could not save the settings", error);
               return;
             }
             // The change bar going away is the feedback; no notice for a save the user just made.
@@ -1994,7 +1994,7 @@ void LibraryWindow::OpenSidebarStyle() {
 void LibraryWindow::AskRemove(const std::vector<std::string>& ids) {
   mira_gui::api::GetRemovalPlansAsync(this, ids, [this](mira_gui::RemovalPlansResult result) {
     if (!result.ok) {
-      mira_gui::notify::FailedRequest(this, "Could not remove the games.", result.error);
+      mira_gui::notify::FailedRequest(this, "Could not remove the games", result.error);
       return;
     }
     std::vector<mira_gui::GameSummary> games;
@@ -2069,7 +2069,7 @@ void LibraryWindow::ChooseSaves(const std::string& id,
   if ((!isVisible() || isMinimized()) &&
       mira_gui::notify::AskOutOfSight(
           this, QString::fromStdString(game->name) + "'s saves changed here and in the cloud",
-          "Choose which to start with.", "Choose…", show)) {
+          "Choose which to start with", "Choose…", show)) {
     return;
   }
   show();
@@ -2171,7 +2171,7 @@ bool LibraryWindow::ConfirmLeaveSource(std::function<void()> retry) {
       source_page_ != nullptr ? source_page_->SettingsCard() : nullptr;
   if (card == nullptr || !card->IsDirty()) return true;
   const bool leave =
-      mira_gui::notify::LeaveUnsaved(this, "This source's settings changed but aren't saved.", [&] {
+      mira_gui::notify::LeaveUnsaved(this, "This source's settings changed but aren't saved", [&] {
         // A failed save stays on the page, with its error on the card.
         connect(
             card, &mira_gui::SourceSettingsCard::SaveFinished, this,

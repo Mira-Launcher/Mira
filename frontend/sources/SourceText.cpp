@@ -31,7 +31,7 @@ SourceCopy CopyFor(const std::string& id) {
     return {"itch.io, through butler.", "butler", "Import installed games"};
   }
   if (id == "amazon") {
-    return {"Amazon Games, through nile.", "nile", "Import installed games"};
+    return {"Amazon Games, through nile", "nile", "Import installed games"};
   }
   if (id == "humble") {
     return {"Humble Bundle purchases, through humble-cli. Downloads land in your games folder.",
@@ -114,9 +114,9 @@ void ShowError(QLabel* label, const QString& what, const ApiError& error) {
 }
 
 QString ImportOutcome(int added, int updated, const QString& item) {
-  if (added == 0 && updated == 0) return QString("No new %1s found.").arg(item);
-  if (added == 0) return QString("No new %1s; %2 updated.").arg(item).arg(updated);
-  return QString("Added %1 %2%3.").arg(added).arg(item).arg(added == 1 ? "" : "s");
+  if (added == 0 && updated == 0) return QString("No new %1s found").arg(item);
+  if (added == 0) return QString("No new %1s; %2 updated").arg(item).arg(updated);
+  return QString("Added %1 %2%3").arg(added).arg(item).arg(added == 1 ? "" : "s");
 }
 
 QString CountedHeading(const QString& text, int count) {

@@ -172,7 +172,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
     SyncToScroll();
   });
 
-  empty_state_ = new QLabel("No settings match your search.", this);
+  empty_state_ = new QLabel("No settings match your search", this);
   empty_state_->setAlignment(Qt::AlignCenter);
   empty_state_->setProperty("role", "muted");
 

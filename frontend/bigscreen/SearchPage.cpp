@@ -319,7 +319,7 @@ void SearchPage::paintEvent(QPaintEvent*) {
   }
   if (results_.empty()) {
     painter.drawText(QPointF(right, results_top + u),
-                     query_.isEmpty() ? "No games here." : "No games match “" + query_ + "”.");
+                     query_.isEmpty() ? "No games here" : "No games match “" + query_ + "”");
     return;
   }
   painter.drawText(

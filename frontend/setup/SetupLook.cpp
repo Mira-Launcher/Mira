@@ -655,7 +655,7 @@ void CoverFan::paintEvent(QPaintEvent*) {
 
 LookPage::LookPage(const SetupContext& context) : context_(context) {
   QVBoxLayout* layout = SetupPageLayout(this, icons::Glyph::Sliders, "Look and feel",
-                                        "Make it yours", "Everything here is in Settings too.");
+                                        "Make it yours", "Everything here is in Settings too");
   auto* themes = new QHBoxLayout();
   themes->setSpacing(10);
   themes_ = new QButtonGroup(this);
@@ -680,11 +680,11 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
   grid->setVerticalSpacing(0);
   corners_ =
       new Segmented({{"square", "Square"}, {"default", "Default"}, {"round", "Round"}}, card);
-  grid->addWidget(SetupRow(card, "Corners", "How round covers, cards and buttons are.", corners_),
-                  0, 0);
+  grid->addWidget(SetupRow(card, "Corners", "How round covers, cards and buttons are", corners_), 0,
+                  0);
   spacing_ =
       new Segmented({{"compact", "Compact"}, {"default", "Default"}, {"roomy", "Roomy"}}, card);
-  grid->addWidget(SetupRow(card, "Spacing", "Space between covers.", spacing_), 0, 1);
+  grid->addWidget(SetupRow(card, "Spacing", "Space between covers", spacing_), 0, 1);
   grid->addWidget(MakeDivider(card, Qt::Horizontal), 1, 0, 1, 2);
   connect(corners_, &Segmented::Changed, this, [this](const QString& corners) {
     FrontendPrefs change;
@@ -738,11 +738,11 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
   recent_apps_ = new Switch(apps_switches_);
   app_status_ = new Switch(apps_switches_);
   apps->addWidget(SetupRow(apps_switches_, "Recently used apps",
-                           "Large cards for the apps you used last, above the grid.", recent_apps_),
+                           "Large cards for the apps you used last, above the grid", recent_apps_),
                   1);
   apps->addWidget(separator(apps_switches_), 0, Qt::AlignVCenter);
   apps->addWidget(SetupRow(apps_switches_, "Status on tiles",
-                           "Show Installing, Broken, Running and the like on a tile.", app_status_),
+                           "Show Installing, Broken, Running and the like on a tile", app_status_),
                   1);
   grid->addWidget(apps_switches_, 2, 0, 1, 2);
   grid->setColumnStretch(0, 1);
@@ -782,9 +782,9 @@ void LookPage::Enter() {
   const bool examples = context_.services.library->Games().empty();
   if (auto* lead = findChild<QLabel*>("setup_lead")) {
     lead->setText(QString("Everything here is in Settings too. ") +
-                  (apps       ? "The preview shows your applications."
+                  (apps       ? "The preview shows your applications"
                    : examples ? "The preview uses a few example games until you have your own."
-                              : "The preview is your library."));
+                              : "The preview is your library"));
   }
   const QString theme = QString::fromStdString(prefs.theme.value_or("auto"));
   for (QAbstractButton* button : themes_->buttons()) {
@@ -832,23 +832,23 @@ SidebarPage::SidebarPage(const SetupContext& context) : context_(context) {
   const std::vector<std::pair<QString, QString>> styles = {
       {"covers", "Covers"}, {"hero", "Banners"}, {"shelf", "Shelf"}};
   pinned_ = new Segmented(styles, card);
-  rows->addWidget(SetupRow(card, "Pinned", "How pinned games draw.", pinned_, /*below=*/true));
+  rows->addWidget(SetupRow(card, "Pinned", "How pinned games draw", pinned_, /*below=*/true));
   games_rows_ = new QWidget(card);
   auto* game_rows = new QVBoxLayout(games_rows_);
   game_rows->setContentsMargins(0, 0, 0, 0);
   game_rows->setSpacing(0);
   game_rows->addWidget(MakeDivider(games_rows_, Qt::Horizontal));
   recent_ = new Segmented(styles, games_rows_);
-  game_rows->addWidget(SetupRow(games_rows_, "Recently played", "How recently played games draw.",
+  game_rows->addWidget(SetupRow(games_rows_, "Recently played", "How recently played games draw",
                                 recent_, /*below=*/true));
   game_rows->addWidget(MakeDivider(games_rows_, Qt::Horizontal));
   when_ = new Switch(games_rows_);
-  game_rows->addWidget(SetupRow(games_rows_, "Say when", "When each game was last played.", when_));
+  game_rows->addWidget(SetupRow(games_rows_, "Say when", "When each game was last played", when_));
   rows->addWidget(games_rows_);
   rows->addWidget(MakeDivider(card, Qt::Horizontal));
   covers_ = new Switch(card);
-  rows->addWidget(SetupRow(card, "Covers on sources",
-                           "A few of each source's games beside its name.", covers_));
+  rows->addWidget(
+      SetupRow(card, "Covers on sources", "A few of each source's games beside its name", covers_));
   left->addWidget(card);
   hint_ = MakeLabel(this, QString(), "muted");
   left->addWidget(hint_);
@@ -892,11 +892,11 @@ void SidebarPage::Enter() {
   const setup::Choices& choices = *context_.choices;
   const bool apps = !choices.games && choices.apps;
   if (auto* lead = findChild<QLabel*>("setup_lead")) {
-    lead->setText(apps ? "Pin the apps you use most to keep them one click away."
+    lead->setText(apps ? "Pin the apps you use most to keep them one click away"
                        : "Pin favorites to keep them at hand. Recently played shows the last three "
                          "games you played.");
   }
-  hint_->setText(apps ? "Pin an app from its right-click menu."
+  hint_->setText(apps ? "Pin an app from its right-click menu"
                       : "Pin a game from its right-click menu. How many recent games to show is "
                         "in Settings.");
   games_rows_->setVisible(!apps);

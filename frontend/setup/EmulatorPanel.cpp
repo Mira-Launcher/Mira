@@ -102,7 +102,7 @@ void EmulatorPanel::ChooseProgram() {
   api::PatchConfigAsync(this, {ConfigEdit{key, "a string", file.toStdString()}},
                         [this](PatchConfigResult result) {
                           if (!result.ok)
-                            return ShowFailure("Could not use that program.", result.error);
+                            return ShowFailure("Could not use that program", result.error);
                           emit Changed();
                         });
 }
@@ -132,7 +132,7 @@ void EmulatorPanel::SendFirmware(const std::string& firmware_id,
           }
           return;
         }
-        if (!result.ok) return ShowFailure("Could not add that.", result.error);
+        if (!result.ok) return ShowFailure("Could not add that", result.error);
         emit Changed();
       });
 }

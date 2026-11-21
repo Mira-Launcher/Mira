@@ -17,12 +17,12 @@ bool AddInstallActions(QMenu& menu, QWidget* parent, const DownloadTracker& trac
   if (entry->state == DownloadTracker::State::Paused) {
     menu.addAction("Resume " + what, parent, [parent, source, ref, update = entry->update] {
       api::InstallStoreTitleAsync(parent, source, ref, update, [parent](StoreActionResult result) {
-        if (!result.ok) notify::FailedRequest(parent, "Could not resume it.", result.error);
+        if (!result.ok) notify::FailedRequest(parent, "Could not resume it", result.error);
       });
     });
     menu.addAction("Cancel " + what, parent, [parent, source, ref] {
       api::DiscardPausedInstallAsync(parent, source, ref, [parent](StoreActionResult result) {
-        if (!result.ok) notify::FailedRequest(parent, "Could not cancel it.", result.error);
+        if (!result.ok) notify::FailedRequest(parent, "Could not cancel it", result.error);
       });
     });
     return true;
@@ -32,13 +32,13 @@ bool AddInstallActions(QMenu& menu, QWidget* parent, const DownloadTracker& trac
   if (DownloadTracker::CanPause(*entry)) {
     menu.addAction("Pause " + what, parent, [parent, source, ref] {
       api::PauseStoreInstallAsync(parent, source, ref, [parent](StoreActionResult result) {
-        if (!result.ok) notify::FailedRequest(parent, "Could not pause it.", result.error);
+        if (!result.ok) notify::FailedRequest(parent, "Could not pause it", result.error);
       });
     });
   }
   menu.addAction("Cancel " + what, parent, [parent, job = job.toStdString()] {
     jobs::Cancel(parent, job, [parent](ApiError error) {
-      if (!error.message.empty()) notify::FailedRequest(parent, "Could not cancel it.", error);
+      if (!error.message.empty()) notify::FailedRequest(parent, "Could not cancel it", error);
     });
   });
   return true;

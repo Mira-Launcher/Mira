@@ -66,13 +66,13 @@ QString Path(const std::string& path, const QString& home) {
 }
 
 QString StatusNote(const SavesResult& saves) {
-  if (saves.status == "no_files") return "Nothing is saved in these folders yet.";
+  if (saves.status == "no_files") return "Nothing is saved in these folders yet";
   if (saves.status == "registry_only")
     return "This game keeps its saves in the Windows registry, which Mira doesn't back up: "
            "restoring it would also undo every other setting in the prefix.";
   if (saves.status == "steam_cloud")
     return "Steam starts this game and keeps its saves in Steam Cloud, so Mira leaves them to it.";
-  if (saves.status == "off") return "Backing up this game's saves is off.";
+  if (saves.status == "off") return "Backing up this game's saves is off";
   if (saves.status == "no_entry")
     return "Mira doesn't know where this game keeps its saves. Add its save folders as more save "
            "locations.";

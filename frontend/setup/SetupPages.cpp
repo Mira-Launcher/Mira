@@ -398,7 +398,7 @@ void WelcomePage::ChooseFolder(const QString& folder) {
     if (result.ok) return;
     folder_ = before;
     ShowFolder();
-    ShowError(drive_warning_, "Could not change the folder.", result.error);
+    ShowError(drive_warning_, "Could not change the folder", result.error);
   });
 }
 
@@ -510,7 +510,7 @@ UsePage::UsePage(const SetupContext& context) : context_(context) {
     name->setObjectName("setup_tile_title");
     text->addWidget(name);
     text->addWidget(MakeLabel(button,
-                              games ? "From Steam, other stores, or ones you install yourself."
+                              games ? "From Steam, other stores, or ones you install yourself"
                                     : "Programs that only exist for Windows, set up to run here.",
                               "muted"));
     inside->addLayout(text);
@@ -908,7 +908,7 @@ void StoresPage::Show() {
   const QStringList& stores = context_.choices->stores;
   const bool tools = std::ranges::any_of(stores, [](const QString& id) { return id != "steam"; });
   count_->setText(
-      stores.isEmpty() ? QString("None picked, so no sign-ins follow.")
+      stores.isEmpty() ? QString("None picked, so no sign-ins follow")
       : tools ? QString("%1 picked · their helper tools start downloading when you continue.")
                     .arg(stores.size())
               : QString("%1 picked").arg(stores.size()));
@@ -944,7 +944,7 @@ AppsPage::AppsPage(const SetupContext& context) : context_(context) {
   connect(tile, &QAbstractButton::toggled, this, [this](bool on) {
     context_.choices->office = on;
     line_->setText(on ? "Its Windows setup starts getting ready when you continue."
-                      : "More applications are coming.");
+                      : "More applications are coming");
     emit PicksChanged();
   });
   layout->addWidget(tile);
@@ -957,11 +957,11 @@ AppsPage::AppsPage(const SetupContext& context) : context_(context) {
   rows->setSpacing(0);
   in_all_ = new Switch(card);
   rows->addWidget(SetupRow(card, "Apps under All",
-                           "List apps under the All tab too, not only under Apps.", in_all_));
+                           "List apps under the All tab too, not only under Apps", in_all_));
   rows->addWidget(MakeDivider(card, Qt::Horizontal));
   big_screen_ = new Switch(card);
   rows->addWidget(SetupRow(card, "Apps in big screen",
-                           "Show Word, Excel and the rest in big screen too.", big_screen_));
+                           "Show Word, Excel and the rest in big screen too", big_screen_));
   layout->addWidget(card);
   layout->addWidget(SetupLaterLine(
       this,
@@ -974,7 +974,7 @@ void AppsPage::Enter() {
   office_->setChecked(context_.choices->office);
   line_->setText(context_.choices->office
                      ? "Its Windows setup starts getting ready when you continue."
-                     : "More applications are coming.");
+                     : "More applications are coming");
   in_all_->setChecked(context_.prefs->library_apps_in_all.value_or(true));
   big_screen_->setChecked(context_.prefs->big_screen_show_apps.value_or(false));
 }
@@ -1074,7 +1074,7 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   for (const OfficePlan& plan : OfficePlans()) plans_->AddOption(plan.value, plan.short_name);
   connect(plans_, &Segmented::Changed, this, [this](const QString& plan) { plan_ = plan; });
   plan_rows->addWidget(
-      SetupRow(plan_card, "Your plan", "Office installs the edition that matches it.", plans_));
+      SetupRow(plan_card, "Your plan", "Office installs the edition that matches it", plans_));
   layout->addWidget(plan_card);
 
   QFrame* apps_card = SetupCard(this);
@@ -1197,7 +1197,7 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   login_ = new Switch(switches);
   login_->setChecked(context.prefs->start_on_login.value_or(true));
   QWidget* login_row = SetupRow(switches, "Start Mira when I log in (in the tray)",
-                                "Opens to the tray, so games are ready when you are.", login_);
+                                "Opens to the tray, so games are ready when you are", login_);
   switch_rows->addWidget(login_row);
   if (context.screen != setup::Screen::Desktop) {
     big_screen_ = new Switch(switches);
@@ -1217,8 +1217,8 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
     const auto say_where = [login_name](bool big_screen) {
       login_name->setText(big_screen ? "Start Mira when I log in"
                                      : "Start Mira when I log in (in the tray)");
-      login_name->setToolTip(big_screen ? "Opens in big screen, so games are ready when you are."
-                                        : "Opens to the tray, so games are ready when you are.");
+      login_name->setToolTip(big_screen ? "Opens in big screen, so games are ready when you are"
+                                        : "Opens to the tray, so games are ready when you are");
     };
     say_where(big_screen_->isChecked());
     connect(big_screen_, &QAbstractButton::toggled, this, say_where);
@@ -1345,7 +1345,7 @@ void DonePage::ShowSummary() {
       const QString done = running.section(QString::fromUtf8(" \xc2\xb7 "), 1);
       add(Mark::Running, "Microsoft 365 is installing",
           (done.isEmpty() ? QString() : done + " done. ") +
-              "It keeps going after this window closes.");
+              "It keeps going after this window closes");
     } else if (work->OfficeFailed()) {
       add(Mark::Left, "Microsoft 365", "Setting it up failed. Its page in the sidebar shows why.");
     } else if (work->OfficeStarted()) {

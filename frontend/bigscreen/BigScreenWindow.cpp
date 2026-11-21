@@ -329,10 +329,10 @@ class Chrome : public QWidget {
                                ? "Steam is starting it. This can take a moment."
                            : first_run
                                ? "Its first start sets things up, which can take a minute or two."
-                               : "This can take a moment.";
+                               : "This can take a moment";
     painter.drawText(title.translated(0, u * 3), Qt::AlignHCenter | Qt::AlignTop, detail);
     painter.drawText(title.translated(0, u * 4.6), Qt::AlignHCenter | Qt::AlignTop,
-                     "This screen closes once the game's window opens.");
+                     "This screen closes once the game's window opens");
     // How to get back to Mira once the game is up. Steam games get Steam's own overlay instead.
     if (item.game && item.game->source != "steam") {
       const QString kind = window_->GlyphKind();
@@ -404,7 +404,7 @@ BigScreenWindow::BigScreenWindow(LibraryServices services, QWidget* parent)
   });
   connect(input_, &GamepadInput::Activity, this, &BigScreenWindow::RestartIdle);
   connect(input_, &GamepadInput::BatteryLow, this, [this](const QString& name, int percent) {
-    Tell(QString("%1 is at %2%").arg(name).arg(percent), "Charge it soon.");
+    Tell(QString("%1 is at %2%").arg(name).arg(percent), "Charge it soon");
   });
   idle_.setSingleShot(true);
   connect(&idle_, &QTimer::timeout, this, [this] {
@@ -783,12 +783,12 @@ void BigScreenWindow::ConfirmUninstall(const Item& item, const RemovalPlan& plan
                                        bool delete_prefix, bool delete_saves) {
   const QString action = RemoveGamesCard::ActionText({plan});
   QString text =
-      plan.kind == "steam"  ? QString("Steam asks first, then removes its files and prefix.")
+      plan.kind == "steam"  ? QString("Steam asks first, then removes its files and prefix")
       : !DeletesFiles(plan) ? delete_prefix
                                   ? QString("Its files stay where they are. Its prefix is deleted.")
-                                  : QString("Its files stay where they are.")
-      : plan.folder_is_prefix ? QString("This deletes its folder, which is also its prefix.")
-      : plan.prefix.empty()   ? QString("This deletes the game's files.")
+                                  : QString("Its files stay where they are")
+      : plan.folder_is_prefix ? QString("This deletes its folder, which is also its prefix")
+      : plan.prefix.empty()   ? QString("This deletes the game's files")
       : delete_prefix
           ? QString("This deletes the game's files and its prefix, with saves and settings.")
           : QString("This deletes the game's files. Its prefix, with saves and settings, is kept.");
@@ -888,7 +888,7 @@ void BigScreenWindow::ShowBackup(const Item& item, const SaveSnapshot& snapshot)
                             });
   };
   const auto remove = [this, item, snapshot, when, id] {
-    Confirm("Delete the backup from " + when + "?", "Its saves can't be restored once it's gone.",
+    Confirm("Delete the backup from " + when + "?", "Its saves can't be restored once it's gone",
             "Delete", [this, id, snapshot] {
               api::DeleteSaveBackupAsync(this, id, snapshot.id, [this](GameActionResult r) {
                 Toast(r.ok ? "Deleted the backup" : "Could not delete the backup");
@@ -1144,7 +1144,7 @@ void BigScreenWindow::Guide() {
     menu.entries.emplace_back("Performance overlay", [this, id] { TogglePerformanceOverlay(id); });
     menu.entries.emplace_back("Game settings", [this, id, name] { OpenQuickSettings(id, name); });
     menu.entries.emplace_back("Stop " + name, [this, id, name] {
-      Confirm("Stop " + name + "?", "Anything not saved in the game is lost.", "Stop",
+      Confirm("Stop " + name + "?", "Anything not saved in the game is lost", "Stop",
               [this, id] { actions::Stop(this, id); });
     });
   }
@@ -1197,7 +1197,7 @@ void BigScreenWindow::Screenshot(const QString& game_name) {
 
 void BigScreenWindow::TogglePerformanceOverlay(const std::string& id) {
   LoadQuickSettings(this, id, [this, id](bool ok, QuickSettings settings) {
-    if (!ok) return Toast("Couldn't read the game's settings.");
+    if (!ok) return Toast("Couldn't read the game's settings");
     if (settings.overlay || settings.fps_limit > 0) {
       // MangoHud is loaded: its own toggle, right Shift + F12.
       ReturnToGame();
@@ -1210,14 +1210,14 @@ void BigScreenWindow::TogglePerformanceOverlay(const std::string& id) {
     }
     settings.overlay = true;
     SaveQuickSettings(this, id, settings, [this](const QString& error) {
-      Toast(error.isEmpty() ? "The overlay shows from the next start." : error);
+      Toast(error.isEmpty() ? "The overlay shows from the next start" : error);
     });
   });
 }
 
 void BigScreenWindow::OpenQuickSettings(const std::string& id, const QString& name) {
   LoadQuickSettings(this, id, [this, id, name](bool ok, QuickSettings settings) {
-    if (!ok) return Toast("Couldn't read the game's settings.");
+    if (!ok) return Toast("Couldn't read the game's settings");
     ShowQuickSettings(id, name, settings);
   });
 }
@@ -1292,20 +1292,20 @@ void BigScreenWindow::RestartIdle() {
 }
 
 void BigScreenWindow::PowerAction(const char* action) {
-  if (update_ != nullptr) return Toast("Wait for the system update to finish.");
+  if (update_ != nullptr) return Toast("Wait for the system update to finish");
   Power(this, action, [this](bool allowed) {
-    if (!allowed) Toast("The system didn't allow that.");
+    if (!allowed) Toast("The system didn't allow that");
   });
 }
 
 void BigScreenWindow::UpdateSystem() {
-  if (update_ != nullptr) return Toast("The system is already updating.");
+  if (update_ != nullptr) return Toast("The system is already updating");
   const system::Distro distro = system::DetectDistro();
   const QStringList command = system::UpgradeCommand(distro);
   const QString name = distro.name.isEmpty() ? QString("this system") : distro.name;
   if (command.isEmpty()) return Toast("Mira doesn't know how to update " + name + ".");
   if (QStandardPaths::findExecutable("pkexec").isEmpty())
-    return Toast("Updating needs pkexec (polkit), which isn't installed.");
+    return Toast("Updating needs pkexec (polkit), which isn't installed");
   Confirm("Update " + name + "?",
           "Your password is asked for next, with the on-screen keyboard to type it.", "Update",
           [this, distro, command] { StartUpdate(distro, command); });
@@ -1314,7 +1314,7 @@ void BigScreenWindow::UpdateSystem() {
 void BigScreenWindow::StartUpdate(const system::Distro& distro, const QStringList& command) {
   // Test sandboxes share the real system.
   if (qEnvironmentVariableIsSet("MIRA_NO_POWER"))
-    return Toast("Updating is off here (MIRA_NO_POWER).");
+    return Toast("Updating is off here (MIRA_NO_POWER)");
   update_ = new QProcess(this);
   update_->setProcessChannelMode(QProcess::MergedChannels);
   update_output_.clear();
@@ -1360,7 +1360,7 @@ void BigScreenWindow::StartUpdate(const system::Distro& distro, const QStringLis
         end();
         // pkexec's own codes: the prompt was dismissed or the password refused.
         if (status == QProcess::NormalExit && (code == 126 || code == 127) && !update_accepted_) {
-          return Toast("Update canceled.");
+          return Toast("Update canceled");
         }
         // steamos-update exits 7 when there's nothing new.
         const bool steamos_current = distro.family == system::Distro::Family::SteamOS && code == 7;
@@ -1371,10 +1371,10 @@ void BigScreenWindow::StartUpdate(const system::Distro& distro, const QStringLis
         }
         if (!steamos_current && system::NeedsRestart(distro, update_output_)) {
           return Confirm("Restart to finish updating?",
-                         "Some of the update only takes effect after a restart.", "Restart",
+                         "Some of the update only takes effect after a restart", "Restart",
                          [this] { PowerAction("Reboot"); });
         }
-        Toast("The system is up to date.");
+        Toast("The system is up to date");
       });
   update_->start("pkexec", command);
 }
