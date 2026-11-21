@@ -151,6 +151,13 @@ void MiraUpdater::WaitForDaemon(int attempts_left) {
                          [this, attempts_left] { WaitForDaemon(attempts_left - 1); });
       return;
     }
+    // The new build would attach to the old mirad, which saves settings by its older schema.
+    if (status.reachable) {
+      SetState(State::Failed,
+               "Mira is updated, but its background service didn't stop. Close Mira and open it "
+               "again.");
+      return;
+    }
     // Nothing to hand over: the new build starts its own mirad.
     display::SetDaemon({}, {});
     if (!display::Restart({}))
