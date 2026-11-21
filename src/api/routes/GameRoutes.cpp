@@ -619,8 +619,10 @@ void RegisterGameRoutes(Router& http, Services& s) {
 
     s.SyncDesktopEntry(game.id);
     if (!existing) s.fetches.EnqueueNew(s.config, s.events, game);
-    SendJson(res,
-             s.events.Publish(existing ? "game.updated" : "game.added", s.Record(game)).payload);
+    json record = s.Record(game);
+    // The client adding an installer already asked whether to run it.
+    if (is_installer) record["auto_install"] = true;
+    SendJson(res, s.events.Publish(existing ? "game.updated" : "game.added", record).payload);
     if (game.status == model::GameStatus::SettingUp) s.ProvisionLater(game);
   });
 }

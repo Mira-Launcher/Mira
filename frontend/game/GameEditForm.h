@@ -110,6 +110,7 @@ class GameEditForm : public QWidget {
 
   std::string id_;
   std::string install_path_;
+  std::string browse_start_;  // where Browse… opens: drive C for a game an installer put there
   std::string source_;
   QString noun_ = "game";  // or "app"
   mira_gui::GamePatch original_patch_;

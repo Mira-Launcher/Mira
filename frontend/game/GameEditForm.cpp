@@ -447,6 +447,10 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   emit Loaded(QString::fromStdString(game.name));
 
   install_path_ = game.install_path;
+  // Still waiting on its installer (or one whose game wasn't found): the game is in drive C.
+  browse_start_ = game.status == "needs_install" && !game.data_dir.empty()
+                      ? game.data_dir + "/drive_c"
+                      : game.install_path;
   source_ = game.source;
   windows_ = game.platform == "windows";
   if (web_ != (game.platform == "web")) {
@@ -677,8 +681,7 @@ void GameEditForm::OnExeComboActivated(int index) {
 }
 
 void GameEditForm::BrowseExecutable() {
-  const QString start_dir =
-      install_path_.empty() ? QString() : QString::fromStdString(install_path_);
+  const QString start_dir = QString::fromStdString(browse_start_);
   const QString selected = QFileDialog::getOpenFileName(this, "Select executable", start_dir);
   if (selected.isEmpty()) return;
 

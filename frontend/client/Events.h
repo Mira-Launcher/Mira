@@ -83,7 +83,8 @@ bool ParseTitleArtworkEvent(const std::string& event_type, const std::string& da
 // A game.added payload's `open_config` (open_config_on_add).
 bool ParseOpenConfig(const std::string& data);
 
-// game.added's `auto_install`: the scan runs this installer on its own.
+// game.added's `auto_install`: the scan runs this installer on its own, or the client that added it
+// already asked whether to.
 bool ParseAutoInstall(const std::string& data);
 
 bool ParseInstallerLeftover(const std::string& data, InstallerLeftoverEvent* out);

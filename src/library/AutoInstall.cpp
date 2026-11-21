@@ -831,9 +831,14 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
       stored.last_error.clear();
     } else {
       stored.data_dir = game->data_dir;  // a prefix moved to the target's disk was made there
+      // The installer ran: running it again won't help, picking what it installed will.
       stored.last_error =
-          std::format("Install didn't finish: {}. Run the installer again with its window shown.",
-                      done.error().message);
+          done.error().code == "no_executable"
+              ? "The installer finished, but Mira couldn't find the game. Choose its program in "
+                "the game's settings (it's in drive C of its prefix), then mark it installed."
+              : std::format(
+                    "Install didn't finish: {}. Run the installer again with its window shown.",
+                    done.error().message);
     }
     stored.updated_at = model::NowSeconds();
   });

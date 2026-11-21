@@ -945,7 +945,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 
 | Event | Payload |
 |---|---|
-| `game.added` | The game, plus `open_config` from the `open_config_on_add` setting and, for a scanned folder, `auto_install`: whether the scan runs its installer on its own. |
+| `game.added` | The game, plus `open_config` from the `open_config_on_add` setting and, for a scanned folder, `auto_install`: whether the scan runs its installer on its own, or, for an installer added with `POST /v1/games/manual`, true since the client adding it decides. |
 | `game.updated` | The game. |
 | `games.updated` | `{games}`: every game a `PATCH /v1/games` changed, or, at startup, every game that isn't running (a client open across a restart may still show some as running). |
 | `game.removed` | `{id}`. |
