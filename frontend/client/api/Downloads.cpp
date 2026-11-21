@@ -93,12 +93,12 @@ void CheckLinksAsync(QObject* context, const std::vector<std::string>& links,
 
 void AddDownloadAsync(QObject* context, const std::string& name,
                       const std::vector<std::string>& links, const std::string& password,
-                      std::function<void(StoreActionResult)> callback) {
+                      const std::string& folder, std::function<void(StoreActionResult)> callback) {
+  json request = {{"name", name}, {"links", links}, {"password", password}};
+  if (!folder.empty()) request["folder"] = folder;
   RunAction(
       context, "POST /v1/downloads",
-      [body = json{{"name", name}, {"links", links}, {"password", password}}] {
-        return transport::PostJson("/v1/downloads", body);
-      },
+      [body = std::move(request)] { return transport::PostJson("/v1/downloads", body); },
       std::move(callback));
 }
 

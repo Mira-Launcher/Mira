@@ -9,11 +9,13 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QStorageInfo>
 #include <QVBoxLayout>
 #include <memory>
 
@@ -83,6 +85,28 @@ QPixmap EntryIcon(const std::string& icon, qreal ratio) {
   return pixmap;
 }
 
+// Enter in a links box clicks `button`; Shift+Enter still starts a new line.
+class EnterClicks : public QObject {
+ public:
+  EnterClicks(QWidget* box, QPushButton* button) : QObject(box), button_(button) {
+    box->installEventFilter(this);
+  }
+
+ protected:
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    if (event->type() != QEvent::KeyPress) return QObject::eventFilter(watched, event);
+    const auto* key = static_cast<QKeyEvent*>(event);
+    if ((key->key() != Qt::Key_Return && key->key() != Qt::Key_Enter) ||
+        (key->modifiers() & Qt::ShiftModifier))
+      return false;
+    if (button_->isEnabled()) button_->click();
+    return true;
+  }
+
+ private:
+  QPushButton* button_;
+};
+
 }  // namespace
 
 AddGamesCard::AddGamesCard(QWidget* parent) : QWidget(parent) {
@@ -94,6 +118,18 @@ AddGamesCard::AddGamesCard(QWidget* parent) : QWidget(parent) {
     library_roots_ = ListSetting(config, "library_roots");
     const QStringList folders = ListSetting(config, "mira_folders");
     mira_folder_ = folders.isEmpty() ? QDir::homePath() + "/Mira" : folders.front();
+    mira_folders_.clear();
+    for (const QString& folder : folders) mira_folders_ << QDir::cleanPath(folder);
+    // As mirad picks: the setting, else the one in the home folder.
+    const auto it = config.values.find("default_mira_folder");
+    const QString chosen = it != config.values.end()
+                               ? QDir::cleanPath(ExpandHome(QString::fromStdString(it->second)))
+                               : QString();
+    default_folder_ = mira_folders_.contains(chosen) ? chosen : QString();
+    for (const QString& folder : mira_folders_) {
+      if (default_folder_.isEmpty() && (folder + "/").startsWith(QDir::homePath() + "/"))
+        default_folder_ = folder;
+    }
     FillMenuDetails();
   });
   api::GetDesktopEntryCandidatesAsync(this, [this](DesktopEntryCandidatesResult result) {
@@ -509,8 +545,8 @@ void AddGamesCard::ShowLinks() {
   intro->SetBelow(Detail(intro, "One per line. Add another game the same way afterwards."));
   page->AddRow(intro);
   auto* text = new QPlainTextEdit(page);
-  text->setFixedHeight(140);
-  text->setPlaceholderText("https://…");
+  text->setFixedHeight(120);
+  text->setPlaceholderText("https://…  (Enter downloads, Shift+Enter adds a line)");
   // What was just copied is most likely what's wanted.
   const std::vector<std::string> copied = downloads::ParseLinks(QApplication::clipboard()->text());
   for (const std::string& link : copied) text->appendPlainText(QString::fromStdString(link));
@@ -520,86 +556,35 @@ void AddGamesCard::ShowLinks() {
   box_layout->addWidget(text);
   page->AddRow(box);
 
-  QLabel* error = AddErrorLine(page);
-  QHBoxLayout* buttons = AddButtonRow(page);
-  auto* cancel = new QPushButton("Cancel", page);
-  connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
-  buttons->addWidget(cancel);
-  auto* next = new QPushButton("Continue", page);
-  next->setDefault(true);
-  buttons->addWidget(next);
-  const auto refresh = [text, next] {
-    next->setEnabled(!downloads::ParseLinks(text->toPlainText()).empty());
-  };
-  refresh();
-  connect(text, &QPlainTextEdit::textChanged, page, refresh);
-  connect(next, &QPushButton::clicked, this, [=, this] {
-    const std::vector<std::string> links = downloads::ParseLinks(text->toPlainText());
-    next->setEnabled(false);
-    next->setText("Checking…");
-    error->hide();
-    const auto check = [=, this] {
-      api::CheckLinksAsync(this, links, [=, this](LinkCheckResult result) {
-        if (request != request_) return;
-        if (result.ok) return ShowLinksConfirm(links, result.files);
-        next->setText("Continue");
-        next->setEnabled(true);
-        error->setText(error_help::Describe(result.error));
-        error->show();
-      });
-    };
-    // aria2 downloads and 7-Zip extracts: offered for install here, like any other tool Mira needs.
-    system::EnsurePackages(this, "downloads", "Downloading from links", [=, this](bool ready) {
-      if (!ready || request != request_) {
-        next->setText("Continue");
-        next->setEnabled(true);
-        return;
-      }
-      system::EnsurePackages(this, "archives", "Downloading from links",
-                             [=, this](bool) { check(); });
-    });
-  });
-  ShowPage(page);
-  text->setFocus();
-}
-
-void AddGamesCard::ShowLinksConfirm(const std::vector<std::string>& links,
-                                    const std::vector<DownloadFile>& files) {
-  ++request_;
-  SettingsCard* page = NewPage();
-  AddCardBack(page, [this] { ShowLinks(); });
-  std::int64_t total = 0;
-  for (const DownloadFile& file : files) total += file.total;
-  const QString count =
-      files.size() == 1 ? QString("1 file") : QString("%1 files").arg(files.size());
-  AddCardHeading(
-      page, "Download this game?", "Close", [this] { Close(); },
-      total > 0 ? count + "  ·  " + SizeText(total) : count);
-
   auto* name_row = new SettingRow("Name", QString(), page);
-  auto* name = new QLineEdit(
-      files.empty() ? QString() : downloads::GuessName(QString::fromStdString(files.front().name)),
-      name_row);
+  auto* name = new QLineEdit(name_row);
+  name->setPlaceholderText("From the download's name");
   name->setFixedWidth(240);
   name_row->AddControl(name);
   page->AddRow(name_row);
 
   auto* password_row = new SettingRow("Archive password", QString(), page);
-  password_row->SetBelow(
-      Detail(password_row, "Optional. Passwords that worked before are tried first."));
   auto* password = new QLineEdit(password_row);
+  password->setPlaceholderText("Only if it has one");
   password->setFixedWidth(240);
   password_row->AddControl(password);
   page->AddRow(password_row);
 
-  for (const DownloadFile& file : files) {
-    auto* row = new SettingRow(QString::fromStdString(file.name), QString(), page);
-    QStringList parts{QString::fromStdString(file.source)};
-    if (file.total > 0) parts << SizeText(file.total);
-    row->SetBelow(Detail(row, parts.join("  ·  ")));
+  // One Mira folder per drive: which one it goes onto.
+  QComboBox* target = nullptr;
+  if (mira_folders_.size() > 1) {
+    auto* row = new SettingRow("Download to", QString(), page);
+    target = new FlatCombo(row);
+    for (const QString& folder : mira_folders_) {
+      const QStorageInfo storage(folder);
+      target->addItem(
+          QString("%1  ·  %2 free").arg(HomeRelative(folder), SizeText(storage.bytesAvailable())),
+          folder);
+      if (folder == default_folder_) target->setCurrentIndex(target->count() - 1);
+    }
+    row->AddControl(target);
     page->AddRow(row);
   }
-  if (files.size() > 4) page->SetScrollable();
 
   QLabel* error = AddErrorLine(page);
   QHBoxLayout* buttons = AddButtonRow(page);
@@ -609,23 +594,52 @@ void AddGamesCard::ShowLinksConfirm(const std::vector<std::string>& links,
   auto* start = new QPushButton("Download", page);
   start->setDefault(true);
   buttons->addWidget(start);
-  const auto refresh = [start, name] { start->setEnabled(!name->text().trimmed().isEmpty()); };
+  const auto refresh = [text, start] {
+    start->setEnabled(!downloads::ParseLinks(text->toPlainText()).empty());
+  };
   refresh();
-  connect(name, &QLineEdit::textChanged, page, refresh);
+  connect(text, &QPlainTextEdit::textChanged, page, refresh);
+  new EnterClicks(text, start);
+  for (QLineEdit* field : {name, password}) {
+    connect(field, &QLineEdit::returnPressed, start, [start] {
+      if (start->isEnabled()) start->click();
+    });
+  }
   connect(start, &QPushButton::clicked, this, [=, this] {
+    const std::vector<std::string> links = downloads::ParseLinks(text->toPlainText());
+    const std::string folder =
+        target != nullptr ? target->currentData().toString().toStdString() : std::string();
+    const auto again = [=](const QString& why) {
+      start->setText("Download");
+      start->setEnabled(true);
+      if (why.isEmpty()) return;
+      error->setText(why);
+      error->show();
+    };
     start->setEnabled(false);
+    start->setText("Checking…");
     error->hide();
-    api::AddDownloadAsync(this, name->text().trimmed().toStdString(), links,
-                          password->text().toStdString(), [=, this](StoreActionResult result) {
-                            if (result.ok) return Close();
-                            start->setEnabled(true);
-                            error->setText(error_help::Describe(result.error));
-                            error->show();
-                          });
+    // Read first, so a dead link is said here rather than failing in Downloads later.
+    const auto add = [=, this] {
+      api::CheckLinksAsync(this, links, [=, this](LinkCheckResult checked) {
+        if (request != request_) return;
+        if (!checked.ok) return again(error_help::Describe(checked.error));
+        api::AddDownloadAsync(this, name->text().trimmed().toStdString(), links,
+                              password->text().toStdString(), folder,
+                              [=, this](StoreActionResult result) {
+                                if (result.ok) return Close();
+                                again(error_help::Describe(result.error));
+                              });
+      });
+    };
+    // aria2 downloads and 7-Zip extracts: offered for install here, like any other tool Mira needs.
+    system::EnsurePackages(this, "downloads", "Downloading from links", [=, this](bool ready) {
+      if (!ready || request != request_) return again(QString());
+      system::EnsurePackages(this, "archives", "Downloading from links", [=](bool) { add(); });
+    });
   });
   ShowPage(page);
-  name->setFocus();
-  name->selectAll();
+  text->setFocus();
 }
 
 void AddGamesCard::ShowAppMenu() {

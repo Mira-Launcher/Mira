@@ -13,12 +13,6 @@ TEST_CASE("pasted links keep their order, without repeats or other words") {
                                           "magnet:?xt=abc"});
 }
 
-TEST_CASE("a game's name comes from its first file") {
-  CHECK(downloads::GuessName("Some_Game.part01.rar") == "Some Game");
-  CHECK(downloads::GuessName("Some.Game.7z.001") == "Some Game");
-  CHECK(downloads::GuessName("Mr. Game v1.2.zip") == "Mr. Game v1.2");
-}
-
 TEST_CASE("a link download's row follows its state") {
   DownloadInfo download;
   download.id = "abc";
