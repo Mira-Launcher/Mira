@@ -471,7 +471,8 @@ void ArtPickerPanel::Open(const std::string& slot) {
   api::GetMetadataAsync(this, id_, [this, slot](GameMetadataResult result) {
     if (slot != slot_) return;
     Populate(result);
-    if (!std::exchange(counts_requested_, true)) RequestCounts(result);
+    // Asked once the page shown has come: together they'd crowd SteamGridDB's answer to it out.
+    if (!counts_requested_) counts_from_ = result;
   });
 }
 
@@ -1403,6 +1404,8 @@ void ArtPickerPanel::HandleEvent(const std::string& type, const std::string& dat
     if (!page_loading_ || event.request != page_request_)
       return;  // an earlier Open()'s, or a replay
     ShowPage(event);
+    if (counts_from_ && !std::exchange(counts_requested_, true)) RequestCounts(*counts_from_);
+    counts_from_.reset();
     return;
   }
 
