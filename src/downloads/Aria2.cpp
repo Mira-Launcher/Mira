@@ -14,6 +14,7 @@
 
 #include "core/Log.h"
 #include "runner/Exec.h"
+#include "system/Packages.h"
 
 namespace mira::downloads {
 namespace {
@@ -65,6 +66,9 @@ Result<void> Aria2::Ensure() {
   }
   const auto binary = runner::FindOnPath("aria2c");
   if (!binary) {
+    // Its fix installs the package, as for any other tool Mira needs.
+    if (auto ready = system::RequireFeature("downloads", "Downloading from links"); !ready)
+      return std::unexpected(ready.error());
     return Err("aria2_missing", "Mira needs aria2 to download from links",
                "Install aria2 from your package manager.");
   }

@@ -26,6 +26,7 @@
 #include "../downloads/LinkText.h"
 #include "../game/CardParts.h"
 #include "../settings/SettingsCard.h"
+#include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../widgets/FlatCombo.h"
 #include "../widgets/Labels.h"
@@ -537,13 +538,25 @@ void AddGamesCard::ShowLinks() {
     next->setEnabled(false);
     next->setText("Checking…");
     error->hide();
-    api::CheckLinksAsync(this, links, [=, this](LinkCheckResult result) {
-      if (request != request_) return;
-      if (result.ok) return ShowLinksConfirm(links, result.files);
-      next->setText("Continue");
-      next->setEnabled(true);
-      error->setText(error_help::Describe(result.error));
-      error->show();
+    const auto check = [=, this] {
+      api::CheckLinksAsync(this, links, [=, this](LinkCheckResult result) {
+        if (request != request_) return;
+        if (result.ok) return ShowLinksConfirm(links, result.files);
+        next->setText("Continue");
+        next->setEnabled(true);
+        error->setText(error_help::Describe(result.error));
+        error->show();
+      });
+    };
+    // aria2 downloads and 7-Zip extracts: offered for install here, like any other tool Mira needs.
+    system::EnsurePackages(this, "downloads", "Downloading from links", [=, this](bool ready) {
+      if (!ready || request != request_) {
+        next->setText("Continue");
+        next->setEnabled(true);
+        return;
+      }
+      system::EnsurePackages(this, "archives", "Downloading from links",
+                             [=, this](bool) { check(); });
     });
   });
   ShowPage(page);

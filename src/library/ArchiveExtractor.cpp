@@ -15,6 +15,7 @@
 #include "core/Log.h"
 #include "core/Strings.h"
 #include "runner/Exec.h"
+#include "system/Packages.h"
 
 namespace mira::library {
 namespace {
@@ -75,7 +76,12 @@ Result<std::optional<std::string>> FindPassword(const fs::path& archive,
   const std::string name = strings::ToLower(archive.filename().string());
   if (name.ends_with(".tgz") || name.find(".tar") != std::string::npos) return std::string();
   const std::optional<std::string> seven_zip = runner::SevenZip();
-  if (!seven_zip) return Err("extractor_missing", "install 7zip to extract archives");
+  if (!seven_zip) {
+    // Its fix installs 7-Zip, as for any other tool Mira needs.
+    if (auto ready = system::RequireFeature("archives", "Extracting archives"); !ready)
+      return std::unexpected(ready.error());
+    return Err("extractor_missing", "install 7zip to extract archives");
+  }
   const auto run = [&](std::vector<std::string> args) {
     Command command;
     command.argv = {*seven_zip};
