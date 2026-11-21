@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <set>
 
 #include "core/Strings.h"
 #include "library/AutoInstall.h"
 #include "library/InstallSize.h"
+#include "library/PeVersion.h"
 #include "proc/Session.h"
 #include "runner/IRunner.h"
 #include "support/LiveServer.h"
@@ -30,6 +32,21 @@ void Write(const fs::path& path, std::string_view head, std::string_view tail, s
   out << head;
   out << std::string(padding, '\0');
   out << tail;
+}
+
+// A VS_VERSIONINFO String: lengths and type, the UTF-16 key, padding to 4, the UTF-16 value.
+std::string Entry(const std::string& key, const std::string& value) {
+  const auto wide = [](const std::string& text) {
+    std::string out;
+    for (char c : text) out += {c, '\0'};
+    return out + std::string(2, '\0');
+  };
+  std::string out(6, '\0');
+  out += wide(key);
+  while (out.size() % 4 != 0) out += '\0';
+  out += wide(value);
+  while (out.size() % 4 != 0) out += '\0';
+  return out;
 }
 
 }  // namespace
@@ -345,4 +362,57 @@ TEST_CASE("An installer's progress is guessed from the storage Steam's requireme
   CHECK(library::EstimatedInstallBytes(
             {{"steam", {{"pc_requirements", {{"minimum", "<strong>OS:</strong> Windows 10"}}}}}}) ==
         -1);
+}
+
+TEST_CASE("A game installed right in C: is found and named by its installer, GOG or its exe") {
+  const std::string block = Entry("CompanyName", "GOG.com") + Entry("ProductName", "Hollow Knight");
+  CHECK(library::VersionString(block, "ProductName") == "Hollow Knight");
+  CHECK(library::VersionString(block, "FileDescription").empty());
+
+  test::TestEnv env("installed-name");
+  const fs::path prefix = env.dir / "prefix";
+  test::Touch(prefix / "drive_c" / "windows" / "system32" / "kernel32.dll");
+  const std::set<fs::path> before = library::ProgramFolders(env.config, prefix);
+  const fs::path game = prefix / "drive_c" / "HollowKnight";
+  test::Touch(game / "hollow_knight.exe", "game");
+  test::Touch(game / "unins000.exe", "uninstaller");
+  test::Touch(prefix / "drive_c" / "Tiny" / "tiny.exe", "x");  // smaller: not the game
+  const auto found = library::NewInstall(env.config, prefix, before);
+  REQUIRE(found);
+  CHECK(found->dir.filename() == "HollowKnight");
+  CHECK(found->exe_path == "hollow_knight.exe");
+
+  // The folder's own name is all there is, until the installer's registry entry says better.
+  CHECK(library::InstalledName(prefix, *found) == "HollowKnight");
+  test::Touch(prefix / "system.reg",
+              "WINE REGISTRY Version 2\n\n"
+              "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\Other_is1] 1\n"
+              "\"DisplayName\"=\"Something Else\"\n"
+              "\"InstallLocation\"=\"C:\\\\Other\\\\\"\n\n"
+              "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\HK_is1] 1\n"
+              "\"DisplayName\"=\"Hollow Knight version 1.5.78\"\n"
+              "\"UninstallString\"=\"\\\"C:\\\\hollowknight\\\\unins000.exe\\\"\"\n");
+  CHECK(library::InstalledName(prefix, *found) == "Hollow Knight");
+  test::Touch(game / "goggame-1308320804.info", R"({"name": "Hollow Knight: Voidheart"})");
+  CHECK(library::InstalledName(prefix, *found) == "Hollow Knight: Voidheart");
+
+  // Installed outside drive C, to a folder picked in the installer (Z: is /): found by the
+  // uninstall entry it registered.
+  fs::create_directories(prefix / "dosdevices");
+  fs::create_symlink("/", prefix / "dosdevices" / "z:");
+  const std::set<fs::path> later = library::ProgramFolders(env.config, prefix);
+  const fs::path outside = env.dir / "My Games" / "Celeste";
+  test::Touch(outside / "Celeste.exe", std::string(4096, 'x'));
+  std::string windows = "Z:" + outside.string();
+  std::ranges::replace(windows, '/', '\\');
+  std::string escaped;
+  for (char c : windows) escaped += c == '\\' ? std::string("\\\\") : std::string(1, c);
+  test::Touch(prefix / "user.reg",
+              "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\Celeste] 1\n"
+              "\"DisplayName\"=\"Celeste\"\n\"InstallLocation\"=\"" +
+                  escaped + "\"\n");
+  const auto moved = library::NewInstall(env.config, prefix, later);
+  REQUIRE(moved);
+  CHECK(moved->dir == fs::weakly_canonical(outside));
+  CHECK(library::InstalledName(prefix, *moved) == "Celeste");
 }
