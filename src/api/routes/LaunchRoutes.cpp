@@ -9,6 +9,7 @@
 #include <chrono>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <map>
 #include <thread>
 
@@ -189,7 +190,8 @@ WrapperStatus ReadWrapperStatus(int fd, int timeout_s) {
 // the request's (400).
 int PrepareStatus(const Error& error) {
   return error.code == "working_dir_missing" || error.code == "program_missing" ||
-                 error.code == "not_executable" || error.code == "web_port_busy"
+                 error.code == "not_executable" || error.code == "exec_failed" ||
+                 error.code == "web_port_busy"
              ? 409
              : 400;
 }
@@ -249,6 +251,10 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
   auto command = resolved->runner->BuildCommand(target, resolved->build);
   if (!command) return std::unexpected(command.error());
   for (const auto& [name, value] : extras.env) command->env.try_emplace(name, value);
+  // Proton's default verb waits for everything in the prefix to exit, so a program beside the game
+  // or its launcher wouldn't start until they closed.
+  if (program && !program->as_game && !program->native)
+    command->env.try_emplace("PROTON_VERB", "run");
   // Otherwise the spawned child's chdir fails and it exits 127 before anything is logged.
   if (std::error_code ec;
       !command->cwd.empty() && !std::filesystem::is_directory(command->cwd, ec)) {
@@ -287,7 +293,7 @@ RunProgram OptionProgram(const model::Game& game, const library::LaunchOption& o
 // Starts a launch option detached, with its output in the game's log: an alongside one in the
 // systemd scope `unit`, a tool (no `unit`) as one of the game's open tools.
 Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOption& option,
-                         const std::string& unit) {
+                         const std::string& unit, proc::ProcessSupervisor::ToolExit exited = {}) {
   auto command = PrepareCommand(s, game, OptionProgram(game, option));
   if (!command) return std::unexpected(command.error());
   if (!unit.empty()) {
@@ -302,7 +308,7 @@ Result<void> SpawnOption(Services& s, model::Game& game, const library::LaunchOp
   const int log_fd = ::open(log.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
   auto spawned = unit.empty()
                      ? s.supervisor.StartTool(game.id, {.id = option.id, .name = option.name},
-                                              *command, log_fd)
+                                              *command, log_fd, std::move(exited))
                      : runner::SpawnReaped(*command, log_fd);
   if (log_fd >= 0) ::close(log_fd);
   if (!spawned) return std::unexpected(spawned.error());
@@ -833,12 +839,17 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     const std::string exe_path = (*body)["exe_path"];
     const std::string args = body->value("args", std::string());
 
+    // Not while the game's files change, as for a tool.
+    if (const std::string busy = s.supervisor.ReservedFor(game->id); !busy.empty())
+      return SendError(res, 409, GameBusyError(game->id, busy));
+
     // A game with no usable prefix yet gets one now.
     std::error_code ec;
+    const bool had_prefix =
+        game->platform == model::Platform::Windows && !game->data_dir.empty() &&
+        std::filesystem::exists(library::PrefixRoot(game->data_dir) / "drive_c", ec);
     const bool needs_provisioning =
-        game->platform == model::Platform::Windows &&
-        (game->runner_ref.empty() ||
-         !std::filesystem::exists(library::PrefixRoot(game->data_dir) / "drive_c", ec));
+        game->platform == model::Platform::Windows && (game->runner_ref.empty() || !had_prefix);
     if (needs_provisioning) {
       const runner::RunnerRegistry provisioner(s.config);
       const model::Game provisioned = provisioner.ProvisionGame(*game);
@@ -861,10 +872,27 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       }
     }
 
-    auto command = PrepareCommand(s, *game, RunProgram{exe_path, args});
-    if (!command) return SendError(res, PrepareStatus(command.error()), command.error());
-
-    LaunchUnderWrapper(s, res, *game, *command, "", "");
+    // Opened as a tool: not a play session. What it installs is offered as launch options once it
+    // exits, only in a prefix it had, since a new one's own Program Files would all look new.
+    const std::string name = std::filesystem::path(exe_path).filename().string();
+    const library::LaunchOption program{.id = "run",
+                                        .name = name,
+                                        .mode = library::LaunchMode::Tool,
+                                        .exe = exe_path,
+                                        .args = args,
+                                        .sign_in = std::nullopt};
+    proc::ProcessSupervisor::ToolExit exited{.program = name, .call = {}};
+    if (had_prefix) {
+      exited.call = [&s, id = game->id, name,
+                     before = library::ProgramFolders(s.config, game->data_dir)] {
+        s.OfferNewPrograms(id, name, before);
+      };
+    }
+    if (auto opened = SpawnOption(s, *game, program, "", std::move(exited)); !opened) {
+      const bool no_scope = opened.error().code == "cgroup_unavailable";
+      return SendError(res, no_scope ? 500 : PrepareStatus(opened.error()), opened.error());
+    }
+    SendJson(res, {{"status", "opened"}, {"tracked", false}});
   });
 
   // Describes a game's installer, or the file at ?path=.

@@ -180,6 +180,10 @@ class Services {
 
   // Remembers the prefix program folders a launch started with; CheckForInstall compares at exit.
   void WatchForInstall(const std::string& game_id, std::set<std::filesystem::path> folders);
+  // After a program run in the game's prefix exits: publishes game.programs_found with what it
+  // installed since `before` (from library::ProgramFolders), to offer as launch options.
+  void OfferNewPrograms(const std::string& game_id, const std::string& by,
+                        const std::set<std::filesystem::path>& before);
 
   // Runs `work` as a job and answers 202 {status, job}. The request's ?job=
   // names the job, so its client can listen for it before this reply lands.

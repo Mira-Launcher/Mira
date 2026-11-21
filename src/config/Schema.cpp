@@ -1324,7 +1324,7 @@ Schema::Schema() {
        .type = Type::StringArray,
        .default_value = json::array({"Program Files", "Program Files (x86)", "GOG Games", "Games"}),
        .doc = "Folders inside the prefix's drive_c where Mira looks for the installed game, when "
-              "the installer did not use the game folder."});
+              "the installer did not use the game folder. A * stands for any folder."});
 
   s.Add({.key = "install.inno_args",
          .label = "Inno Setup arguments",

@@ -8,6 +8,7 @@
 #include <QLocale>
 #include <QPushButton>
 #include <QToolButton>
+#include <algorithm>
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Games.h"
@@ -16,6 +17,7 @@
 #include "../widgets/FlatCombo.h"
 #include "../widgets/Labels.h"
 #include "CardParts.h"
+#include "LaunchOptionsEdit.h"
 
 namespace mira_gui {
 
@@ -166,6 +168,73 @@ InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game,
     });
   });
   buttons->addWidget(delete_);
+}
+
+ProgramsFoundCard::ProgramsFoundCard(const GameSummary& game, const ProgramsFoundEvent& event,
+                                     ArtworkStore* artwork, std::function<GameLaunch()> current,
+                                     QWidget* parent)
+    : SettingsCard(QString(), parent), game_id_(game.id), current_(std::move(current)) {
+  setFixedWidth(560);
+  AddGameCardHeading(this, game,
+                     QString::fromStdString(event.by) + " installed " +
+                         (event.programs.size() == 1 ? "a program" : "programs"),
+                     artwork, "Close", [this] { emit CloseRequested(); });
+  for (const ProgramsFoundEvent::Program& program : event.programs) {
+    auto* row = new SettingRow(QString::fromStdString(program.name), QString(), this);
+    auto* path = new QLabel(QString::fromStdString(program.exe), row);
+    path->setWordWrap(true);
+    path->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    path->setProperty("role", "subtle");
+    row->SetBelow(path);
+    auto* mode = new FlatCombo(row);
+    for (const auto& [id, text] : kLaunchModes) mode->addItem(text, QString(id));
+    mode->setCurrentIndex(mode->findData(QString("alongside")));
+    row->AddControl(mode);
+    auto* add = new QPushButton("Add", row);
+    add->setToolTip("Add it to " + QString::fromStdString(game.name) + "'s launch options");
+    connect(add, &QPushButton::clicked, this, [this, program, mode, add] {
+      // One at a time, since each saves the whole set.
+      for (QPushButton* button : adds_) button->setEnabled(false);
+      mode->setEnabled(false);
+      error_->hide();
+      // The game's options as they are now, with ones added here that it may not show yet.
+      GameLaunch launch = current_();
+      for (const LaunchOption& added : added_) {
+        if (std::ranges::none_of(launch.options, [&](const LaunchOption& option) {
+              return option.exe == added.exe;
+            }))
+          launch.options.push_back(added);
+      }
+      // mirad makes its id from the name.
+      const LaunchOption option{.name = program.name,
+                                .mode = mode->currentData().toString().toStdString(),
+                                .exe = program.exe};
+      launch.options.push_back(option);
+      GamePatch patch;
+      patch.launch = launch;
+      api::PatchGameAsync(this, game_id_, patch, [this, option, mode, add](PatchGameResult result) {
+        if (result.ok) {
+          added_.push_back(option);
+          add->setText("Added");
+        } else {
+          mode->setEnabled(true);
+          error_->setText("Could not add it: " + error_help::Describe(result.error));
+          error_->show();
+        }
+        for (QPushButton* button : adds_) button->setEnabled(button->text() != "Added");
+      });
+    });
+    adds_.push_back(add);
+    row->AddControl(add);
+    AddRow(row);
+  }
+  error_ = AddErrorLine(this);
+
+  QHBoxLayout* buttons = AddButtonRow(this);
+  auto* done = new QPushButton("Done", this);
+  done->setDefault(true);
+  connect(done, &QPushButton::clicked, this, &ProgramsFoundCard::CloseRequested);
+  buttons->addWidget(done);
 }
 
 }  // namespace mira_gui

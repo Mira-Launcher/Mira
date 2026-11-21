@@ -23,6 +23,7 @@
 #include "launchers/Launchers.h"
 #include "library/AutoInstall.h"
 #include "library/FolderTags.h"
+#include "library/LaunchOptions.h"
 #include "library/PrefixNaming.h"
 #include "library/Scanner.h"
 #include "library/ScriptPresets.h"
@@ -415,6 +416,38 @@ void Services::CheckForInstall(const std::string& game_id) {
   events.Publish("game.install_detected", {{"id", game_id},
                                            {"install_path", installed->dir.string()},
                                            {"exe_path", installed->exe_path}});
+}
+
+void Services::OfferNewPrograms(const std::string& game_id, const std::string& by,
+                                const std::set<std::filesystem::path>& before) {
+  const auto game = games.Find(game_id);
+  if (!game || game->data_dir.empty()) return;
+  // Real, as NewPrograms' paths are.
+  std::error_code ec;
+  std::filesystem::path prefix = std::filesystem::weakly_canonical(game->data_dir, ec);
+  if (ec) prefix = std::filesystem::path(game->data_dir).lexically_normal();
+  if (!prefix.has_filename()) prefix = prefix.parent_path();  // a trailing slash
+  // Ones the game already starts are left out.
+  const auto full = [&](const std::string& exe) {
+    return (std::filesystem::path(game->install_path) / exe).lexically_normal();
+  };
+  std::set<std::filesystem::path> known = {full(game->exe_path)};
+  for (const library::LaunchOption& option : library::LaunchOptions(*game))
+    known.insert(full(library::FillLaunchPlaceholders(option.exe, *game, false)));
+  json programs = json::array();
+  for (const library::InstalledApp& app : library::NewPrograms(config, prefix, before)) {
+    const std::filesystem::path exe = (app.dir / app.exe_path).lexically_normal();
+    if (known.contains(exe)) continue;
+    // In the prefix by {prefix}, so it still points there once the prefix moves.
+    const std::filesystem::path in_prefix = exe.lexically_relative(prefix);
+    programs.push_back({{"name", exe.stem().string()},
+                        {"exe", in_prefix.empty() || *in_prefix.begin() == ".."
+                                    ? exe.string()
+                                    : "{prefix}/" + in_prefix.string()}});
+  }
+  if (programs.empty()) return;
+  log::Info("{} installed {} program(s) into {}'s prefix", by, programs.size(), game_id);
+  events.Publish("game.programs_found", {{"id", game_id}, {"by", by}, {"programs", programs}});
 }
 
 Services::RecordSettings Services::CurrentRecordSettings() const {
