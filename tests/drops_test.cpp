@@ -53,6 +53,22 @@ TEST_CASE("drops: a ROM goes to the one emulator that runs it, and Mira asks whe
   fs::remove(mira / "Earthbound (Japan).sfc");
   drops.Forget(mira / "Earthbound (Japan).sfc");
 
+  // An installer in parts goes in one folder, whichever part is sorted first; .bin isn't a ROM
+  // here.
+  env.games.SaveSource({.id = "duckstation", .added = true});
+  test::Touch(mira / "setup_celeste_1.4.exe");
+  test::Touch(mira / "setup_celeste_1.4-1.bin");
+  drops.Sort(mira / "setup_celeste_1.4-1.bin");
+  CHECK(fs::exists(mira / "setup_celeste_1.4-1.bin"));
+  drops.Sort(mira / "setup_celeste_1.4.exe");
+  CHECK_FALSE(fs::exists(mira / "setup_celeste_1.4-1.bin"));
+  CHECK_FALSE(fs::exists(mira / "Celeste 1.4"));
+  bool together = false;
+  for (const auto& entry : fs::recursive_directory_iterator(mira))
+    if (entry.path().filename() == "setup_celeste_1.4-1.bin")
+      together = fs::exists(entry.path().parent_path() / "setup_celeste_1.4.exe");
+  CHECK(together);
+
   test::Touch(mira / "readme.txt");
   drops.Sort(mira / "readme.txt");
   CHECK(fs::exists(mira / "readme.txt"));
