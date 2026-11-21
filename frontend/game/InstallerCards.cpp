@@ -216,6 +216,9 @@ ProgramsFoundCard::ProgramsFoundCard(const GameSummary& game, const ProgramsFoun
         if (result.ok) {
           added_.push_back(option);
           add->setText("Added");
+          // Nothing left to add: done.
+          if (std::ranges::all_of(adds_, [](QPushButton* b) { return b->text() == "Added"; }))
+            return emit CloseRequested();
         } else {
           mode->setEnabled(true);
           error_->setText("Could not add it: " + error_help::Describe(result.error));

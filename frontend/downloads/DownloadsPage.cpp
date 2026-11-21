@@ -125,6 +125,8 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
     connect(section.list, &DownloadList::ShowGameRequested, this,
             &DownloadsPage::ShowGameRequested);
     connect(section.list, &DownloadList::LogRequested, this, &DownloadsPage::LogRequested);
+    // A row's fix opens something else (Settings, a runner): the page makes way for it.
+    connect(section.list, &DownloadList::Leaving, this, &DownloadsPage::CloseRequested);
     connect(section.list, &DownloadList::LinkAction, this,
             [this](const QString& id, const QString& action) {
               links_->Act(id.toStdString(), action.toStdString());
@@ -137,7 +139,7 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
     connect(section.list, &DownloadList::LinkRemoveRequested, this, [this](const QString& id) {
       const DownloadInfo* download = links_->Find(id.toStdString());
       if (download != nullptr && download->state != "done" &&
-          !notify::Confirm(this, "Cancel this download?", "What it downloaded so far is deleted.",
+          !notify::Confirm(this, "Cancel this download?", "What it downloaded so far is deleted",
                            "Cancel download"))
         return;
       links_->Remove(id.toStdString());
@@ -147,7 +149,15 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
   };
   add_section("Needs you", NeedsUser);
   add_section("Downloading and installing", InProgress);
-  add_section("Waiting", Waiting);
+  // In the order they'll start, so Move ahead shows.
+  DownloadList* waiting = add_section("Waiting", Waiting).list;
+  waiting->SetOrder([this](const Entry& entry) {
+    const auto& list = links_->Downloads();
+    const auto found = std::ranges::find(list, entry.ref.toStdString(), &DownloadInfo::id);
+    return entry.kind == DownloadTracker::Kind::Link && found != list.end()
+               ? static_cast<int>(found - list.begin())
+               : static_cast<int>(list.size());
+  });
   Section& finished =
       add_section("Finished", [](const Entry& entry) { return entry.state == State::Finished; });
   auto* clear = new QPushButton("Clear", finished.card);
@@ -162,6 +172,11 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
   outer->addWidget(scroll, /*stretch=*/1);
 
   connect(tracker_, &DownloadTracker::Changed, this, &DownloadsPage::UpdateHeader);
+  // The whole list read again: Waiting's order may have changed. Only it, so a password being
+  // typed in Needs you keeps its box.
+  connect(links_, &LinkDownloads::Changed, waiting, [waiting](const QString& id) {
+    if (id.isEmpty()) waiting->Rebuild();
+  });
   links_->SeenFailures();
   for (Section& section : sections_) section.list->Rebuild();
 }
@@ -203,7 +218,7 @@ void DownloadsPage::UpdateHeader() {
 void DownloadsPage::EditPasswords() {
   api::GetDownloadPasswordsAsync(this, [this](DownloadPasswordsResult result) {
     if (!result.ok)
-      return notify::FailedRequest(this, "Could not read the saved passwords.", result.error);
+      return notify::FailedRequest(this, "Could not read the saved passwords", result.error);
     PopupDialog dialog(this, notify::Level::Info, "Saved passwords");
     dialog.SetMessage("Tried on every encrypted archive, most recently working first.");
     dialog.SetWidth(460);
@@ -218,7 +233,7 @@ void DownloadsPage::EditPasswords() {
     std::vector<std::string> edited;
     for (const QString& item : list->Items()) edited.push_back(item.toStdString());
     api::SetDownloadPasswordsAsync(this, edited, [this](StoreActionResult saved) {
-      if (!saved.ok) notify::FailedRequest(this, "Could not save the passwords.", saved.error);
+      if (!saved.ok) notify::FailedRequest(this, "Could not save the passwords", saved.error);
     });
   });
 }

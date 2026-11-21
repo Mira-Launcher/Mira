@@ -28,6 +28,8 @@ class DownloadList : public QWidget {
 
   // Which entries this list shows; all of them when unset.
   void SetFilter(std::function<bool(const DownloadTracker::Entry&)> filter);
+  // Rows by this rank, lowest first; unset keeps the tracker's order (newest first).
+  void SetOrder(std::function<int(const DownloadTracker::Entry&)> rank);
   void Rebuild();
   int Count() const { return count_; }
   // The rows' height at `width`, up to `rows` of them.
@@ -58,6 +60,7 @@ class DownloadList : public QWidget {
   ArtworkStore* artwork_;
   Style style_;
   std::function<bool(const DownloadTracker::Entry&)> filter_;
+  std::function<int(const DownloadTracker::Entry&)> rank_;
   QVBoxLayout* rows_ = nullptr;
   int count_ = 0;
   std::map<QString, QString> typed_;  // a password half typed, by link id, across rebuilds

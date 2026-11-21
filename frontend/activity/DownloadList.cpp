@@ -127,6 +127,10 @@ void DownloadList::SetFilter(std::function<bool(const DownloadTracker::Entry&)> 
   filter_ = std::move(filter);
 }
 
+void DownloadList::SetOrder(std::function<int(const DownloadTracker::Entry&)> rank) {
+  rank_ = std::move(rank);
+}
+
 void DownloadList::Rebuild() {
   while (QLayoutItem* item = rows_->takeAt(0)) {
     // Deferred: a row's own button click may be what led here.
@@ -137,9 +141,14 @@ void DownloadList::Rebuild() {
     delete item;
   }
   count_ = 0;
+  std::vector<const DownloadTracker::Entry*> shown;
   for (const DownloadTracker::Entry& entry : tracker_->Entries()) {
-    if (filter_ && !filter_(entry)) continue;
-    rows_->addWidget(BuildRow(entry, count_ == 0));
+    if (!filter_ || filter_(entry)) shown.push_back(&entry);
+  }
+  if (rank_)
+    std::ranges::stable_sort(shown, {}, [this](const auto* entry) { return rank_(*entry); });
+  for (const DownloadTracker::Entry* entry : shown) {
+    rows_->addWidget(BuildRow(*entry, count_ == 0));
     ++count_;
   }
   emit Rebuilt();
@@ -314,7 +323,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
                     this, source, ref, [this, pause = QPointer(pause)](StoreActionResult result) {
                       if (result.ok) return;
                       if (pause) pause->setEnabled(true);
-                      notify::FailedRequest(this, "Could not pause it.", result.error);
+                      notify::FailedRequest(this, "Could not pause it", result.error);
                     });
               });
       actions->addWidget(pause);
@@ -326,7 +335,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
       jobs::Cancel(this, job.toStdString(), [this, cancel = QPointer(cancel)](ApiError error) {
         if (error.message.empty()) return;
         if (cancel) cancel->setEnabled(true);
-        notify::FailedRequest(this, "Could not cancel it.", error);
+        notify::FailedRequest(this, "Could not cancel it", error);
       });
     });
     actions->addWidget(cancel);
@@ -343,7 +352,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
                   [this, resume = QPointer(resume)](StoreActionResult result) {
                     if (result.ok) return;
                     if (resume) resume->setEnabled(true);
-                    notify::FailedRequest(this, "Could not resume it.", result.error);
+                    notify::FailedRequest(this, "Could not resume it", result.error);
                   });
             });
     actions->addWidget(resume);
@@ -355,7 +364,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
           this, source, ref, [this, discard = QPointer(discard)](StoreActionResult result) {
             if (result.ok) return;
             if (discard) discard->setEnabled(true);
-            notify::FailedRequest(this, "Could not cancel it.", result.error);
+            notify::FailedRequest(this, "Could not cancel it", result.error);
           });
     });
     actions->addWidget(discard);
@@ -392,12 +401,13 @@ void DownloadList::AddLinkActions(const DownloadTracker::Entry& entry, QWidget* 
     connect(button, &QPushButton::clicked, this, [this, id, name] { emit LinkAction(id, name); });
     actions->addWidget(button);
   };
-  if (state == "downloading" || state == "queued" || state == "service" || state == "retrying")
-    action("Pause", "pause");
+  // The way forward first, Pause after it, Cancel last.
   if (state == "paused") action("Resume", "resume");
   if (state == "failed") action("Retry", "retry");
   if (state == "retrying") action("Try now", "retry");
   if (full && state == "queued") action("Move ahead", "front");
+  if (state == "downloading" || state == "queued" || state == "service" || state == "retrying")
+    action("Pause", "pause");
   if (state == "password" && !full) {
     auto* enter = new QPushButton("Enter password", row);
     connect(enter, &QPushButton::clicked, this, [this, id] {
@@ -428,7 +438,10 @@ void DownloadList::AddLinkActions(const DownloadTracker::Entry& entry, QWidget* 
   }
   if (full && state != "extracting") {
     auto* remove = new QPushButton(state == "done" ? "Clear" : "Cancel", row);
-    connect(remove, &QPushButton::clicked, this, [this, id] { emit LinkRemoveRequested(id); });
+    connect(remove, &QPushButton::clicked, this, [this, id] {
+      typed_.erase(id);  // a password typed for it isn't kept
+      emit LinkRemoveRequested(id);
+    });
     actions->addWidget(remove);
   }
 }

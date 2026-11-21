@@ -483,15 +483,15 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
   auto* add_only = new QPushButton("Add without installing", page);
   add_only->setToolTip("Add it as needing install, and install it later");
   buttons->addWidget(add_only);
-  auto* quiet = new QPushButton("Install quietly", page);
-  quiet->setToolTip("Run the installer in the background without its window");
-  KeepSpaceWhenHidden(quiet);
-  quiet->setVisible(info.ok && info.silent);
-  buttons->addWidget(quiet);
+  // The usual way last, where the default button goes.
   auto* shown = new QPushButton("Show the installer", page);
   shown->setToolTip("Open the installer's window and click through it yourself");
   shown->setEnabled(info.ok);
   buttons->addWidget(shown);
+  auto* quiet = new QPushButton("Install quietly", page);
+  quiet->setToolTip("Run the installer in the background without its window");
+  quiet->setVisible(info.ok && info.silent);
+  buttons->addWidget(quiet);
   (info.ok && info.silent ? quiet : shown)->setDefault(true);
 
   const auto refresh = [name, heading, add_only, quiet, shown, ok = info.ok] {
