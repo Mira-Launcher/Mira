@@ -892,7 +892,7 @@ Schema::Schema() {
          .label = "Download a runner when none is installed",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "When Mira starts with no Wine or Proton runner, download the newest GE-Proton."});
+         .doc = "When Mira starts with no Wine or Proton runner, download the newest UMU-Proton."});
 
   s.Add({.key = "runner_scan_common_dirs",
          .label = "Scan common runner folders",

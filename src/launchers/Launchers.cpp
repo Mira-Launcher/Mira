@@ -506,9 +506,9 @@ Result<std::string> AppRunner(config::Config& config, const Launcher& launcher) 
   const std::size_t colon = ref.find(':');
   const std::string kind = ref.substr(0, colon);
   const std::string tag = ref.substr(colon + 1);
-  const auto family = runner::FamilyFor(config, kind, "");
+  const auto family = runner::FamilyFor(config, kind, "", tag);
   if (!family) return std::unexpected(family.error());
-  const auto releases = runner::ListFamilyReleases(*family);
+  const auto releases = runner::ListFamilyReleases(*family, /*every=*/true);
   if (!releases) return std::unexpected(releases.error());
   const auto match = std::ranges::find(*releases, tag, &runner::ReleaseAsset::tag);
   if (match == releases->end()) {

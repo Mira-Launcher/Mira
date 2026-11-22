@@ -509,7 +509,7 @@ TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked g
   std::ofstream(runner::BundledUmuRun()).close();
   const fs::path dir = env.dir / "proton";
   REQUIRE(env.config.Set("runner_search_paths", nlohmann::json::array({dir.string()})));
-  FakeProton(dir, "GE-Proton11-1", 1800000000);
+  FakeProton(dir, "UMU-Proton-10.0", 1800000000);
 
   model::Game game;
   game.id = "gog-aow";
@@ -518,24 +518,24 @@ TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked g
   game.source_ref = "1207658883";
   game.platform = model::Platform::Windows;
   game.data_dir = (env.dir / "prefix").string();
-  game.runner_ref = "proton:GE-Proton11-1";
+  game.runner_ref = "proton:UMU-Proton-10.0";
   game.runner_config[runner::kAutoPicked] = true;
   CHECK_FALSE(runner::RunnerRegistry(env.config).BetterAutoPick(game));
 
-  FakeProton(dir, "UMU-Proton-9.0", 1700000000, "gamefixes-gog/umu-61500.py");
+  FakeProton(dir, "GE-Proton9-1", 1700000000, "gamefixes-gog/umu-61500.py");
   const runner::RunnerRegistry registry(env.config);
   const auto resolved = registry.Resolve("proton:auto", &game);
   REQUIRE(resolved);
-  CHECK(resolved->build->name == "UMU-Proton-9.0");
-  CHECK(registry.Resolve("proton:auto")->build->name == "GE-Proton11-1");
+  CHECK(resolved->build->name == "GE-Proton9-1");
+  CHECK(registry.Resolve("proton:auto")->build->name == "UMU-Proton-10.0");
   const auto better = registry.BetterAutoPick(game);
   REQUIRE(better);
-  CHECK(better->name == "UMU-Proton-9.0");
+  CHECK(better->name == "GE-Proton9-1");
 
   // Chosen by hand: kept.
-  game.runner_ref = "proton:UMU-Proton-9.0";
+  game.runner_ref = "proton:GE-Proton9-1";
   const model::Game picked =
-      library::ParseGamePatch(game, {{"runner_ref", "proton:GE-Proton11-1"}});
+      library::ParseGamePatch(game, {{"runner_ref", "proton:UMU-Proton-10.0"}});
   CHECK_FALSE(picked.runner_config.contains(runner::kAutoPicked));
   CHECK_FALSE(registry.BetterAutoPick(picked));
 }

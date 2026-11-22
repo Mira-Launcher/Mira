@@ -19,9 +19,9 @@ std::filesystem::path BuildDir(const model::RunnerBuild& build);
 std::vector<std::filesystem::path> RunnerRoots(const config::Config& config,
                                                const std::string& kind);
 
-// `source`, or the kind's preferred source when empty.
+// `source`, or when empty the one whose builds `tag` is named like, else the kind's preferred one.
 Result<RunnerFamily> FamilyFor(const config::Config& config, const std::string& kind,
-                               const std::string& source);
+                               const std::string& source, const std::string& tag = "");
 
 std::vector<model::RunnerBuild> BuildsOfKind(const RunnerRegistry& registry,
                                              const std::string& kind);
