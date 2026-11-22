@@ -180,6 +180,7 @@ int main(int argc, char** argv) {
   // not wait on that to connect. Scans and the watcher serialize on
   // GameStore::LockFolders.
   mira::library::SetUpDrives(config, games);
+  services.display.RestoreLeftover();
   mira::library::CreateMissingRoots(config);
   std::thread startup_scan_thread([&] {
     // A client's scan asked for meanwhile waits for this one rather than scanning again.

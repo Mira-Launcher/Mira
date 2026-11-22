@@ -77,4 +77,7 @@ void GetSystemPackagesAsync(QObject* context, const std::string& feature,
 // and reachable. Purely a status check; see GameModeStatusResult.
 void GetGameModeStatusAsync(QObject* context, std::function<void(GameModeStatusResult)> callback);
 
+// GET /v1/display: the primary monitor's modes and whether it can do HDR.
+void GetDisplayAsync(QObject* context, std::function<void(DisplayResult)> callback);
+
 }  // namespace mira_gui::api

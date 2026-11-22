@@ -1117,6 +1117,26 @@ Schema::Schema() {
            "match it too.",
        .applies = {.platforms = {"windows"}}});
 
+  s.Add({.key = "display.hdr",
+         .label = "HDR",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "Turns HDR on for the primary monitor while the game runs and off again after, "
+                "and has Proton pass the game's HDR through. Needs Plasma on Wayland and an HDR "
+                "monitor, and the game's own HDR option turned on.",
+         .keywords = "high dynamic range display monitor"});
+
+  s.Add({.key = "display.resolution",
+         .label = "Resolution",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::PerGame,
+         .doc = "Switches the primary monitor to one of its modes while the game runs, and back "
+                "after. Set by hand, it is WIDTHxHEIGHT or WIDTHxHEIGHT@HZ, for example "
+                "\"1920x1080@120\". Needs Plasma on Wayland.",
+         .keywords = "display monitor refresh rate mode"});
+
   s.Group("Scripts");
   s.ResetTogether();
 

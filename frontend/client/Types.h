@@ -1371,6 +1371,16 @@ struct GameModeStatusResult {
   bool daemon_running = false;
 };
 
+// GET /v1/display: the primary monitor, for a game's HDR and resolution settings.
+struct DisplayResult {
+  bool ok = false;
+  ApiError error;
+  bool supported = false;          // Plasma on Wayland with a monitor found
+  std::string output;              // "DP-3"
+  bool hdr = false;                // it can do HDR
+  std::vector<std::string> modes;  // "2560x1440@165", largest and fastest first
+};
+
 // POST /v1/games/{id}/tricks: 202, so this only means "accepted". The
 // outcome arrives as a tricks.started/.finished/.failed event.
 struct TricksResult {

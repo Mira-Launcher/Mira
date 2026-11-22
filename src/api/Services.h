@@ -20,6 +20,7 @@
 #include "config/Config.h"
 #include "core/Lane.h"
 #include "core/Result.h"
+#include "display/Display.h"
 #include "downloads/Queue.h"
 #include "library/Catalog.h"
 #include "library/Drops.h"
@@ -91,6 +92,7 @@ class Services {
   library::CatalogCache catalogs;
   Lane catalog_checks{"catalog-checks", 2};  // after `catalogs`, so its tasks stop first
   downloads::Queue downloads{config, games, events};
+  display::Switcher display{games};
   // Folders scans found that could be any of several games moved by hand.
   library::UnclearMoves unclear_moves{events};
   // What was dropped into a Mira folder that Mira couldn't sort itself.

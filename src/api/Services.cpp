@@ -102,6 +102,7 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     return FilterEvent(type, payload, live);
   });
   supervisor.SetExitHook([this](const std::string& id) {
+    display.Stop(id);
     {
       std::vector<std::filesystem::path> files;
       {
