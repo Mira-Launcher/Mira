@@ -1192,6 +1192,17 @@ Schema::Schema() {
                 "\"1920x1080@120\". Needs Plasma on Wayland.",
          .keywords = "display monitor refresh rate mode"});
 
+  s.Add({.key = "launch.proton_wayland",
+         .label = "Native Wayland",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "On a Wayland desktop, Proton draws the game through its own Wayland driver "
+                "instead of XWayland. Turn off for a game whose launcher, overlay or mouse "
+                "capture misbehaves with it. HDR always uses it.",
+         .keywords = "wayland xwayland x11 proton display",
+         .applies = {.platforms = {"windows"}}});
+
   s.Add({.key = "launch.gpu",
          .label = "GPU",
          .type = Type::String,

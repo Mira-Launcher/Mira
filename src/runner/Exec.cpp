@@ -176,6 +176,12 @@ Result<pid_t> ForkWithPipe(int pipe_fds[2]) {
 
 }  // namespace
 
+bool OnWayland() {
+  if (std::getenv("WAYLAND_DISPLAY") != nullptr) return true;
+  return std::ranges::any_of(
+      SessionEnv(), [](const std::string& entry) { return entry.starts_with("WAYLAND_DISPLAY="); });
+}
+
 Result<pid_t> SpawnDetached(const Command& command, int output_fd) {
   if (command.argv.empty()) return Err("exec_empty_argv", "no command to run");
   PreparedCommand prepared = Prepare(command);
