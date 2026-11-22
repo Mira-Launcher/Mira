@@ -5,13 +5,13 @@
 #include <QWidget>
 #include <vector>
 
-class QPushButton;
-
 namespace mira_gui {
 
-// A list setting whose items are picked from a few fixed choices, as a row of chips that each
-// turn one choice on or off.
-class ChipToggles : public QWidget {
+class Chip;
+
+// A list setting whose items are picked from a few fixed choices, as a row of Chips that each turn
+// one choice on or off.
+class ChipGroup : public QWidget {
   Q_OBJECT
 
  public:
@@ -22,7 +22,7 @@ class ChipToggles : public QWidget {
     QString pair;  // the choice in another list that goes with this one
     bool needs_pair = false;
   };
-  explicit ChipToggles(QWidget* parent = nullptr);
+  explicit ChipGroup(QWidget* parent = nullptr);
 
   void SetChoices(std::vector<Choice> choices);
   const std::vector<Choice>& Choices() const { return choices_; }
@@ -40,7 +40,7 @@ class ChipToggles : public QWidget {
 
  private:
   std::vector<Choice> choices_;
-  std::vector<QPushButton*> chips_;
+  std::vector<Chip*> chips_;
   QStringList unknown_;  // values no choice offers, kept so saving doesn't drop them
 };
 

@@ -18,6 +18,7 @@
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Runners.h"
+#include "../components/Badge.h"
 #include "../components/Button.h"
 #include "../components/Card.h"
 #include "../components/FlatCombo.h"
@@ -317,9 +318,7 @@ void RunnersPage::RebuildInstalled() {
 
     auto* row = new SettingRow(QString::fromStdString(runner.label), {});
     if (is_default) {
-      auto* badge = new QLabel("Default", row);
-      badge->setObjectName("default_tag");
-      row->AddAfterLabel(badge);
+      row->AddAfterLabel(new Badge("Default", Tone::Accent, row));
     }
 
     QStringList facts;

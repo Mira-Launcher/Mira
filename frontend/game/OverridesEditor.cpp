@@ -11,7 +11,7 @@
 #include "../client/api/Games.h"
 #include "../client/api/Runners.h"
 #include "../components/Card.h"
-#include "../components/ChipToggles.h"
+#include "../components/ChipGroup.h"
 #include "../components/ListEdit.h"
 #include "../components/SettingRow.h"
 #include "../components/Text.h"

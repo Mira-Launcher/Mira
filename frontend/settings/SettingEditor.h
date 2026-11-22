@@ -14,7 +14,7 @@ class QWidget;
 
 namespace mira_gui {
 
-class ChipToggles;
+class ChipGroup;
 class ListEdit;
 class Segmented;
 class SettingRow;
@@ -31,7 +31,7 @@ struct SettingEditor {
   QComboBox* combo = nullptr;      // set instead of `line` for a runner key or a schema enum
   QDoubleSpinBox* spin = nullptr;  // set instead of `line` for a bounded number
   ListEdit* list = nullptr;        // set instead of `line` for an array
-  ChipToggles* chips = nullptr;    // set instead of `list` for an array picked from choices
+  ChipGroup* chips = nullptr;      // set instead of `list` for an array picked from choices
   Segmented* segments = nullptr;   // set instead of `combo` for an enum of two or three
   SettingRow* row = nullptr;
   // A secret's button that drops the one mirad holds and doesn't send (kSecretSaved). Whether one

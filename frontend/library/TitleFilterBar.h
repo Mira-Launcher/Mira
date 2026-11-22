@@ -13,7 +13,7 @@ class QPushButton;
 
 namespace mira_gui {
 
-class DropdownButton;
+class Chip;
 
 // The Library's Not installed tab's filters: Store, ProtonDB and Steam reviews as dropdowns that
 // each pick any number of values, and the sort.
@@ -47,10 +47,10 @@ class TitleFilterBar : public QWidget {
   TitleFilter filter_;
   Sort sort_ = Sort::StoreOrder;
   std::vector<QAction*> sort_actions_;  // in Sort's order
-  DropdownButton* store_ = nullptr;
-  DropdownButton* tier_ = nullptr;
-  DropdownButton* review_ = nullptr;
-  DropdownButton* sort_button_ = nullptr;
+  Chip* store_ = nullptr;
+  Chip* tier_ = nullptr;
+  Chip* review_ = nullptr;
+  Chip* sort_button_ = nullptr;
   QPushButton* clear_ = nullptr;
   QMenu* store_menu_ = nullptr;
   std::vector<QString> stores_;

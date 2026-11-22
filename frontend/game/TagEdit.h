@@ -6,11 +6,12 @@
 #include <string>
 #include <vector>
 
-class QFrame;
 class QLineEdit;
 class QPushButton;
 
 namespace mira_gui {
+
+class Chip;
 
 // A game's tags as chips, each with its own remove button, then "Add tag",
 // which turns into a field for a new one. The chips wrap onto more lines and
@@ -61,10 +62,9 @@ class TagEdit : public QWidget {
   std::vector<std::string> order_;
   std::optional<std::vector<std::string>> folder_tags_;
   std::string pick_;
-  QList<QFrame*> chips_;
+  QList<Chip*> chips_;
   QPushButton* add_ = nullptr;
   QLineEdit* input_ = nullptr;
-  QFrame* pressed_ = nullptr;  // a press on a chip, until its release makes it a click
 };
 
 }  // namespace mira_gui

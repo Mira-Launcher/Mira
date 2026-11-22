@@ -18,10 +18,6 @@ QLabel* MakeLabel(QWidget* parent, const QString& text, TextStyle style = text::
 // A small caps-style group heading ("PINNED", "SORT") in the muted color.
 QLabel* MakeGroupHeading(QWidget* parent, const QString& text);
 
-// A small outlined pill beside a name: "Beta", "Not checked". `tone` colors it: "accent",
-// "warning", or muted.
-QLabel* MakeTag(QWidget* parent, const QString& text, const char* tone = nullptr);
-
 // A 1 px line in the theme's border color, following theme changes.
 // `length` fixes its long side; 0 lets the layout stretch it.
 QWidget* MakeDivider(QWidget* parent, Qt::Orientation orientation, int length = 0);

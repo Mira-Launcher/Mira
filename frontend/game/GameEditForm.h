@@ -11,6 +11,8 @@
 #include "../client/Types.h"
 
 namespace mira_gui {
+
+class Badge;
 class ExpanderRow;
 class LaunchOptionsEdit;
 class OverridesEditor;
@@ -120,7 +122,7 @@ class GameEditForm : public QWidget {
   bool stale_ = false;  // the game changed elsewhere while there were edits; Discard loads it again
 
   QLabel* last_error_label_ = nullptr;
-  QLabel* check_tag_ = nullptr;
+  Badge* check_tag_ = nullptr;
   QPushButton* looks_right_ = nullptr;
   QLineEdit* install_path_edit_ = nullptr;
   QPushButton* open_install_ = nullptr;

@@ -9,8 +9,8 @@
 #include <array>
 
 #include "../components/Button.h"
+#include "../components/Chip.h"
 #include "../components/Labels.h"
-#include "../components/TabRow.h"
 #include "../sources/Sources.h"
 
 namespace mira_gui {
@@ -32,9 +32,9 @@ class StayOpenMenu : public QMenu {
   }
 };
 
-DropdownButton* Dropdown(QWidget* parent, QMenu* menu) {
-  auto* button = new DropdownButton(menu, parent);
-  button->setObjectName("chip");
+Chip* Dropdown(QWidget* parent, QMenu* menu) {
+  auto* button = new Chip(QString(), parent);
+  button->SetMenu(menu);
   return button;
 }
 
@@ -201,7 +201,7 @@ void TitleFilterBar::SetSortKey(const std::string& key) {
 }
 
 void TitleFilterBar::Clear() {
-  for (DropdownButton* button : {store_, tier_, review_}) {
+  for (Chip* button : {store_, tier_, review_}) {
     for (QAction* action : button->Menu()->actions()) {
       const QSignalBlocker block(action);
       action->setChecked(false);

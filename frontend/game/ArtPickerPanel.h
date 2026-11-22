@@ -30,6 +30,8 @@ class QVariantAnimation;
 
 namespace mira_gui {
 
+class Chip;
+
 class FlowLayout;
 class TabRow;
 
@@ -193,7 +195,7 @@ class ArtPickerPanel : public QWidget {
   QPushButton* none_button_ = nullptr;
   QPushButton* url_button_ = nullptr;
   QLineEdit* url_field_ = nullptr;
-  QPushButton* adult_chip_ = nullptr;
+  Chip* adult_chip_ = nullptr;
   QNetworkAccessManager* network_ = nullptr;
   // Drives the pulse drawn on previews still loading.
   QVariantAnimation* pulse_ = nullptr;

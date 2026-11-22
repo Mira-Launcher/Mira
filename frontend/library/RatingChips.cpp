@@ -1,36 +1,14 @@
 #include "RatingChips.h"
 
 #include <QGridLayout>
-#include <QGuiApplication>
-#include <QPainter>
-#include <QPixmap>
-#include <QPushButton>
 
+#include "../components/Chip.h"
 #include "../components/FlowLayout.h"
 #include "../components/Labels.h"
 #include "GamePresentation.h"
 
 namespace mira_gui {
-namespace {
-
-QIcon Swatch(const QColor& color) {
-  const qreal ratio = qApp->devicePixelRatio();
-  QPixmap pixmap(QSize(9, 9) * ratio);
-  pixmap.setDevicePixelRatio(ratio);
-  pixmap.fill(Qt::transparent);
-  QPainter painter(&pixmap);
-  painter.setRenderHint(QPainter::Antialiasing);
-  painter.setPen(Qt::NoPen);
-  painter.setBrush(color);
-  painter.drawEllipse(QRectF(0, 0, 9, 9));
-  return QIcon(pixmap);
-}
-
-QString ChipText(const QString& name, int count) {
-  return QString("%1  %2").arg(name).arg(count);
-}
-
-}  // namespace
+namespace {}  // namespace
 
 RatingChips::RatingChips(QWidget* parent) : QWidget(parent) {
   auto* grid = new QGridLayout(this);
@@ -50,27 +28,28 @@ RatingChips::RatingChips(QWidget* parent) : QWidget(parent) {
     return chips;
   };
   const auto chip = [this](QWidget* row_widget) {
-    auto* button = new QPushButton(row_widget);
-    button->setObjectName("chip");
+    auto* button = new Chip(QString(), row_widget);
     button->setCheckable(true);
-    button->setIconSize(QSize(9, 9));
     row_widget->layout()->addWidget(button);
-    connect(button, &QPushButton::toggled, this, &RatingChips::Toggle);
+    connect(button, &Chip::toggled, this, &RatingChips::Toggle);
     return button;
   };
 
   QWidget* tiers =
       row(0, "ProtonDB", "How well each game runs through Proton, from ProtonDB's reports.");
   for (const char* tier : kProtonDbFilterTiers) {
-    QPushButton* button = chip(tiers);
-    button->setIcon(Swatch(*tier == '\0' ? QColor("#4a4f5a") : ProtonDbTierColor(tier)));
+    Chip* button = chip(tiers);
+    if (*tier != '\0') button->SetTint(ProtonDbTierColor(tier));
     tier_chips_[tier] = button;
   }
   QWidget* reviews =
       row(1, "Steam reviews",
           "Steam's user reviews. Games from other stores use the Steam game of the same name while "
           "matching by name is on.");
-  for (const ReviewBucket bucket : kReviewBuckets) review_chips_[bucket] = chip(reviews);
+  for (const ReviewBucket bucket : kReviewBuckets) {
+    review_chips_[bucket] = chip(reviews);
+    review_chips_[bucket]->SetTint(ReviewBucketColor(bucket));
+  }
   SetTitles({});
 }
 
@@ -81,10 +60,14 @@ void RatingChips::SetTitles(const std::vector<Title>& titles) {
     ++tiers[ProtonDbFilterTier(title.protondb_tier)];
     ++reviews[ReviewBucketOf(title.review_summary)];
   }
-  for (const auto& [tier, button] : tier_chips_)
-    button->setText(ChipText(ProtonDbTierName(tier), tiers[tier]));
-  for (const auto& [bucket, button] : review_chips_)
-    button->setText(ChipText(ReviewBucketName(bucket), reviews[bucket]));
+  for (const auto& [tier, button] : tier_chips_) {
+    button->setText(ProtonDbTierName(tier));
+    button->SetCount(tiers[tier]);
+  }
+  for (const auto& [bucket, button] : review_chips_) {
+    button->setText(ReviewBucketName(bucket));
+    button->SetCount(reviews[bucket]);
+  }
 }
 
 void RatingChips::Clear() {

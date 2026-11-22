@@ -41,6 +41,7 @@
 #include "../client/EventHub.h"
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
+#include "../components/Chip.h"
 #include "../components/FlowLayout.h"
 #include "../components/TabRow.h"
 #include "../components/Text.h"
@@ -293,12 +294,10 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   chips_ = new QButtonGroup(this);
   chips_->setExclusive(true);
   // Narrows any style down to what SteamGridDB marks adult.
-  adult_chip_ = new QPushButton(chips);
-  adult_chip_->setObjectName("chip");
+  adult_chip_ = new Chip("Adult", chips);
   adult_chip_->setCheckable(true);
-  adult_chip_->setCursor(Qt::PointingHandCursor);
   adult_chip_->hide();
-  connect(adult_chip_, &QPushButton::toggled, this, [this](bool checked) {
+  connect(adult_chip_, &Chip::toggled, this, [this](bool checked) {
     adult_only_ = checked;
     ApplyFilter(filter_, filter_style_);
   });
@@ -853,16 +852,16 @@ void ArtPickerPanel::RebuildChips() {
     return;
   }
   // Art from elsewhere is counted here; SteamGridDB's own list from its counts, when they came.
-  struct Chip {
+  struct StyleCount {
     QString label;
     std::string style;  // SteamGridDB's, for its pages
     int count = 0;
   };
-  std::vector<Chip> styles;
+  std::vector<StyleCount> styles;
   for (const ArtCandidate& candidate : candidates_) {
     if (counts_known_ && !IsLocal(candidate)) continue;
     const QString label = StyleLabel(candidate);
-    auto found = std::ranges::find(styles, label, &Chip::label);
+    auto found = std::ranges::find(styles, label, &StyleCount::label);
     if (found == styles.end()) {
       styles.push_back({label, {}, 1});
     } else {
@@ -874,22 +873,20 @@ void ArtPickerPanel::RebuildChips() {
   const int adult = counts_known_
                         ? adult_count_
                         : static_cast<int>(std::ranges::count_if(candidates_, &ArtCandidate::nsfw));
-  adult_chip_->setText(QString("Adult  %1").arg(adult));
+  adult_chip_->SetCount(adult);
   adult_chip_->setVisible(adult > 0);
   if (adult == 0 && adult_only_) adult_chip_->setChecked(false);  // shows the rest again
   // One style is nothing to filter by.
   if (styles.size() < 2) return;
   int all = 0;
-  for (const Chip& chip : styles) all += chip.count;
+  for (const StyleCount& style : styles) all += style.count;
   styles.insert(styles.begin(), {QString(), {}, all});
   for (const auto& [label, style, count] : styles) {
-    auto* chip = new QPushButton(QString("%1  %2").arg(label.isEmpty() ? "All" : label).arg(count),
-                                 adult_chip_->parentWidget());
-    chip->setObjectName("chip");
+    auto* chip = new Chip(label.isEmpty() ? "All" : label, adult_chip_->parentWidget());
+    chip->SetCount(count);
     chip->setCheckable(true);
     chip->setChecked(label == filter_);
-    chip->setCursor(Qt::PointingHandCursor);
-    connect(chip, &QPushButton::clicked, this, [this, label, style] { ApplyFilter(label, style); });
+    connect(chip, &Chip::clicked, this, [this, label, style] { ApplyFilter(label, style); });
     chips_->addButton(chip);
     chips_layout_->addWidget(chip);
   }

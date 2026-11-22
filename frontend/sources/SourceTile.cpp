@@ -6,6 +6,7 @@
 #include <QStyle>
 #include <QVBoxLayout>
 
+#include "../components/Badge.h"
 #include "../components/Labels.h"
 
 namespace mira_gui {
@@ -36,8 +37,8 @@ SourceTile::SourceTile(const SourceInfo& source, QWidget* parent)
     auto* name_row = new QHBoxLayout();
     name_row->setSpacing(6);
     name_row->addWidget(name_, 0);
-    QLabel* tag =
-        source.beta ? MakeTag(this, "Beta", "accent") : MakeTag(this, "Recommended", "success");
+    auto* tag = source.beta ? new Badge("Beta", Tone::Accent, this)
+                            : new Badge("Recommended", Tone::Success, this);
     tag->setToolTip(source.beta ? "Works, but not everything does yet"
                                 : "The best pick for its consoles");
     name_row->addWidget(tag, 0, Qt::AlignVCenter);

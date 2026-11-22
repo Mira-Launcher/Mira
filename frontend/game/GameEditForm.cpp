@@ -29,6 +29,7 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../client/api/Runners.h"
+#include "../components/Badge.h"
 #include "../components/Card.h"
 #include "../components/FlatCombo.h"
 #include "../components/Labels.h"
@@ -116,7 +117,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   auto* browse = new QPushButton("Browse…", this);
   connect(browse, &QPushButton::clicked, this, &GameEditForm::BrowseExecutable);
   // Shown while mirad wants its pick confirmed; saving any change confirms it too.
-  check_tag_ = MakeTag(this, "Not checked", "warning");
+  check_tag_ = new Badge("Not checked", Tone::Warning, this);
   check_tag_->setToolTip("Mira wasn't sure which program starts this game");
   check_tag_->hide();
   looks_right_ = new QPushButton("Looks right", this);

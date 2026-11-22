@@ -12,6 +12,7 @@
 #include "../client/api/Artwork.h"
 #include "../client/api/Games.h"
 #include "../client/api/Runners.h"
+#include "../components/paint/Rail.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
@@ -355,13 +356,8 @@ void GamePage::paintEvent(QPaintEvent*) {
         paused ? StatusText(item_, progress, true) : DownloadTracker::ProgressText(*download);
     painter.drawText(QPointF(left, y), text);
     const QRectF bar(left, y + u * 0.7, std::min(w, 34 * u), u * 0.45);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(255, 255, 255, 28));
-    painter.drawRoundedRect(bar, bar.height() / 2, bar.height() / 2);
-    painter.setBrush(paused ? tokens.status_missing : Accent());
-    painter.drawRoundedRect(
-        QRectF(bar.topLeft(), QSizeF(bar.width() * std::max(0.0, progress), bar.height())),
-        bar.height() / 2, bar.height() / 2);
+    paint::Rail(painter, bar, std::max(0.0, progress), paused ? tokens.status_missing : Accent(),
+                QColor(255, 255, 255, 28));
     y += u * 3;
   }
 

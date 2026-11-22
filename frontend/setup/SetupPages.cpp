@@ -26,6 +26,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/Badge.h"
 #include "../components/Button.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
@@ -151,13 +152,6 @@ QString StoreLine(const QString& id) {
 QString StoreName(const QString& id) {
   const SourceInfo* source = FindSourceInfo(id);
   return source != nullptr ? source->name : id;
-}
-
-QLabel* Chip(QWidget* parent, const QString& text, const char* state) {
-  auto* chip = new QLabel(text, parent);
-  chip->setObjectName("setup_chip");
-  chip->setProperty("state", state);
-  return chip;
 }
 
 }  // namespace
@@ -801,18 +795,18 @@ void FoundPage::Show() {
       for (const QString& line : context_.work->Running()) {
         if (line.contains("Proton")) downloading = line;
       }
-      chips->addWidget(Chip(
-          card,
+      chips->addWidget(new Badge(
           downloading.isEmpty() ? QString("No Proton yet. Runners has it, any time.") : downloading,
-          downloading.isEmpty() ? "warning" : "plain"));
+          downloading.isEmpty() ? Tone::Warning : Tone::Muted, card));
     }
-    for (const QString& build : builds.mid(0, 3)) chips->addWidget(Chip(card, tick + build, "ok"));
+    for (const QString& build : builds.mid(0, 3))
+      chips->addWidget(new Badge(tick + build, Tone::Success, card));
     if (gamemode_.ok) {
-      chips->addWidget(gamemode_.installed ? Chip(card, tick + "GameMode", "ok")
-                                           : Chip(card, "No GameMode", "plain"));
+      chips->addWidget(gamemode_.installed ? new Badge(tick + "GameMode", Tone::Success, card)
+                                           : new Badge("No GameMode", Tone::Muted, card));
     }
-    chips->addWidget(vulkan_ ? Chip(card, tick + "Vulkan", "ok")
-                             : Chip(card, "No Vulkan driver", "error"));
+    chips->addWidget(vulkan_ ? new Badge(tick + "Vulkan", Tone::Success, card)
+                             : new Badge("No Vulkan driver", Tone::Danger, card));
     chips->addStretch(1);
     column->addLayout(chips);
     if (!vulkan_) {

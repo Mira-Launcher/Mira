@@ -6,6 +6,7 @@
 
 #include "../components/Button.h"
 #include "../components/PopupDialog.h"
+#include "../components/Variants.h"
 #include "../theme/Theme.h"
 #include "SystemNotifier.h"
 
@@ -176,18 +177,7 @@ Level LevelFromString(const QString& text) {
 }
 
 QColor AccentFor(Level level) {
-  const theme::Tokens& tokens = theme::Current();
-  switch (level) {
-    case Level::Success:
-      return tokens.success;
-    case Level::Warning:
-      return tokens.warning;
-    case Level::Error:
-      return tokens.error;
-    case Level::Info:
-      break;
-  }
-  return tokens.info;
+  return ToneColor(ToneOf(level));
 }
 
 }  // namespace mira_gui::notify

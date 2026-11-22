@@ -12,6 +12,8 @@ class QPushButton;
 
 namespace mira_gui {
 
+class Chip;
+
 class SourceTile;
 
 // The sources not set up yet, as tiles grouped by kind, with a chip per
@@ -34,7 +36,7 @@ class SourceCatalog : public QWidget {
  private:
   struct Group {
     QString name;
-    QPushButton* chip = nullptr;
+    Chip* chip = nullptr;
     QLabel* heading = nullptr;
     QWidget* grid = nullptr;
   };
@@ -42,7 +44,7 @@ class SourceCatalog : public QWidget {
   void ApplyFilter();
 
   std::vector<Group> groups_;
-  QPushButton* all_ = nullptr;
+  Chip* all_ = nullptr;
   QLabel* empty_ = nullptr;
   std::map<QString, SourceTile*> tiles_;  // by source id
   std::map<QString, int> group_of_;       // by source id

@@ -7,9 +7,9 @@
 
 #include "TitleRatings.h"
 
-class QPushButton;
-
 namespace mira_gui {
+
+class Chip;
 
 // Not-installed titles filtered by chips: one row of ProtonDB tiers, one of Steam review groups,
 // each chip with how many titles it holds. Chips in a row add up; the rows narrow each other.
@@ -34,8 +34,8 @@ class RatingChips : public QWidget {
   void Toggle();
 
   TitleFilter filter_;
-  std::map<std::string, QPushButton*> tier_chips_;
-  std::map<ReviewBucket, QPushButton*> review_chips_;
+  std::map<std::string, Chip*> tier_chips_;
+  std::map<ReviewBucket, Chip*> review_chips_;
 };
 
 }  // namespace mira_gui

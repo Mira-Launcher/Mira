@@ -839,27 +839,6 @@ QFrame#drop_zone {
   background: transparent;
 }
 
-/* components/Labels' MakeTag: a small pill beside a name ("Beta", "Recommended", "Not checked"). */
-QLabel#tag {
-  color: @text_muted;
-  font-size: @font_size_small;
-  border: 1px solid @border;
-  border-radius: 8px;
-  padding: 0px 6px;
-}
-QLabel#tag[tone="accent"] {
-  color: @accent;
-  border-color: @accent;
-}
-QLabel#tag[tone="success"] {
-  color: @success;
-  border-color: @success;
-}
-QLabel#tag[tone="warning"] {
-  color: @warning;
-  border-color: @warning;
-}
-
 /* components/CopyField: a command to copy. */
 QLabel#copy_field {
   font-family: monospace;
@@ -897,29 +876,6 @@ QFrame#script_box QLineEdit#script_line {
   font-family: monospace;
 }
 
-QPushButton#step_chip {
-  background: @surface;
-  border: 1px solid @border;
-  border-radius: 6px;
-  padding: 5px 12px;
-}
-
-QPushButton#step_chip:hover {
-  border-color: @text_muted;
-}
-
-QPushButton#step_chip:checked {
-  background: @accent;
-  border-color: @accent;
-  color: @on_accent;
-}
-
-QPushButton#step_chip:disabled {
-  background: @surface;
-  border-color: @border;
-  color: @text_muted;
-}
-
 QWidget#list_row[inherited="true"] QLineEdit#list_item {
   color: @text_muted;
 }
@@ -936,28 +892,6 @@ QPushButton#list_more {
 
 QPushButton#list_more:hover {
   text-decoration: underline;
-}
-
-
-/* game/TagEdit: one chip per tag. */
-QFrame#tag_chip {
-  background: @surface_alt;
-  border: 1px solid @border;
-  border-radius: @radius_control;
-}
-
-QFrame#tag_chip[folder="true"] {
-  border: 1px solid @accent;
-}
-
-QToolButton#tag_remove {
-  border: none;
-  border-radius: @radius_control;
-  padding: 1px;
-}
-
-QToolButton#tag_remove:hover {
-  background: @border;
 }
 
 QListWidget, QTreeWidget, QTableWidget {
@@ -1155,42 +1089,13 @@ QLabel#step_marker[state="done"] {
   color: @success;
 }
 
-/* --- Art picker ---------------------------------------------------------- */
-
-QPushButton#chip {
-  background: transparent;
-  border: 1px solid @border;
-  border-radius: 10px;
-  padding: 3px 10px;
-  font-size: @font_size_small;
-}
-
-QPushButton#chip:hover {
-  border-color: @text_muted;
-}
-
 /* Room for DropdownButton's chevron. */
 QPushButton[dropdown="true"],
-QPushButton#chip[dropdown="true"],
 QWidget#tab_row QPushButton[dropdown="true"] {
   padding-right: 28px;
 }
 
-QPushButton#chip:checked {
-  border-color: @accent;
-  background: @accent_soft;
-}
-
 /* --- Runners page -------------------------------------------------------- */
-
-/* The build Windows games use by default, beside its name. */
-QLabel#default_tag {
-  color: @accent;
-  font-size: @font_size_small;
-  border: 1px solid @accent;
-  border-radius: 8px;
-  padding: 0px 6px;
-}
 
 /* A two or three way choice (components/Segmented). */
 QWidget#segmented {
@@ -1331,29 +1236,6 @@ QLabel#setup_tick {
 QLabel#setup_tick[on="true"] {
   background: @accent;
   border-color: @accent;
-}
-
-QLabel#setup_chip, QLabel#info_chip {
-  background: @surface_alt;
-  border: 1px solid @border;
-  border-radius: 8px;
-  padding: 2px 9px;
-  font-size: @font_size_small;
-}
-
-QLabel#setup_chip[state="ok"], QLabel#info_chip[state="ok"] {
-  color: @success;
-  border-color: @success;
-}
-
-QLabel#setup_chip[state="warning"], QLabel#info_chip[state="warning"] {
-  color: @warning;
-  border-color: @warning;
-}
-
-QLabel#setup_chip[state="error"], QLabel#info_chip[state="error"] {
-  color: @error;
-  border-color: @error;
 }
 
 QPushButton#setup_account {

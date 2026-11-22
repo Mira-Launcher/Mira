@@ -20,7 +20,7 @@
 
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
-#include "../components/ChipToggles.h"
+#include "../components/ChipGroup.h"
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
 #include "../components/IconButton.h"
@@ -133,8 +133,8 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     combo->addItem("Default runner", QString());  // the runners come later (FillRunnerCombo)
     row->AddControl(combo);
   } else if (entry.type == "an array of strings" && !entry.choices.empty()) {
-    chips = new ChipToggles(row);
-    std::vector<ChipToggles::Choice> choices;
+    chips = new ChipGroup(row);
+    std::vector<ChipGroup::Choice> choices;
     for (const ConfigSchemaEntry::Choice& choice : entry.choices) {
       choices.push_back({QString::fromStdString(choice.value), QString::fromStdString(choice.label),
                          QString::fromStdString(choice.doc), QString::fromStdString(choice.pair),
@@ -301,7 +301,7 @@ void SettingEditor::OnEdited(QObject* context, std::function<void()> edited) con
   if (line) QObject::connect(line, &QLineEdit::textChanged, context, edited);
   if (clear_secret) QObject::connect(clear_secret, &QAction::triggered, context, edited);
   if (list) QObject::connect(list, &ListEdit::Changed, context, edited);
-  if (chips) QObject::connect(chips, &ChipToggles::Changed, context, edited);
+  if (chips) QObject::connect(chips, &ChipGroup::Changed, context, edited);
 }
 
 void SettingEditor::Embed(SettingEditor& shown) {
@@ -326,15 +326,15 @@ void SettingEditor::Embed(SettingEditor& shown) {
 }
 
 void PairChoices(const SettingEditor& first, const SettingEditor& second) {
-  ChipToggles* from = first.chips;
-  ChipToggles* to = second.chips;
+  ChipGroup* from = first.chips;
+  ChipGroup* to = second.chips;
   if (from == nullptr || to == nullptr) return;
-  QObject::connect(from, &ChipToggles::Clicked, to, [from, to](const QString& value, bool on) {
+  QObject::connect(from, &ChipGroup::Clicked, to, [from, to](const QString& value, bool on) {
     const auto& choices = from->Choices();
-    const auto it = std::ranges::find(choices, value, &ChipToggles::Choice::value);
+    const auto it = std::ranges::find(choices, value, &ChipGroup::Choice::value);
     if (it != choices.end() && !it->pair.isEmpty()) to->SetOn(it->pair, on);
   });
-  QObject::connect(from, &ChipToggles::Changed, to,
+  QObject::connect(from, &ChipGroup::Changed, to,
                    [from, to] { to->SetPairValues(from->Values()); });
   to->SetPairValues(from->Values());
 }

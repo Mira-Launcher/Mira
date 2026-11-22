@@ -4,6 +4,7 @@
 #include <QPainter>
 #include <QPainterPath>
 
+#include "../components/paint/Pill.h"
 #include "../library/GamePresentation.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
@@ -301,10 +302,9 @@ double DrawPill(QPainter& painter, QPointF top_left, double unit, const QString&
   const double h = unit * 1.5;
   const double w = pad * 2 + dot_size + gap + painter.fontMetrics().horizontalAdvance(text);
   const QRectF rect(top_left, QSizeF(w, h));
-  painter.setPen(Qt::NoPen);
-  painter.setBrush(QColor(255, 255, 255, 26));
-  painter.drawRoundedRect(rect, h / 2, h / 2);
+  paint::Pill(painter, rect, h / 2, QColor(255, 255, 255, 26));
   if (dot) {
+    painter.setPen(Qt::NoPen);
     painter.setBrush(*dot);
     painter.drawEllipse(
         QRectF(rect.left() + pad, rect.center().y() - dot_size / 2, dot_size, dot_size));

@@ -27,6 +27,7 @@
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
 #include "../client/api/Logs.h"
+#include "../components/Chip.h"
 #include "../components/FramelessRoot.h"
 #include "../components/Labels.h"
 #include "../theme/Icons.h"
@@ -168,8 +169,7 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   tools->addWidget(filter_);
   tools->addStretch(1);
   const auto toggle = [body, tools](const QString& text, const QString& tooltip) {
-    auto* button = new QPushButton(text, body);
-    button->setObjectName("chip");
+    auto* button = new Chip(text, body);
     button->setCheckable(true);
     button->setToolTip(tooltip);
     tools->addWidget(button);
@@ -178,11 +178,11 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   follow_ = toggle("Follow", "Keep the newest line in view");
   follow_->setChecked(true);
   wrap_ = toggle("Wrap", "Wrap long lines");
-  connect(wrap_, &QPushButton::toggled, this, [this](bool on) {
+  connect(wrap_, &Chip::toggled, this, [this](bool on) {
     view_->setLineWrapMode(on ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap);
   });
   pause_ = toggle("Pause", "Stop reading new lines until it's switched off");
-  connect(pause_, &QPushButton::toggled, this, [this](bool on) {
+  connect(pause_, &Chip::toggled, this, [this](bool on) {
     paused_ = on;
     UpdateStatus();
     if (!paused_) Poll();

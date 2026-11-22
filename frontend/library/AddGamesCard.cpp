@@ -27,7 +27,9 @@
 #include "../client/api/Downloads.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
+#include "../components/Badge.h"
 #include "../components/Button.h"
+#include "../components/Chip.h"
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
@@ -672,7 +674,7 @@ void AddGamesCard::ShowAppMenu() {
     QString name;
     QWidget* row;
     QCheckBox* pick;
-    QPushButton* app;
+    Chip* app;
   };
   auto entries = std::make_shared<std::vector<Entry>>();
   QLabel* count = nullptr;
@@ -687,17 +689,14 @@ void AddGamesCard::ShowAppMenu() {
     icon->setPixmap(EntryIcon(candidate.icon, devicePixelRatioF()));
     row->SetLeading(icon);
     if (candidate.flatpak) {
-      auto* tag = new QLabel("Flatpak", row);
-      tag->setObjectName("default_tag");
-      row->AddAfterLabel(tag);
+      row->AddAfterLabel(new Badge("Flatpak", Tone::Accent, row));
     } else if (!candidate.command.empty()) {
       auto* command = new ElidedLabel(QString::fromStdString(candidate.command), row);
       SetTextStyle(command, text::kDetail);
       row->SetBelow(command);
     }
     // Shown once the entry is ticked, keeping its place so nothing shifts.
-    auto* app = new QPushButton("App", row);
-    app->setObjectName("chip");
+    auto* app = new Chip("App", row);
     app->setCheckable(true);
     app->setChecked(candidate.app);
     app->setToolTip("Add it as an app rather than a game");

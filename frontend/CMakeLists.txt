@@ -33,7 +33,8 @@ set(MIRA_GUI_PCH
 # The component library and the theme it draws with, as a library of its own: it links nothing
 # else of the GUI, so a component that reaches into feature code fails to build.
 file(GLOB MIRA_GUI_COMPONENT_SOURCES CONFIGURE_DEPENDS
-  components/*.cpp components/*.h theme/*.cpp theme/*.h)
+  components/*.cpp components/*.h components/paint/*.cpp components/paint/*.h theme/*.cpp
+  theme/*.h)
 qt_add_library(mira_gui_components STATIC ${MIRA_GUI_COMPONENT_SOURCES})
 target_include_directories(mira_gui_components PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(mira_gui_components PUBLIC Qt6::Widgets Qt6::DBus PRIVATE mira_third_party)

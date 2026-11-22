@@ -15,6 +15,23 @@ ReviewBucket ReviewBucketOf(const std::string& score_description) {
   return ReviewBucket::NotRated;
 }
 
+QColor ReviewBucketColor(ReviewBucket bucket) {
+  switch (bucket) {
+    case ReviewBucket::OverwhelminglyPositive:
+    case ReviewBucket::VeryPositive:
+    case ReviewBucket::Positive:
+    case ReviewBucket::MostlyPositive:
+      return QColor("#66c0f4");
+    case ReviewBucket::Mixed:
+      return QColor("#b9a074");
+    case ReviewBucket::Negative:
+      return QColor("#c35a3a");
+    case ReviewBucket::NotRated:
+      break;
+  }
+  return {};
+}
+
 QString ReviewBucketName(ReviewBucket bucket) {
   switch (bucket) {
     case ReviewBucket::OverwhelminglyPositive:

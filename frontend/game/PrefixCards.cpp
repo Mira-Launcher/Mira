@@ -14,6 +14,7 @@
 #include "../client/Events.h"
 #include "../client/api/Games.h"
 #include "../components/Button.h"
+#include "../components/Chip.h"
 #include "../components/FlowLayout.h"
 #include "../components/Labels.h"
 #include "../components/PathField.h"
@@ -216,15 +217,14 @@ void WinetricksCard::RebuildChips() {
   for (const std::string& verb : verbs) {
     const QString text = QString::fromStdString(verb);
     if (!typed.isEmpty() && !text.contains(typed, Qt::CaseInsensitive)) continue;
-    auto* chip = new QPushButton(text, chips_);
-    chip->setObjectName("chip");
+    auto* chip = new Chip(text, chips_);
     chip->setCheckable(true);
     chip->setChecked(text == typed);
     if (installed_.contains(verb)) {
       icons::Follow(chip, icons::Glyph::CheckCircle, &theme::Tokens::success);
       chip->setToolTip("Already in the prefix; runs it again");
     }
-    connect(chip, &QPushButton::clicked, this, [this, text] { verb_->setText(text); });
+    connect(chip, &Chip::clicked, this, [this, text] { verb_->setText(text); });
     chips_layout_->addWidget(chip);
   }
 }

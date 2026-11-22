@@ -18,6 +18,7 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Artwork.h"
+#include "../components/Badge.h"
 #include "../components/Button.h"
 #include "../components/FlowLayout.h"
 #include "../components/Scrolling.h"
@@ -25,6 +26,7 @@
 #include "../components/WindowCards.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
+#include "../library/TitleRatings.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -66,19 +68,6 @@ QLabel* Text(QWidget* parent, const QString& text, Qt::TextFormat format = Qt::P
 
 QString Anchor(const QString& href, const QString& text) {
   return QString("<a href=\"%1\">%2</a>").arg(href.toHtmlEscaped(), text.toHtmlEscaped());
-}
-
-// Steam's review wording, colored as it is there.
-const char* ReviewState(const std::string& summary) {
-  if (summary.find("Positive") != std::string::npos) return "ok";
-  if (summary.find("Negative") != std::string::npos) return "error";
-  return "warning";
-}
-
-const char* TierState(const std::string& tier) {
-  if (tier == "platinum" || tier == "gold" || tier == "native") return "ok";
-  if (tier == "borked") return "error";
-  return "warning";
 }
 
 // A label that runs `clicked` on a left click, Enter or Space: a screenshot, or the large one over
@@ -307,7 +296,8 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
     }
   }
 
-  std::vector<std::pair<QString, const char*>> chips;
+  // Reviews and the ProtonDB tier in their own colors, as Steam and ProtonDB show them.
+  std::vector<std::pair<QString, QColor>> chips;
   if (!metadata.review_summary.empty()) {
     QString review = QString::fromStdString(metadata.review_summary);
     if (metadata.review_percent >= 0) {
@@ -315,26 +305,27 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
                     .arg(metadata.review_percent)
                     .arg(QLocale().toString(metadata.review_total));
     }
-    chips.emplace_back(review, ReviewState(metadata.review_summary));
+    chips.emplace_back(review, ReviewBucketColor(ReviewBucketOf(metadata.review_summary)));
   }
   if (!metadata.protondb_tier.empty()) {
     QString tier = QString::fromStdString(metadata.protondb_tier);
     tier[0] = tier[0].toUpper();
-    chips.emplace_back("ProtonDB " + tier, TierState(metadata.protondb_tier));
+    chips.emplace_back("ProtonDB " + tier, ProtonDbFilterTier(metadata.protondb_tier).empty()
+                                               ? QColor()
+                                               : ProtonDbTierColor(metadata.protondb_tier));
   }
   if (metadata.metacritic_score > 0)
-    chips.emplace_back(QString("Metacritic %1").arg(metadata.metacritic_score), "");
+    chips.emplace_back(QString("Metacritic %1").arg(metadata.metacritic_score), QColor());
   for (const std::string& descriptor : metadata.content_descriptors)
-    chips.emplace_back(QString::fromStdString(descriptor), "");
+    chips.emplace_back(QString::fromStdString(descriptor), QColor());
   if (!chips.empty()) {
     auto* row = new QWidget(body);
     auto* flow = new FlowLayout(row, 6);
     flow->setContentsMargins(0, 0, 0, 0);
-    for (const auto& [text, state] : chips) {
-      auto* chip = new QLabel(text, row);
-      chip->setObjectName("info_chip");
-      chip->setProperty("state", state);
-      flow->addWidget(chip);
+    for (const auto& [text, color] : chips) {
+      auto* badge = new Badge(text, Tone::Muted, row);
+      badge->SetColor(color);
+      flow->addWidget(badge);
     }
     body_->addWidget(row);
   }

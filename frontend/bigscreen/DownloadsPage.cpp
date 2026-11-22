@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <algorithm>
 
+#include "../components/paint/Rail.h"
 #include "../library/ArtworkStore.h"
 #include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
@@ -262,12 +263,8 @@ void DownloadsPage::PaintInstall(QPainter& painter, const QRectF& box, const Ite
 
   const double bar_h = (hero ? 0.75 : 0.4) * u;
   const QRectF bar(text_x, box.bottom() - pad - bar_h - (hero ? 1.2 : 0.2) * u, text_w, bar_h);
-  painter.setPen(Qt::NoPen);
-  painter.setBrush(QColor(255, 255, 255, 28));
-  painter.drawRoundedRect(bar, bar_h / 2, bar_h / 2);
-  painter.setBrush(paused ? tokens.status_missing : Accent());
-  painter.drawRoundedRect(QRectF(bar.topLeft(), QSizeF(bar.width() * progress, bar_h)), bar_h / 2,
-                          bar_h / 2);
+  paint::Rail(painter, bar, std::max(0.0, progress), paused ? tokens.status_missing : Accent(),
+              QColor(255, 255, 255, 28));
 }
 
 void DownloadsPage::paintEvent(QPaintEvent*) {

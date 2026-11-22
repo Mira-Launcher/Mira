@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QString>
 #include <array>
 #include <set>
@@ -30,6 +31,9 @@ inline constexpr std::array<ReviewBucket, 7> kReviewBuckets = {
 };
 
 ReviewBucket ReviewBucketOf(const std::string& score_description);
+// The color Steam's store gives the group: blue for positive, tan for mixed, rust for negative;
+// invalid for NotRated.
+QColor ReviewBucketColor(ReviewBucket bucket);
 QString ReviewBucketName(ReviewBucket bucket);
 
 // ProtonDB's tiers as the filters list them, best first; "" is not rated yet (pending or none).

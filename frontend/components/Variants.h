@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QColor>
+
 namespace mira_gui {
 
 // The color a component takes for what it says: the same set for text, buttons, badges, chips and
@@ -26,5 +28,15 @@ constexpr const char* ToneName(Tone tone) {
   }
   return "";
 }
+
+// The color a tone paints text, outlines and dots in, from the current theme; Default is the text
+// color.
+QColor ToneColor(Tone tone);
+
+// A color of its own (a ProtonDB tier, a Steam review group) as text or an outline on the theme's
+// surfaces: lighter on a dark theme and darker on a light one, so it reads on both.
+QColor InkFor(const QColor& color);
+// Text over a solid fill: near-black on a light fill, white on a dark one.
+QColor InkOn(const QColor& fill);
 
 }  // namespace mira_gui
