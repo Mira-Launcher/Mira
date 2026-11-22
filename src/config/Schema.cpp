@@ -869,6 +869,14 @@ Schema::Schema() {
          .doc = "Show whether a game's anti-cheat works on Linux, from AreWeAntiCheatYet, and warn "
                 "when one that doesn't is launched. The list is downloaded weekly."});
 
+  s.Add({.key = "anticheat.runtimes",
+         .label = "Anti-cheat support outside Steam",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Give Proton its Easy Anti-Cheat and BattlEye runtimes for games not run through "
+                "Steam, so a game whose anti-cheat allows Linux can play online. Uses Steam's copy "
+                "when it has one, else downloads it once."});
+
   s.Group("Per store");
 
   for (const auto& [id, name] :
@@ -1048,6 +1056,23 @@ Schema::Schema() {
          .default_value = "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/"
                           "master/games.json",
          .doc = "Where the AreWeAntiCheatYet list is downloaded from."});
+
+  s.Item("eac_runtime", "Easy Anti-Cheat runtime");
+  s.Add({.key = "anticheat.eac_runtime_url",
+         .label = "Download from",
+         .type = Type::String,
+         .default_value = std::string(runner_sources::kEacRuntimeUrl),
+         .doc = "Where Proton's Easy Anti-Cheat runtime is downloaded from when Steam doesn't have "
+                "it. The default download's checksum is checked."});
+
+  s.Item("battleye_runtime", "BattlEye runtime");
+  s.Add({.key = "anticheat.battleye_runtime_url",
+         .label = "Download from",
+         .type = Type::String,
+         .default_value = std::string(runner_sources::kBattlEyeRuntimeUrl),
+         .doc =
+             "Where Proton's BattlEye runtime is downloaded from when Steam doesn't have it. The "
+             "default download's checksum is checked."});
 
   // --- Launching -------------------------------------------------------------
   s.Section("Launching", "General");

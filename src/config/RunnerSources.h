@@ -23,6 +23,12 @@ inline constexpr std::string_view kWineGEAssetPattern = "*x86_64.tar.xz";
 inline constexpr std::string_view kProtonCachyOSRepo = "CachyOS/proton-cachyos";
 inline constexpr std::string_view kProtonCachyOSAssetPattern = "proton-cachyos-*-slr-x86_64.tar.xz";
 
+// Proton's anti-cheat runtimes, as Lutris builds them, for games run outside Steam.
+inline constexpr std::string_view kEacRuntimeUrl =
+    "https://github.com/lutris/buildbot/releases/download/2022.06.23/eac_runtime-20240114.tar.xz";
+inline constexpr std::string_view kBattlEyeRuntimeUrl =
+    "https://github.com/lutris/buildbot/releases/download/2024-05-21/battleeye_runtime.tar.xz";
+
 inline constexpr std::string_view kUmuProtonRepo = "Open-Wine-Components/umu-proton";
 inline constexpr std::string_view kProtonEMRepo = "Etaash-mathamsetty/Proton";
 inline constexpr std::string_view kProtonSarekRepo = "pythonlover02/Proton-Sarek";

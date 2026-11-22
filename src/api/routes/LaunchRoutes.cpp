@@ -38,6 +38,7 @@
 #include "library/WinePrefix.h"
 #include "proc/Session.h"
 #include "runner/AntiCheat.h"
+#include "runner/AntiCheatRuntime.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/WindowsTheme.h"
@@ -295,6 +296,17 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
   ApplyMangoHud(*command, resolver, game, game_mangohud);
   ApplyShaderCache(*command, resolver, game);
   ApplyHdr(*command, resolver);
+  if (resolved->runner->kind() == "proton") {
+    auto runtimes = runner::AntiCheatRuntimeEnv(s.config, game);
+    if (!runtimes) {
+      return Err("anticheat_runtime_unavailable",
+                 std::format("couldn't get the anti-cheat runtime this game needs: {}",
+                             runtimes.error().message),
+                 "Check the internet connection, or turn off Anti-cheat support outside Steam in "
+                 "Settings to start it without one.");
+    }
+    for (const auto& [name, value] : *runtimes) command->env.try_emplace(name, value);
+  }
   if (resolved->runner->kind() == "proton" && resolver.GetBool("launch.proton_log")) {
     const std::filesystem::path logs = proc::ProtonLogDir(s.games.Dir(), game.id);
     std::error_code ec;

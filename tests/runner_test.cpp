@@ -15,6 +15,7 @@
 #include "library/GameIdentity.h"
 #include "library/GamePatch.h"
 #include "runner/AntiCheat.h"
+#include "runner/AntiCheatRuntime.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "runner/NativeRunner.h"
@@ -616,4 +617,30 @@ TEST_CASE("a game's anti-cheat status comes by its Steam appid, else its title")
   CHECK_FALSE(fine->Blocks());
   scanned.platform = model::Platform::Native;
   CHECK_FALSE(runner::FindAntiCheat(env.config, scanned));
+}
+
+TEST_CASE("a game shipping an anti-cheat gets Steam's runtime for it; a Steam game doesn't") {
+  test::TestEnv env("anticheat-runtime");
+  REQUIRE(env.config.Set("anticheat.runtimes", true));
+  const fs::path steam = env.dir / "steam";
+  const fs::path eac = steam / "steamapps" / "common" / "Proton EasyAntiCheat Runtime";
+  fs::create_directories(eac / "v2");
+  REQUIRE(env.config.Set("steam.root", steam.string()));
+
+  model::Game game;
+  game.id = "eac";
+  game.name = "Shooter";
+  game.platform = model::Platform::Windows;
+  game.install_path = (env.dir / "shooter").string();
+  fs::create_directories(env.dir / "shooter");
+  CHECK(runner::AntiCheatRuntimeEnv(env.config, game)->empty());
+
+  fs::create_directories(env.dir / "shooter" / "EasyAntiCheat");
+  const auto runtimes = runner::AntiCheatRuntimeEnv(env.config, game);
+  REQUIRE(runtimes);
+  CHECK(runtimes->at("PROTON_EAC_RUNTIME") == eac.string());
+  CHECK_FALSE(runtimes->contains("PROTON_BATTLEYE_RUNTIME"));
+
+  game.runner_ref = "steam:123";
+  CHECK(runner::AntiCheatRuntimeEnv(env.config, game)->empty());
 }
