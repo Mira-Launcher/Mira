@@ -25,7 +25,6 @@
 #include "../widgets/Labels.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/ToolTip.h"
-#include "SettingsNav.h"
 
 namespace mira_gui {
 namespace {
@@ -892,13 +891,7 @@ void ChangeBar::SetText(const QString& text, const QString& save, const QString&
     Place();
     raise();
   }
-  // The scrolls it floats over: Settings' own (an ancestor, since the bar sits
-  // on its content area) or any inside `over`, like a game's Advanced page.
-  QList<SettingsNavWidget*> navs = parentWidget()->findChildren<SettingsNavWidget*>();
-  for (QWidget* at = parentWidget(); at != nullptr; at = at->parentWidget()) {
-    if (auto* nav = qobject_cast<SettingsNavWidget*>(at)) navs.append(nav);
-  }
-  for (SettingsNavWidget* nav : navs) nav->SetBottomRoom(text.isEmpty() ? 0 : RoomNeeded());
+  emit RoomChanged(text.isEmpty() ? 0 : RoomNeeded());
 }
 
 int ChangeBar::RoomNeeded() const {

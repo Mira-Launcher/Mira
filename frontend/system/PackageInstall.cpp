@@ -59,7 +59,7 @@ bool OpenTerminal(const QStringList& argv) {
 // The command in a copyable field, with Open terminal.
 void ShowCommand(QWidget* parent, const QString& title, const QString& message,
                  const QString& detail, const QStringList& argv) {
-  PopupDialog dialog(parent, detail.isEmpty() ? notify::Level::Info : notify::Level::Error, title);
+  PopupDialog dialog(parent, detail.isEmpty() ? Tone::Info : Tone::Danger, title);
   dialog.SetMessage(message);
   if (!detail.isEmpty()) dialog.SetDetail(detail);
 

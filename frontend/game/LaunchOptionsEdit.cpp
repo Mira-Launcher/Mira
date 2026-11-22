@@ -178,7 +178,7 @@ void LaunchOptionsEdit::Rebuild() {
 }
 
 bool LaunchOptionsEdit::Edit(LaunchOption& option) {
-  PopupDialog dialog(this, notify::Level::Info,
+  PopupDialog dialog(this, Tone::Info,
                      option.name.empty() ? "Add launch option" : "Edit launch option");
   dialog.SetMessage(
       "Another program that starts the game (a mod launcher), runs beside it (a deck tracker), or "

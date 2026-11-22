@@ -24,15 +24,15 @@ namespace {
 constexpr int kWidth = 420;
 constexpr int kIcon = 22;
 
-std::pair<icons::Glyph, icons::Role> LevelIcon(notify::Level level) {
-  switch (level) {
-    case notify::Level::Success:
+std::pair<icons::Glyph, icons::Role> ToneIcon(Tone tone) {
+  switch (tone) {
+    case Tone::Success:
       return {icons::Glyph::CheckCircle, &theme::Tokens::success};
-    case notify::Level::Warning:
+    case Tone::Warning:
       return {icons::Glyph::Warning, &theme::Tokens::warning};
-    case notify::Level::Error:
+    case Tone::Danger:
       return {icons::Glyph::CircleX, &theme::Tokens::error};
-    case notify::Level::Info:
+    default:
       break;
   }
   return {icons::Glyph::Info, &theme::Tokens::info};
@@ -46,7 +46,7 @@ QWidget* HostWindow(QWidget* parent) {
 
 }  // namespace
 
-PopupDialog::PopupDialog(QWidget* parent, notify::Level level, const QString& title)
+PopupDialog::PopupDialog(QWidget* parent, Tone tone, const QString& title)
     : QDialog(HostWindow(parent) != nullptr ? HostWindow(parent) : parent) {
   QWidget* host = HostWindow(parent);
   overlay_ = host != nullptr;
@@ -70,7 +70,7 @@ PopupDialog::PopupDialog(QWidget* parent, notify::Level level, const QString& ti
   outer->addWidget(card_, 0, 0, Qt::AlignCenter);
 
   auto* icon = new QLabel(card_);
-  const auto [glyph, role] = LevelIcon(level);
+  const auto [glyph, role] = ToneIcon(tone);
   icons::Follow(icon, glyph, kIcon, role);
   card_->SetLeading(icon);
   auto* heading = new QLabel(title, card_);

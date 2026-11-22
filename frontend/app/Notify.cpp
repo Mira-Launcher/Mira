@@ -20,6 +20,20 @@ QString JoinDetail(const QString& detail, const QString& hint, const char* gap =
   return detail + gap + hint;
 }
 
+Tone ToneOf(Level level) {
+  switch (level) {
+    case Level::Success:
+      return Tone::Success;
+    case Level::Warning:
+      return Tone::Warning;
+    case Level::Error:
+      return Tone::Danger;
+    case Level::Info:
+      break;
+  }
+  return Tone::Info;
+}
+
 Fallback& CurrentFallback() {
   static Fallback fallback;
   return fallback;
@@ -33,7 +47,7 @@ void Undelivered(QWidget* parent, Level level, const QString& what, const QStrin
     fallback(level, what, JoinDetail(detail, hint, "\n"), cause);
     return;
   }
-  PopupDialog dialog(parent, level, "Mira");
+  PopupDialog dialog(parent, ToneOf(level), "Mira");
   dialog.SetMessage(what);
   if (const QString body = JoinDetail(detail, hint); !body.isEmpty()) dialog.SetDetail(body);
   if (!action.isEmpty() && activate) dialog.SetAction(action, std::move(activate));
@@ -123,7 +137,7 @@ void Notice(QWidget* parent, const QString& text, Level level) {
 }
 
 void Info(QWidget* parent, const QString& title, const QString& message) {
-  PopupDialog dialog(parent, Level::Info, title);
+  PopupDialog dialog(parent, Tone::Info, title);
   dialog.SetMessage(message);
   dialog.AddButton("OK", /*accept_role=*/true, /*default_button=*/true);
   dialog.exec();
@@ -131,7 +145,7 @@ void Info(QWidget* parent, const QString& title, const QString& message) {
 
 bool Confirm(QWidget* parent, const QString& title, const QString& question, const QString& accept,
              bool destructive) {
-  PopupDialog dialog(parent, destructive ? Level::Warning : Level::Info, title);
+  PopupDialog dialog(parent, destructive ? Tone::Warning : Tone::Info, title);
   dialog.SetMessage(question);
   // Cancel keeps focus on anything destructive: a stray Return should
   // never pick the dangerous answer.
@@ -142,7 +156,7 @@ bool Confirm(QWidget* parent, const QString& title, const QString& question, con
 }
 
 bool LeaveUnsaved(QWidget* parent, const QString& what, const std::function<void()>& save) {
-  PopupDialog dialog(parent, Level::Warning, "Unsaved changes");
+  PopupDialog dialog(parent, Tone::Warning, "Unsaved changes");
   dialog.SetMessage(what);
   constexpr int kSave = 1;
   constexpr int kDiscard = 2;

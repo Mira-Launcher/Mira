@@ -31,7 +31,6 @@
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
-#include "../library/HoverCard.h"
 #include "../library/OwnedTitles.h"
 #include "../settings/SettingsPanel.h"
 #include "../sources/SourceRemoval.h"
@@ -40,6 +39,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../updates/UpdateChecker.h"
+#include "../widgets/HoverDwell.h"
 #include "../widgets/Labels.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/TabRow.h"
@@ -484,7 +484,7 @@ bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
       if (hover_timer_ == nullptr) {
         hover_timer_ = new QTimer(this);
         hover_timer_->setSingleShot(true);
-        hover_timer_->setInterval(card::kDwellMs);
+        hover_timer_->setInterval(kHoverDwellMs);
         connect(hover_timer_, &QTimer::timeout, this, [this] {
           if (hover_row_ == nullptr) return;
           const GameSummary* game =

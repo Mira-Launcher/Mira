@@ -204,7 +204,7 @@ void DownloadsPage::EditPasswords() {
   api::GetDownloadPasswordsAsync(this, [this](DownloadPasswordsResult result) {
     if (!result.ok)
       return notify::FailedRequest(this, "Could not read the saved passwords", result.error);
-    PopupDialog dialog(this, notify::Level::Info, "Saved passwords");
+    PopupDialog dialog(this, Tone::Info, "Saved passwords");
     dialog.SetMessage("Tried on every encrypted archive, most recently working first.");
     dialog.SetWidth(460);
     auto* list = new ListEdit(ListEdit::Kind::Text, "Add password", &dialog);

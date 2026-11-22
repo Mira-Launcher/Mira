@@ -13,8 +13,8 @@
 #include <algorithm>
 #include <optional>
 
-#include "../library/HoverCard.h"
 #include "../theme/Theme.h"
+#include "PopupCard.h"
 
 namespace mira_gui::tooltip {
 namespace {
@@ -46,8 +46,8 @@ class TipCard : public QWidget {
     const QRect text_rect =
         fontMetrics().boundingRect(QRect(0, 0, kMaxWidth, 100000), Qt::TextWordWrap, text_);
     text_size_ = text_rect.size();
-    setFixedSize(text_size_.width() + 2 * card::kPaddingX, text_size_.height() + 2 * kPaddingY);
-    QPoint pos = card::Place(anchor, size(), beside);
+    setFixedSize(text_size_.width() + 2 * popup::kPaddingX, text_size_.height() + 2 * kPaddingY);
+    QPoint pos = popup::Place(anchor, size(), beside);
     if (left) {
       // Still kept on screen at the right.
       const QScreen* screen = QGuiApplication::screenAt(anchor.center());
@@ -63,16 +63,16 @@ class TipCard : public QWidget {
 
  protected:
   void paintEvent(QPaintEvent*) override {
-    card::Paint(this);
+    popup::Paint(this);
     QPainter painter(this);
     painter.setPen(theme::Current().text);
-    painter.drawText(QRect(QPoint(card::kPaddingX, kPaddingY), text_size_), Qt::TextWordWrap,
+    painter.drawText(QRect(QPoint(popup::kPaddingX, kPaddingY), text_size_), Qt::TextWordWrap,
                      text_);
   }
 
  private:
   // A line of text needs less than a card's worth of padding.
-  static constexpr int kPaddingY = card::kPaddingY - 3;
+  static constexpr int kPaddingY = popup::kPaddingY - 3;
   QString text_;
   QSize text_size_;
 };

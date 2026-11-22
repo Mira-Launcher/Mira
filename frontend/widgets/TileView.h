@@ -4,7 +4,7 @@
 #include <QListView>
 #include <functional>
 
-#include "../library/HoverCard.h"
+#include "HoverDwell.h"
 #include "TileFit.h"
 
 class QRubberBand;

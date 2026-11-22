@@ -64,7 +64,7 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
       lines << (item == "app" ? "Keeps app data and settings (prefixes stay on disk)"
                               : "Keeps game data and saves (prefixes stay on disk)");
     lines << name + " goes back to Add source, to set up again any time.";
-    PopupDialog dialog(parent, notify::Level::Warning, "Remove " + name);
+    PopupDialog dialog(parent, Tone::Warning, "Remove " + name);
     dialog.SetMessage(lines.join("\n"));
     // Its settings and saves stay unless asked: they're the one thing here that can't be had again.
     QCheckBox* delete_data = nullptr;

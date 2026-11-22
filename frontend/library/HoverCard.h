@@ -1,10 +1,7 @@
 #pragma once
 
-#include <QPersistentModelIndex>
 #include <QRect>
-#include <QTimer>
 #include <QWidget>
-#include <functional>
 #include <string>
 
 #include "../client/Types.h"
@@ -12,37 +9,6 @@
 class QLabel;
 
 namespace mira_gui {
-
-// Look and placement shared by HoverCard and the app's tooltips (ToolTip.h),
-// so every hover popup has the same padding, corners and gap.
-namespace card {
-inline constexpr int kPaddingX = 12;
-inline constexpr int kPaddingY = 10;
-inline constexpr int kGap = 8;  // between the popup and what it describes
-// A card popping up on everything the cursor merely crosses would be worse
-// than none.
-inline constexpr int kDwellMs = 280;
-void Paint(QWidget* widget);
-// Global top-left for a popup of `size` next to `anchor` (global). `beside`:
-// right of it, else left. Otherwise below it, else above. Kept on screen.
-QPoint Place(const QRect& anchor, QSize size, bool beside);
-// The same, kept inside `area` (global) instead of the screen.
-QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area);
-}  // namespace card
-
-// Calls on_hover with an index once the cursor has rested on it, and with an
-// invalid one at once when it moves to another index or off the grid. Held
-// as a persistent index, so a row that moves or goes away can't dangle.
-class HoverDwell {
- public:
-  explicit HoverDwell(std::function<void(const QModelIndex&)> on_hover);
-  void Track(const QModelIndex& hovered);
-
- private:
-  std::function<void(const QModelIndex&)> on_hover_;
-  QTimer timer_;
-  QPersistentModelIndex last_;
-};
 
 // A floating, non-modal preview shown after a short dwell over a game: name,
 // status, ProtonDB tier, platform, last played, playtime, developer/genres.

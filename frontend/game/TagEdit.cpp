@@ -19,7 +19,7 @@
 #include "../client/Types.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "FlowLayout.h"
+#include "../widgets/FlowLayout.h"
 
 namespace mira_gui {
 

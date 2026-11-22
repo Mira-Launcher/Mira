@@ -218,7 +218,7 @@ void SourcesPage::OfferExistingGames(QWidget* window, const QString& id, const Q
                        .arg(games == 1 ? "" : "s");
         for (const std::string& shortcut : r.shortcuts)
           lines << QString::fromStdString(shortcut) + " (desktop entry)";
-        PopupDialog dialog(window, notify::Level::Info, "Games " + name + " already has");
+        PopupDialog dialog(window, Tone::Info, "Games " + name + " already has");
         dialog.SetMessage("Mira found these. Move them into " + name +
                           "'s folder, or play them from where they are?");
         dialog.SetDetail(lines.join('\n'));

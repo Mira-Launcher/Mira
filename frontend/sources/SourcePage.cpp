@@ -1015,7 +1015,7 @@ void SourcePage::AddGames(const std::vector<std::string>& paths) {
 }
 
 void SourcePage::AskStartFile(const StartChoice& choice) {
-  PopupDialog dialog(this, notify::Level::Info,
+  PopupDialog dialog(this, Tone::Info,
                      "Which file starts " + QString::fromStdString(choice.name) + "?");
   dialog.SetMessage(
       "Its folder has more than one program. You can change it later in the game's settings.");

@@ -258,8 +258,8 @@ class SettingsPage : public QWidget {
 };
 
 // "2 unsaved changes  [Discard] [Save]", floating at the bottom of `over` and
-// only shown while there is something to save. While shown, the settings
-// scrolls under `over` get room at their bottom so it never covers a row.
+// only shown while there is something to save. RoomChanged tells the scrolls under
+// it how much room to keep at their bottom, so it never covers a row.
 class ChangeBar : public QFrame {
   Q_OBJECT
 
@@ -276,6 +276,8 @@ class ChangeBar : public QFrame {
  signals:
   void DiscardClicked();
   void SaveClicked();
+  // The room the bar takes at the bottom of `over` now, 0 while hidden.
+  void RoomChanged(int room);
 
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;

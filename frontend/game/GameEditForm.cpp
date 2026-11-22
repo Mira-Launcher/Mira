@@ -36,10 +36,10 @@
 #include "../widgets/Labels.h"
 #include "../widgets/PathField.h"
 #include "../widgets/Scrolling.h"
-#include "../widgets/TagEdit.h"
 #include "HeroBackdrop.h"
 #include "LaunchOptionsEdit.h"
 #include "OverridesEditor.h"
+#include "TagEdit.h"
 
 namespace mira_gui {
 namespace {

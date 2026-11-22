@@ -1,17 +1,14 @@
 #include "HoverCard.h"
 
-#include <QGuiApplication>
 #include <QLabel>
 #include <QLocale>
-#include <QPainter>
-#include <QPainterPath>
-#include <QScreen>
 #include <QSizePolicy>
 #include <QVBoxLayout>
 #include <algorithm>
 
 #include "../client/api/Artwork.h"
 #include "../theme/Theme.h"
+#include "../widgets/PopupCard.h"
 #include "GamePresentation.h"
 
 namespace mira_gui {
@@ -42,61 +39,6 @@ void SetLine(QLabel* label, const QString& text) {
 
 }  // namespace
 
-namespace card {
-
-void Paint(QWidget* widget) {
-  const theme::Tokens& tokens = theme::Current();
-  QPainter painter(widget);
-  painter.setRenderHint(QPainter::Antialiasing);
-  QPainterPath path;
-  path.addRoundedRect(QRectF(widget->rect()).adjusted(0.5, 0.5, -0.5, -0.5), tokens.radius_panel,
-                      tokens.radius_panel);
-  painter.fillPath(path, tokens.surface);
-  painter.setPen(QPen(tokens.border, 1));
-  painter.drawPath(path);
-}
-
-QPoint Place(const QRect& anchor, QSize size, bool beside) {
-  QScreen* screen = QGuiApplication::screenAt(anchor.center());
-  if (screen == nullptr) screen = QGuiApplication::primaryScreen();
-  return Place(anchor, size, beside,
-               screen != nullptr ? screen->availableGeometry() : QRect(anchor.topLeft(), size));
-}
-
-QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area) {
-  QPoint pos;
-  if (beside) {
-    pos = QPoint(anchor.right() + 1 + kGap, anchor.top());
-    if (pos.x() + size.width() > area.right()) pos.setX(anchor.left() - kGap - size.width());
-  } else {
-    pos = QPoint(anchor.center().x() - size.width() / 2, anchor.bottom() + 1 + kGap);
-    if (pos.y() + size.height() > area.bottom()) pos.setY(anchor.top() - kGap - size.height());
-  }
-  pos.setX(
-      std::clamp(pos.x(), area.left(), std::max(area.left(), area.right() + 1 - size.width())));
-  pos.setY(
-      std::clamp(pos.y(), area.top(), std::max(area.top(), area.bottom() + 1 - size.height())));
-  return pos;
-}
-
-}  // namespace card
-
-HoverDwell::HoverDwell(std::function<void(const QModelIndex&)> on_hover)
-    : on_hover_(std::move(on_hover)) {
-  timer_.setSingleShot(true);
-  QObject::connect(&timer_, &QTimer::timeout, [this] {
-    if (last_.isValid()) on_hover_(last_);
-  });
-}
-
-void HoverDwell::Track(const QModelIndex& hovered) {
-  if (QPersistentModelIndex(hovered) == last_) return;
-  last_ = hovered;
-  timer_.stop();
-  on_hover_(QModelIndex());  // hide at once on change or leave
-  if (hovered.isValid()) timer_.start(card::kDwellMs);
-}
-
 HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->window() : nullptr) {
   // A child of the window, not a tooltip window of its own: a separate
   // window swallowed clicks meant for the grid beside it while it showed.
@@ -105,7 +47,8 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
   hide();
 
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(card::kPaddingX, card::kPaddingY, card::kPaddingX, card::kPaddingY);
+  layout->setContentsMargins(popup::kPaddingX, popup::kPaddingY, popup::kPaddingX,
+                             popup::kPaddingY);
   layout->setSpacing(4);
   setFixedWidth(240);
 
@@ -251,11 +194,11 @@ void HoverCard::Reposition() {
   QWidget* window = parentWidget();
   if (!anchor_.isValid() || window == nullptr) return;
   const QRect area(window->mapToGlobal(QPoint(0, 0)), window->size());
-  move(window->mapFromGlobal(card::Place(anchor_, size(), /*beside=*/true, area)));
+  move(window->mapFromGlobal(popup::Place(anchor_, size(), /*beside=*/true, area)));
 }
 
 void HoverCard::paintEvent(QPaintEvent*) {
-  card::Paint(this);
+  popup::Paint(this);
 }
 
 }  // namespace mira_gui

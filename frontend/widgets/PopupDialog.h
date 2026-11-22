@@ -3,7 +3,7 @@
 #include <QDialog>
 #include <QString>
 
-#include "../app/Notify.h"
+#include "Variants.h"
 
 class QLabel;
 class QToolButton;
@@ -25,7 +25,8 @@ class PopupDialog : public QDialog {
   Q_OBJECT
 
  public:
-  PopupDialog(QWidget* parent, notify::Level level, const QString& title);
+  // `tone` picks the icon before the title: Info, Success, Warning or Danger.
+  PopupDialog(QWidget* parent, Tone tone, const QString& title);
 
   void SetMessage(const QString& text);
 

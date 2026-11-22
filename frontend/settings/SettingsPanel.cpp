@@ -58,6 +58,7 @@ SettingsPanel::SettingsPanel(Previews previews, QWidget* parent)
   change_bar_ = new ChangeBar(nav_->ContentArea());
   connect(change_bar_, &ChangeBar::DiscardClicked, this, &SettingsPanel::DiscardChanges);
   connect(change_bar_, &ChangeBar::SaveClicked, this, &SettingsPanel::Save);
+  connect(change_bar_, &ChangeBar::RoomChanged, nav_, &SettingsNavWidget::SetBottomRoom);
 
   BuildInterfacePage();
   BuildBigScreenPage();
