@@ -2,6 +2,7 @@
 
 #include <QEvent>
 #include <QHelpEvent>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
@@ -10,6 +11,8 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "Popover.h"
+#include "PopupCard.h"
 #include "Variants.h"
 #include "paint/Pill.h"
 
@@ -34,7 +37,9 @@ Chip::Chip(const QString& text, QWidget* parent) : QAbstractButton(parent) {
     update();
   });
   connect(this, &QAbstractButton::clicked, this, [this] {
-    if (menu_ != nullptr) menu_->popup(mapToGlobal(QPoint(0, height())));
+    if (menu_ != nullptr) {
+      menu_->popup(popup::PlaceBelow(this, menu_->sizeHint(), popup::Align::Start, Popover::kGap));
+    }
   });
 }
 
@@ -43,6 +48,10 @@ void Chip::SetCount(int count) {
   count_ = count;
   updateGeometry();
   update();
+}
+
+QMenu* Chip::Menu() const {
+  return menu_;
 }
 
 void Chip::SetMenu(QMenu* menu) {
@@ -54,6 +63,8 @@ void Chip::SetMenu(QMenu* menu) {
 void Chip::SetRemovable(bool removable, const QString& tip) {
   removable_ = removable;
   remove_tip_ = tip;
+  // The × has no focus of its own, so assistive tools hear how to use it from the chip.
+  setAccessibleDescription(removable && !tip.isEmpty() ? tip + " (Delete)" : QString());
   updateGeometry();
   update();
 }
@@ -157,6 +168,15 @@ void Chip::paintEvent(QPaintEvent*) {
 void Chip::changeEvent(QEvent* event) {
   QAbstractButton::changeEvent(event);
   if (event->type() == QEvent::FontChange) updateGeometry();
+}
+
+void Chip::keyPressEvent(QKeyEvent* event) {
+  if (removable_ && (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) &&
+      event->modifiers() == Qt::NoModifier) {
+    emit RemoveClicked();
+    return;
+  }
+  QAbstractButton::keyPressEvent(event);
 }
 
 bool Chip::event(QEvent* event) {

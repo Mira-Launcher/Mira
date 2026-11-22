@@ -37,8 +37,7 @@ WindowButtons::WindowButtons(QWidget* parent) : QWidget(parent) {
   auto* minimize = new IconButton(icons::Glyph::Minimize, "Minimize", this);
   connect(minimize, &QToolButton::clicked, this, [this] { window()->showMinimized(); });
   layout->addWidget(minimize);
-  maximize_ = new QToolButton(this);
-  maximize_->setAutoRaise(true);
+  maximize_ = new IconButton(icons::Glyph::Maximize, "Maximize", this);
   connect(maximize_, &QToolButton::clicked, this, [this] { ToggleMaximized(window()); });
   layout->addWidget(maximize_);
   auto* close = new IconButton(icons::Glyph::Close, "Close", this);
@@ -46,7 +45,6 @@ WindowButtons::WindowButtons(QWidget* parent) : QWidget(parent) {
   connect(close, &QToolButton::clicked, this, [this] { window()->close(); });
   layout->addWidget(close);
   Sync();
-  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, &WindowButtons::Sync);
 }
 
 // The window is known for sure only once shown here: the bar may be built before it's placed.
@@ -67,7 +65,7 @@ bool WindowButtons::eventFilter(QObject* watched, QEvent* event) {
 void WindowButtons::Sync() {
   const bool maximized = window()->isMaximized();
   const QString tip = maximized ? "Restore" : "Maximize";
-  maximize_->setIcon(icons::For(maximized ? icons::Glyph::Restore : icons::Glyph::Maximize));
+  maximize_->SetGlyph(maximized ? icons::Glyph::Restore : icons::Glyph::Maximize);
   maximize_->setToolTip(tip);
   maximize_->setAccessibleName(tip);
 }

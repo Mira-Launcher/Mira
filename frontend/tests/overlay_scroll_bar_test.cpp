@@ -59,8 +59,8 @@ TEST_CASE("A scroll area's bar shows while it scrolls and drags the page") {
   // Dragging the thumb past the end scrolls to the end.
   const QPointF grab = overlay->Thumb().center();
   Send(overlay, QEvent::MouseButtonPress, grab, Qt::LeftButton);
-  Send(overlay, QEvent::MouseMove, grab + QPointF(0, overlay->height()), Qt::LeftButton);
-  Send(overlay, QEvent::MouseButtonRelease, grab + QPointF(0, overlay->height()), Qt::NoButton);
+  Send(overlay, QEvent::MouseMove, grab + QPointF(0, area->height()), Qt::LeftButton);
+  Send(overlay, QEvent::MouseButtonRelease, grab + QPointF(0, area->height()), Qt::NoButton);
   CHECK(bar->value() == bar->maximum());
 }
 

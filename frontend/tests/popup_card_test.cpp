@@ -31,6 +31,15 @@ TEST_CASE("A popover drops from its anchor and stays on screen") {
     CHECK(at.bottom() < pill.top());
   }
 
+  SUBCASE("One that just fits below stays below, beside or under its anchor alike") {
+    const QRect pill(400, 768 - 300 - gap - 30, 160, 30);
+    CHECK(popup::PlaceBelow(pill, size, popup::Align::Start, gap, screen).y() > pill.bottom());
+    const QRect hovered(400, 768 - 300 - popup::kGap - 30, 160, 30);
+    CHECK(popup::Place(hovered, size, /*beside=*/false, screen).y() > hovered.bottom());
+    const QRect tile(1366 - 380 - popup::kGap - 160, 100, 160, 200);
+    CHECK(popup::Place(tile, size, /*beside=*/true, screen).x() > tile.right());
+  }
+
   SUBCASE("An anchor near the left edge doesn't push it off screen") {
     const QRect button(10, 8, 32, 32);
     const QRect at(popup::PlaceBelow(button, size, popup::Align::End, gap, screen), size);

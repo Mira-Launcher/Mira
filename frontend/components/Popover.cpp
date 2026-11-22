@@ -7,10 +7,20 @@ Popover::Popover(QWidget* parent) : QWidget(parent, Qt::Popup) {
 }
 
 void Popover::PopUpBelow(QWidget* anchor, popup::Align align) {
+  anchor_ = anchor;
+  align_ = align;
   adjustSize();
-  const QRect global(anchor->mapToGlobal(QPoint(0, 0)), anchor->size());
-  move(popup::PlaceBelow(global, size(), align, kGap));
+  Place();
   show();
+}
+
+void Popover::resizeEvent(QResizeEvent* event) {
+  QWidget::resizeEvent(event);
+  if (isVisible()) Place();
+}
+
+void Popover::Place() {
+  if (anchor_ != nullptr) move(popup::PlaceBelow(anchor_, size(), align_, kGap));
 }
 
 }  // namespace mira_gui

@@ -14,6 +14,15 @@ class IconButton : public QToolButton {
  public:
   IconButton(icons::Glyph glyph, const QString& tip, QWidget* parent = nullptr,
              icons::Role role = &theme::Tokens::text);
+
+  // Shows `glyph` from now on, in this and later themes.
+  void SetGlyph(icons::Glyph glyph);
+
+ private:
+  void Apply();
+
+  icons::Glyph glyph_;
+  icons::Role role_;
 };
 
 }  // namespace mira_gui

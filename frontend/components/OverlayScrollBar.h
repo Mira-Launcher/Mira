@@ -25,7 +25,8 @@ class OverlayScrollBar : public QWidget {
   QScrollBar* Bar() const { return bar_; }
   // Whether the thumb shows (or is fading); faded out, it lets the pointer through.
   bool Shown() const;
-  // The thumb's rect within this widget; empty when there's nothing to scroll.
+  // The thumb's painted rect within this widget, which is as big as its grabbable area; empty when
+  // there's nothing to scroll.
   QRectF Thumb() const;
 
  protected:
@@ -41,6 +42,8 @@ class OverlayScrollBar : public QWidget {
  private:
   bool Vertical() const;
   bool Scrollable() const;
+  QRect Strip() const;        // where the thumb travels, in the area's coordinates
+  QRect ThumbInArea() const;  // the grabbable thumb, in the area's coordinates
   void Place();
   void Reveal();
   void FadeOut();

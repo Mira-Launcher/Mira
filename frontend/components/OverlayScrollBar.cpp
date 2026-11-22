@@ -7,7 +7,6 @@
 #include <QScrollBar>
 #include <QTimer>
 #include <QVariantAnimation>
-#include <QtMath>
 #include <algorithm>
 
 #include "../theme/Theme.h"
@@ -74,39 +73,45 @@ bool OverlayScrollBar::Scrollable() const {
   return policy != Qt::ScrollBarAlwaysOff;
 }
 
-QRectF OverlayScrollBar::Thumb() const {
+QRect OverlayScrollBar::Strip() const {
+  const QRect viewport = area_->viewport()->geometry();
+  return Vertical()
+             ? QRect(viewport.right() - kReach + 1, viewport.top(), kReach, viewport.height())
+             : QRect(viewport.left(), viewport.bottom() - kReach + 1, viewport.width(), kReach);
+}
+
+QRect OverlayScrollBar::ThumbInArea() const {
   if (!Scrollable()) return {};
-  const qreal track = (Vertical() ? height() : width()) - 2 * kEndGap;
+  const QRect strip = Strip();
+  const int track = (Vertical() ? strip.height() : strip.width()) - 2 * kEndGap;
   if (track <= 0) return {};
   const qreal range = bar_->maximum() - bar_->minimum();
   // A short area's thumb may be shorter than the minimum, never longer than its travel.
-  const qreal length = std::min(
-      track, std::max<qreal>(kMinLength, track * bar_->pageStep() / (range + bar_->pageStep())));
-  const qreal at = kEndGap + (track - length) * (bar_->sliderPosition() - bar_->minimum()) / range;
-  const qreal across = (Vertical() ? width() : height()) - kInset - kThickness;
-  return Vertical() ? QRectF(across, at, kThickness, length)
-                    : QRectF(at, across, length, kThickness);
+  const int length = std::min(
+      track, std::max(kMinLength, qRound(track * bar_->pageStep() / (range + bar_->pageStep()))));
+  const int at =
+      kEndGap + qRound((track - length) * (bar_->sliderPosition() - bar_->minimum()) / range);
+  return Vertical() ? QRect(strip.left(), strip.top() + at, kReach, length)
+                    : QRect(strip.left() + at, strip.top(), length, kReach);
+}
+
+QRectF OverlayScrollBar::Thumb() const {
+  if (ThumbInArea().isEmpty()) return {};
+  const qreal across = kReach - kInset - kThickness;
+  return Vertical() ? QRectF(across, 0, kThickness, height())
+                    : QRectF(0, across, width(), kThickness);
 }
 
 void OverlayScrollBar::Place() {
   if (area_.isNull()) return;
-  const QRect viewport = area_->viewport()->geometry();
-  setGeometry(
-      Vertical()
-          ? QRect(viewport.right() - kReach + 1, viewport.top(), kReach, viewport.height())
-          : QRect(viewport.left(), viewport.bottom() - kReach + 1, viewport.width(), kReach));
-  // Only the thumb takes the pointer, so content under the rest of the strip stays clickable.
-  const QRectF thumb = Thumb();
-  if (!thumb.isEmpty()) {
-    setMask(Vertical() ? QRect(0, qFloor(thumb.top()), kReach, qCeil(thumb.height()))
-                       : QRect(qFloor(thumb.left()), 0, qCeil(thumb.width()), kReach));
+  // Only as big as the grabbable thumb, so the content beside it stays clickable.
+  if (const QRect thumb = ThumbInArea(); !thumb.isEmpty() && thumb != geometry()) {
+    setGeometry(thumb);
   }
-  update();
 }
 
 void OverlayScrollBar::Reveal() {
   if (!Scrollable() || !area_->isVisible()) return;
-  Place();
   show();
   raise();
   setAttribute(Qt::WA_TransparentForMouseEvents, false);
@@ -155,21 +160,21 @@ void OverlayScrollBar::leaveEvent(QEvent*) {
 
 void OverlayScrollBar::mousePressEvent(QMouseEvent* event) {
   if (event->button() != Qt::LeftButton || !Scrollable()) return;
-  const QRectF thumb = Thumb();
-  const qreal at = Vertical() ? event->position().y() : event->position().x();
-  const qreal start = Vertical() ? thumb.top() : thumb.left();
-  drag_offset_ = std::clamp(at - start, qreal(0), Vertical() ? thumb.height() : thumb.width());
+  drag_offset_ = Vertical() ? event->position().y() : event->position().x();
   bar_->setSliderDown(true);
   update();
 }
 
 void OverlayScrollBar::mouseMoveEvent(QMouseEvent* event) {
   if (drag_offset_ < 0 || !Scrollable()) return;
-  const QRectF thumb = Thumb();
-  const qreal length = Vertical() ? thumb.height() : thumb.width();
-  const qreal track = (Vertical() ? height() : width()) - 2 * kEndGap - length;
+  // In the area's coordinates: this widget moves with the thumb while it drags.
+  const QRect strip = Strip();
+  const int length = Vertical() ? height() : width();
+  const qreal track = (Vertical() ? strip.height() : strip.width()) - 2 * kEndGap - length;
   if (track <= 0) return;
-  const qreal at = (Vertical() ? event->position().y() : event->position().x()) - drag_offset_;
+  const QPointF pointer = area_->mapFromGlobal(event->globalPosition());
+  const qreal at =
+      (Vertical() ? pointer.y() - strip.top() : pointer.x() - strip.left()) - drag_offset_;
   const qreal fraction = std::clamp((at - kEndGap) / track, qreal(0), qreal(1));
   bar_->setSliderPosition(qRound(bar_->minimum() + fraction * (bar_->maximum() - bar_->minimum())));
 }
@@ -212,33 +217,20 @@ bool OverlayScrollBar::Shown() const {
   return !testAttribute(Qt::WA_TransparentForMouseEvents);
 }
 
-namespace {
-
-// Watches for each scroll bar's first polish, when the area first shows it.
-class Installer : public QObject {
- public:
-  using QObject::QObject;
-
-  bool eventFilter(QObject* watched, QEvent* event) override {
-    if (event->type() != QEvent::Polish) return false;
-    auto* bar = qobject_cast<QScrollBar*>(watched);
-    if (bar == nullptr || bar->property(kAttached).toBool()) return false;
+void SetUpOverlayScrollBars() {
+  // On each scroll bar's polish by the app's style, when its area first shows it.
+  theme::OnPolish([](QWidget* widget) {
+    auto* bar = qobject_cast<QScrollBar*>(widget);
+    if (bar == nullptr || bar->property(kAttached).toBool()) return;
     // A bar's parent is the area's container for it.
     QWidget* container = bar->parentWidget();
     auto* area = qobject_cast<QAbstractScrollArea*>(container != nullptr ? container->parentWidget()
                                                                          : nullptr);
-    if (area == nullptr) return false;
-    if (bar != area->verticalScrollBar() && bar != area->horizontalScrollBar()) return false;
+    if (area == nullptr) return;
+    if (bar != area->verticalScrollBar() && bar != area->horizontalScrollBar()) return;
     bar->setProperty(kAttached, true);
     new OverlayScrollBar(area, bar);
-    return false;
-  }
-};
-
-}  // namespace
-
-void SetUpOverlayScrollBars() {
-  qApp->installEventFilter(new Installer(qApp));
+  });
 }
 
 }  // namespace mira_gui

@@ -28,6 +28,7 @@
 #include <string>
 #include <toml.hpp>
 #include <utility>
+#include <vector>
 
 namespace mira_gui::theme {
 namespace {
@@ -147,6 +148,8 @@ Tokens ParseTokens(const std::string& text, Tokens tokens = {}) {
   return tokens;
 }
 
+std::vector<std::function<void(QWidget*)>> g_polish_hooks;
+
 // Fusion rather than the desktop's own style: ours is the only palette and stylesheet in play, and
 // Breeze/Adwaita would otherwise keep drawing the parts our QSS doesn't name, which is what
 // "half-themed" looks like. Its dotted focus frame is left out: the focus ring marks focus.
@@ -167,6 +170,7 @@ class AppStyle : public QProxyStyle {
     if (auto* spin = qobject_cast<QAbstractSpinBox*>(widget)) {
       if (auto* edit = spin->findChild<QLineEdit*>()) edit->setTextMargins(6, 0, 0, 0);
     }
+    for (const auto& hook : g_polish_hooks) hook(widget);
   }
   using QProxyStyle::polish;
 };
@@ -591,6 +595,11 @@ const Overrides& CurrentOverrides() {
 void SetOverrides(const Overrides& overrides) {
   g_overrides = overrides;
   ApplyResolved(g_resolved);
+}
+
+void OnPolish(std::function<void(QWidget*)> hook) {
+  UseFusion();  // the style that runs the hooks
+  g_polish_hooks.push_back(std::move(hook));
 }
 
 void SetStyleProperty(QWidget* widget, const char* name, const QString& value) {

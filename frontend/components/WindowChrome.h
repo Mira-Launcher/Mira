@@ -2,9 +2,9 @@
 
 #include <QWidget>
 
-class QToolButton;
-
 namespace mira_gui {
+
+class IconButton;
 
 // A frameless window's own title bar: a press on the bar or a label on it moves the window, a
 // double click maximizes or restores it. A control on it takes its own clicks.
@@ -33,7 +33,7 @@ class WindowButtons : public QWidget {
  private:
   void Sync();
 
-  QToolButton* maximize_;
+  IconButton* maximize_;
   QWidget* watched_ = nullptr;
 };
 

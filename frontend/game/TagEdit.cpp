@@ -8,6 +8,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QPushButton>
+#include <QTimer>
 #include <algorithm>
 
 #include "../client/Types.h"
@@ -118,7 +119,19 @@ void TagEdit::Rebuild() {
       icons::Follow(chip, icons::Glyph::Folder,
                     is_folder ? &theme::Tokens::accent : &theme::Tokens::text_muted);
     }
-    connect(chip, &Chip::RemoveClicked, this, [this, tag] { Remove(tag); });
+    connect(chip, &Chip::RemoveClicked, this, [this, chip, tag] {
+      // Removed from the keyboard, focus stays in the tags: the next chip, else Add tag. Add tag
+      // holds it meanwhile, since a hidden chip would pass it down the window, and the next chip
+      // takes it once laid out, or the page would scroll to where it was built.
+      const qsizetype at = chip->hasFocus() ? chips_.indexOf(chip) : -1;
+      if (at >= 0) add_->setFocus(Qt::OtherFocusReason);
+      Remove(tag);
+      if (at < 0) return;
+      QTimer::singleShot(0, this, [this, at] {
+        if (!chips_.isEmpty())
+          chips_[std::min(at, chips_.size() - 1)]->setFocus(Qt::OtherFocusReason);
+      });
+    });
     // Only a folder pick: a click that filtered the library would read as the same kind of switch.
     if (other_folder) {
       connect(chip, &Chip::clicked, this, [this, tag] {

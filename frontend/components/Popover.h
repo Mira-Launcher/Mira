@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QPointer>
 #include <QWidget>
 
 #include "PopupCard.h"
@@ -20,6 +21,16 @@ class Popover : public QWidget {
 
   // The space between the anchor and the popover.
   static constexpr int kGap = 4;
+
+ protected:
+  // Placed again when its content grows or shrinks while open, so it stays on screen.
+  void resizeEvent(QResizeEvent* event) override;
+
+ private:
+  void Place();
+
+  QPointer<QWidget> anchor_;
+  popup::Align align_ = popup::Align::Start;
 };
 
 }  // namespace mira_gui

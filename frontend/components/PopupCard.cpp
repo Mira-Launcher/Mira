@@ -56,14 +56,18 @@ QPoint PlaceBelow(const QRect& anchor, QSize size, Align align, int gap) {
   return PlaceBelow(anchor, size, align, gap, ScreenArea(anchor, size));
 }
 
+QPoint PlaceBelow(const QWidget* anchor, QSize size, Align align, int gap) {
+  return PlaceBelow(QRect(anchor->mapToGlobal(QPoint(0, 0)), anchor->size()), size, align, gap);
+}
+
 QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area) {
   QPoint pos;
   if (beside) {
     pos = QPoint(anchor.right() + 1 + kGap, anchor.top());
-    if (pos.x() + size.width() > area.right()) pos.setX(anchor.left() - kGap - size.width());
+    if (pos.x() + size.width() > area.right() + 1) pos.setX(anchor.left() - kGap - size.width());
   } else {
     pos = QPoint(anchor.center().x() - size.width() / 2, anchor.bottom() + 1 + kGap);
-    if (pos.y() + size.height() > area.bottom()) pos.setY(anchor.top() - kGap - size.height());
+    if (pos.y() + size.height() > area.bottom() + 1) pos.setY(anchor.top() - kGap - size.height());
   }
   return Inside(pos, size, area);
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractButton>
+#include <QPointer>
 
 class QMenu;
 
@@ -20,8 +21,8 @@ class Chip : public QAbstractButton {
   void SetCount(int count);
   // Opens `menu` under the chip on a click, and shows a chevron.
   void SetMenu(QMenu* menu);
-  QMenu* Menu() const { return menu_; }
-  // Shows an × that emits RemoveClicked instead of a click.
+  QMenu* Menu() const;
+  // Shows an × that emits RemoveClicked instead of a click, as Delete and Backspace do.
   void SetRemovable(bool removable, const QString& tip = {});
   void SetMarked(bool marked);
   // A color of its own (a ProtonDB tier, a Steam review group): the chip is tinted with it while
@@ -37,6 +38,7 @@ class Chip : public QAbstractButton {
  protected:
   void paintEvent(QPaintEvent* event) override;
   void changeEvent(QEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
   bool event(QEvent* event) override;
   bool hitButton(const QPoint& pos) const override;
   void mousePressEvent(QMouseEvent* event) override;
@@ -50,7 +52,7 @@ class Chip : public QAbstractButton {
   int TrailingSize() const;
 
   int count_ = -1;
-  QMenu* menu_ = nullptr;
+  QPointer<QMenu> menu_;
   bool removable_ = false;
   QString remove_tip_;
   bool marked_ = false;

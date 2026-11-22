@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QPointer>
 #include <QPushButton>
 #include <QString>
 #include <QStringList>
@@ -22,13 +23,13 @@ class DropdownButton : public QPushButton {
 
  public:
   DropdownButton(QMenu* menu, QWidget* parent = nullptr);
-  QMenu* Menu() const { return menu_; }
+  QMenu* Menu() const;
 
  protected:
   void paintEvent(QPaintEvent* event) override;
 
  private:
-  QMenu* menu_ = nullptr;
+  QPointer<QMenu> menu_;
 };
 
 // A page's tabs, each with a count, then the page's own actions at the end.

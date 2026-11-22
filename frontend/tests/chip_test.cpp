@@ -32,7 +32,7 @@ double Contrast(const QColor& a, const QColor& b) {
 
 }  // namespace
 
-TEST_CASE("A removable chip's × removes it and a click elsewhere on it is a click") {
+TEST_CASE("A removable chip's × or Delete removes it and a click elsewhere on it is a click") {
   nav_test::App();
   Chip chip("Celeste");
   chip.SetRemovable(true, "Remove Celeste");
@@ -51,6 +51,13 @@ TEST_CASE("A removable chip's × removes it and a click elsewhere on it is a cli
   QTest::mouseClick(&chip, Qt::LeftButton, {}, QPoint(chip.height() / 2, chip.height() / 2));
   CHECK(clicks == 1);
   CHECK(removes == 1);
+
+  // From the keyboard, Delete and Backspace remove it; Space is still a click.
+  QTest::keyClick(&chip, Qt::Key_Delete);
+  QTest::keyClick(&chip, Qt::Key_Backspace);
+  CHECK(removes == 3);
+  QTest::keyClick(&chip, Qt::Key_Space);
+  CHECK(clicks == 2);
 }
 
 TEST_CASE("A chip group keeps values it doesn't offer and greys a chip without its pair") {

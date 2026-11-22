@@ -29,5 +29,7 @@ enum class Align { Start, End };
 QPoint PlaceBelow(const QRect& anchor, QSize size, Align align, int gap, const QRect& area);
 // The same, kept on the anchor's screen.
 QPoint PlaceBelow(const QRect& anchor, QSize size, Align align, int gap);
+// The same, under `anchor` widget.
+QPoint PlaceBelow(const QWidget* anchor, QSize size, Align align, int gap);
 
 }  // namespace mira_gui::popup

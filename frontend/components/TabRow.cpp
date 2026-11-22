@@ -12,14 +12,22 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "IconButton.h"
+#include "Popover.h"
+#include "PopupCard.h"
 #include "SearchField.h"
 
 namespace mira_gui {
 
 DropdownButton::DropdownButton(QMenu* menu, QWidget* parent) : QPushButton(parent), menu_(menu) {
   setProperty("dropdown", true);  // base.qss leaves room on the right for the chevron
-  connect(this, &QPushButton::clicked, this,
-          [this] { menu_->popup(mapToGlobal(QPoint(0, height()))); });
+  connect(this, &QPushButton::clicked, this, [this] {
+    if (menu_ == nullptr) return;
+    menu_->popup(popup::PlaceBelow(this, menu_->sizeHint(), popup::Align::Start, Popover::kGap));
+  });
+}
+
+QMenu* DropdownButton::Menu() const {
+  return menu_;
 }
 
 void DropdownButton::paintEvent(QPaintEvent* event) {

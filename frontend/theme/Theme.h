@@ -7,6 +7,7 @@
 #include <QString>
 #include <QStringList>
 #include <array>
+#include <functional>
 #include <optional>
 
 class QWidget;
@@ -158,6 +159,8 @@ Tokens Peek(const QString& name);
 // (a label's text style goes through components/Text's SetTextStyle). Qt does not restyle a widget
 // when a property changes after it has been polished, so this re-polishes one that already is.
 void SetStyleProperty(QWidget* widget, const char* name, const QString& value);
+// Runs `hook` on every widget the app's style polishes (when it first shows, and on a restyle).
+void OnPolish(std::function<void(QWidget*)> hook);
 
 // Changed() fires after every Apply(). Anything that paints with tokens
 // instead of with the stylesheet (the tile delegate, the toasts) connects to

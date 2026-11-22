@@ -56,7 +56,11 @@ QLabel* SheetCard::ErrorLine() {
     error_->setWordWrap(true);
     error_->setContentsMargins(kRowPaddingX, 4, kRowPaddingX, 0);
     error_->hide();
-    AddFooterRow(error_, buttons_ != nullptr ? 0 : -1);
+    // Right above the buttons when they're already there; else they're added after it.
+    const QWidget* row = buttons_ != nullptr ? buttons_->parentWidget() : nullptr;
+    auto* footer =
+        row != nullptr ? qobject_cast<QBoxLayout*>(row->parentWidget()->layout()) : nullptr;
+    AddFooterRow(error_, footer != nullptr ? footer->indexOf(row) : -1);
   }
   return error_;
 }
