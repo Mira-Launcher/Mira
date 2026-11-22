@@ -8,9 +8,9 @@
 #include <algorithm>
 #include <array>
 
+#include "../components/Labels.h"
+#include "../components/TabRow.h"
 #include "../sources/Sources.h"
-#include "../widgets/Labels.h"
-#include "../widgets/TabRow.h"
 
 namespace mira_gui {
 namespace {

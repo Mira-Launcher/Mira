@@ -1,5 +1,5 @@
 /* Mira's stylesheet. Not a theme: themes are the .toml token files, and
- * every @name below is substituted from the one being applied (ui/Theme.cpp).
+ * every @name below is substituted from the one being applied (theme/Theme.cpp).
  *
  * Broad backgrounds are left to the palette, which Fusion already honours;
  * what is here is the chrome the palette cannot express: shape, spacing,
@@ -78,7 +78,7 @@ QLabel[role="keycap"] {
 }
 
 /* A game's lifecycle state, set as a "status" property so a theme change
- * recolors it without the widget having to be repopulated (ui/Theme.h's
+ * recolors it without the widget having to be repopulated (theme/Theme.h's
  * SetStyleProperty). "running" is not a status mirad reports; it is the
  * frontend's own "playing right now". */
 QLabel[status="ready"],
@@ -272,7 +272,7 @@ QLabel#brand_title {
 
 /* --- Left sidebar ---------------------------------------------------------
  * The nav, source and recently played rows are plain QPushButtons made to read as rows
- * (see ui/GameTileDelegate.cpp's own status-dot styling for the same
+ * (see library/GameTileDelegate.cpp's own status-dot styling for the same
  * "flatten it, then restyle by objectName" approach elsewhere). */
 
 /* The sidebar paints no background of its own: it shows the window's color, and
@@ -491,7 +491,7 @@ QComboBox QAbstractItemView {
   selection-color: @on_accent;
 }
 
-/* widgets/FlatCombo's popup draws plain items, so they're styled here as the others look. */
+/* components/FlatCombo's popup draws plain items, so they're styled here as the others look. */
 mira_gui--FlatCombo QAbstractItemView::item {
   padding: 4px 8px;
   border-radius: @radius_control;
@@ -611,7 +611,7 @@ QListView#library_grid {
   border: none;
 }
 
-/* --- Settings (ui/SettingsNav, ui/SettingsCard) --------------------------
+/* --- Settings (settings/SettingsNav, components/Card) --------------------------
  * The nav is the main sidebar's twin: the window's color, as the sidebar shows,
  * and the same flat rows, under small uppercase group headings. */
 
@@ -685,7 +685,7 @@ QFrame#settings_card {
   border-radius: @radius_card;
 }
 
-/* settings/SettingsCard's ExpanderRow: its rows, opened, on a sunken surface. */
+/* components/Card's ExpanderRow: its rows, opened, on a sunken surface. */
 QWidget#expander_body {
   background: @surface_sunken;
   border-top: 1px solid @border;
@@ -709,7 +709,7 @@ QLabel#expander_summary[tone="success"] {
 }
 
 /* One height for every control in a card (32 px with padding and border), with the row
- * labels' minimum height in settings/SettingsCard.cpp, so every row is as tall as the next. */
+ * labels' minimum height in components/Card.cpp, so every row is as tall as the next. */
 QFrame#settings_card QLineEdit,
 QFrame#settings_card QSpinBox,
 QFrame#settings_card QDoubleSpinBox,
@@ -719,7 +719,7 @@ QFrame#settings_card QComboBox {
 }
 
 /* A longer choice in a card is its value and a chevron, boxed only on hover. Its chevron ends
- * where the switches and fields of the rows around it do (widgets/FlatCombo sizes from this). */
+ * where the switches and fields of the rows around it do (components/FlatCombo sizes from this). */
 QFrame#settings_card QComboBox:!editable {
   background: transparent;
   border: 1px solid transparent;
@@ -776,7 +776,7 @@ QFrame#drop_zone {
   background: transparent;
 }
 
-/* widgets/Labels' MakeTag: a small pill beside a name ("Beta", "Recommended", "Not checked"). */
+/* components/Labels' MakeTag: a small pill beside a name ("Beta", "Recommended", "Not checked"). */
 QLabel#tag {
   color: @text_muted;
   font-size: @font_size_small;
@@ -797,7 +797,7 @@ QLabel#tag[tone="warning"] {
   border-color: @warning;
 }
 
-/* widgets/CopyField: a command to copy. */
+/* components/CopyField: a command to copy. */
 QLabel#copy_field {
   font-family: monospace;
   background: @window;
@@ -806,7 +806,7 @@ QLabel#copy_field {
   padding: 6px;
 }
 
-/* widgets/ListEdit: a list setting's items as sunken rows under its row. */
+/* components/ListEdit: a list setting's items as sunken rows under its row. */
 QWidget#list_row {
   background: @surface_sunken;
   border-top: 1px solid @border;
@@ -898,7 +898,7 @@ QPushButton#text_button[tone="muted"] {
   color: @text_muted;
 }
 
-/* ui/TagEdit: one chip per tag. */
+/* game/TagEdit: one chip per tag. */
 QFrame#tag_chip {
   background: @surface_alt;
   border: 1px solid @border;
@@ -1006,7 +1006,7 @@ QScrollArea {
 }
 
 /* --- Game-edit overlay ---------------------------------------------------
- * The scrim and the card (ui/HeroBackdrop) are painted in code; these are
+ * The scrim and the card (game/HeroBackdrop) are painted in code; these are
  * what sits over the card's hero art. */
 
 QLabel#game_edit_title, QLabel#page_title {
@@ -1064,7 +1064,7 @@ QPushButton#saves_summary[attention="true"] {
   border-color: rgba(245, 196, 107, 0.55);
 }
 
-/* --- Page header and tabs (ui/PageHeader) -------------------------------- */
+/* --- Page header and tabs (components/PageHeader) -------------------------------- */
 
 QLabel#page_status {
   color: @text_muted;
@@ -1096,7 +1096,7 @@ QWidget#picker_tabs QPushButton:checked {
   border-bottom-color: @accent;
 }
 
-/* --- Continue playing (ui/ContinueRow) ----------------------------------- */
+/* --- Continue playing (library/ContinueRow) ----------------------------------- */
 
 QFrame#continue_card {
   background: @surface;
@@ -1169,7 +1169,7 @@ QLabel#default_tag {
   padding: 0px 6px;
 }
 
-/* A two or three way choice (widgets/Segmented). */
+/* A two or three way choice (components/Segmented). */
 QWidget#segmented {
   background: @surface;
   border: 1px solid @border;

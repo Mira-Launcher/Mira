@@ -3,7 +3,7 @@
 #include <QSize>
 #include <functional>
 
-#include "../widgets/TileView.h"
+#include "../components/TileView.h"
 
 namespace mira_gui {
 

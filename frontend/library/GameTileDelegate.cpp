@@ -11,11 +11,11 @@
 #include <QTimer>
 #include <algorithm>
 
+#include "../components/ProgressRail.h"
+#include "../components/TileView.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/ProgressRail.h"
-#include "../widgets/TileView.h"
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
 

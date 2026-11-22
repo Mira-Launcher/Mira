@@ -5,9 +5,9 @@
 #include <QPushButton>
 #include <QStringList>
 
+#include "../components/Labels.h"
+#include "../components/WindowCards.h"
 #include "../sources/Sources.h"
-#include "../widgets/Labels.h"
-#include "../widgets/WindowCards.h"
 
 namespace mira_gui {
 namespace {

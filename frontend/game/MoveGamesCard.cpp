@@ -10,10 +10,10 @@
 #include <algorithm>
 
 #include "../app/ErrorHelp.h"
+#include "../components/Labels.h"
+#include "../components/WindowCards.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/WindowCards.h"
 #include "CardParts.h"
 
 namespace mira_gui {

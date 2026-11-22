@@ -12,10 +12,10 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "../components/Labels.h"
+#include "../components/TabRow.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/TabRow.h"
 #include "LibrarySort.h"
 
 namespace mira_gui {

@@ -14,14 +14,14 @@
 #include <algorithm>
 #include <set>
 
-#include "../settings/SettingsCard.h"
+#include "../components/Card.h"
+#include "../components/FlatCombo.h"
+#include "../components/ListEdit.h"
+#include "../components/PathField.h"
+#include "../components/PopupDialog.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/ListEdit.h"
-#include "../widgets/PathField.h"
-#include "../widgets/PopupDialog.h"
 
 namespace mira_gui {
 namespace {

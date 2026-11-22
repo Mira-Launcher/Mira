@@ -9,8 +9,8 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Stores.h"
+#include "../components/PopupDialog.h"
 #include "../system/PackageInstall.h"
-#include "../widgets/PopupDialog.h"
 #include "SourceText.h"
 
 namespace mira_gui {

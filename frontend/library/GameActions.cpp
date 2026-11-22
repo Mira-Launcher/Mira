@@ -16,12 +16,12 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../client/api/ModManagers.h"
+#include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
 #include "../game/MoveGamesCard.h"
 #include "../game/PrefixCards.h"
 #include "../game/RemoveModManagerCard.h"
 #include "../sources/Sources.h"
-#include "../widgets/WindowCards.h"
 #include "PlayChoices.h"
 
 namespace mira_gui::actions {

@@ -3,8 +3,8 @@
 #include <QString>
 #include <vector>
 
+#include "../components/Card.h"
 #include "../settings/SettingEditor.h"
-#include "../settings/SettingsCard.h"
 #include "Sources.h"
 
 class QComboBox;

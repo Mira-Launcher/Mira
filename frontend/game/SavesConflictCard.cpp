@@ -9,11 +9,11 @@
 
 #include "../client/Types.h"
 #include "../client/api/Games.h"
+#include "../components/Labels.h"
+#include "../components/LaidOutButton.h"
 #include "../library/ArtworkStore.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
-#include "../widgets/Labels.h"
-#include "../widgets/LaidOutButton.h"
 #include "SavesText.h"
 
 namespace mira_gui {

@@ -9,9 +9,9 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "../components/Card.h"
+#include "../components/WindowCards.h"
 #include "../game/CardParts.h"
-#include "../settings/SettingsCard.h"
-#include "../widgets/WindowCards.h"
 #include "KeyBindings.h"
 #include "Tray.h"
 

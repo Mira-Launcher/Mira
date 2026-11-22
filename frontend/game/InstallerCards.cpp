@@ -12,10 +12,10 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Games.h"
+#include "../components/FlatCombo.h"
+#include "../components/Labels.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/Labels.h"
 #include "CardParts.h"
 #include "LaunchOptionsEdit.h"
 

@@ -4,10 +4,10 @@
 #include <QVBoxLayout>
 #include <algorithm>
 
+#include "../components/Labels.h"
 #include "../setup/EmulatorPanel.h"
 #include "../setup/OfficePanel.h"
 #include "../setup/SignInPanel.h"
-#include "../widgets/Labels.h"
 #include "SourceText.h"
 
 namespace mira_gui {

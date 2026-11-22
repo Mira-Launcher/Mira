@@ -10,9 +10,9 @@
 #include "../client/api/Config.h"
 #include "../client/api/Games.h"
 #include "../client/api/Runners.h"
-#include "../settings/SettingsCard.h"
-#include "../widgets/ChipToggles.h"
-#include "../widgets/ListEdit.h"
+#include "../components/Card.h"
+#include "../components/ChipToggles.h"
+#include "../components/ListEdit.h"
 
 namespace mira_gui {
 

@@ -20,15 +20,15 @@
 
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
+#include "../components/Card.h"
+#include "../components/ChipToggles.h"
+#include "../components/FlatCombo.h"
+#include "../components/Labels.h"
+#include "../components/ListEdit.h"
+#include "../components/PathField.h"
+#include "../components/Segmented.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/ChipToggles.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ListEdit.h"
-#include "../widgets/PathField.h"
-#include "../widgets/Segmented.h"
-#include "SettingsCard.h"
 
 namespace mira_gui {
 namespace {

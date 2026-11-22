@@ -10,7 +10,7 @@
 
 #include "../activity/DownloadTracker.h"
 #include "../client/Types.h"
-#include "../widgets/TileView.h"
+#include "../components/TileView.h"
 #include "GameLibraryModel.h"
 #include "OwnedTitles.h"
 

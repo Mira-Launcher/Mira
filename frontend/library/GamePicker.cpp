@@ -13,11 +13,11 @@
 #include <QWheelEvent>
 #include <algorithm>
 
+#include "../components/FlowLayout.h"
+#include "../components/Labels.h"
+#include "../components/Scrolling.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/Labels.h"
-#include "../widgets/Scrolling.h"
 #include "ArtworkStore.h"
 #include "ZoomSettle.h"
 

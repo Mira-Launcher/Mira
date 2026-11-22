@@ -18,14 +18,14 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Artwork.h"
+#include "../components/FlowLayout.h"
+#include "../components/Scrolling.h"
+#include "../components/WindowCards.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/WindowCards.h"
 
 namespace mira_gui {
 namespace {

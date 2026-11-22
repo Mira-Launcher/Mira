@@ -5,8 +5,8 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include "../widgets/Labels.h"
-#include "../widgets/TileGridLayout.h"
+#include "../components/Labels.h"
+#include "../components/TileGridLayout.h"
 #include "SourceText.h"
 #include "SourceTile.h"
 

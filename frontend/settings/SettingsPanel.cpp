@@ -33,15 +33,15 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/Card.h"
+#include "../components/Labels.h"
+#include "../components/ListEdit.h"
+#include "../components/ShortcutEdit.h"
 #include "../library/HiddenLock.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ListEdit.h"
-#include "../widgets/ShortcutEdit.h"
 #include "AppearancePreviews.h"
-#include "SettingsCard.h"
 #include "SettingsNav.h"
 
 namespace mira_gui {
@@ -688,7 +688,8 @@ void SettingsPanel::ShowMiraFolders(const ConfigResult& config) {
   if (mira_folders_card_ == nullptr) return;
   mira_folders_card_->ClearRows();
   const QStringList folders = ListValue(config, "mira_folders");
-  // As a folder list's rows (widgets/ListEdit): under the row that adds one, each with its space.
+  // As a folder list's rows (components/ListEdit): under the row that adds one, each with its
+  // space.
   auto* add_row = new SettingRow(
       "Folders",
       "Pick a folder on another disk: Mira makes Games and Applications in it and watches it. "

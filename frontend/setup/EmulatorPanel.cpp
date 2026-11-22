@@ -10,9 +10,9 @@
 #include "../app/Notify.h"
 #include "../client/api/Config.h"
 #include "../client/api/Emulators.h"
+#include "../components/Labels.h"
 #include "../sources/SourceText.h"
 #include "../system/PackageInstall.h"
-#include "../widgets/Labels.h"
 
 namespace mira_gui {
 

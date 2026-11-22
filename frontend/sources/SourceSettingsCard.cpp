@@ -13,8 +13,8 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/FlatCombo.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlatCombo.h"
 #include "SourceText.h"
 
 namespace mira_gui {

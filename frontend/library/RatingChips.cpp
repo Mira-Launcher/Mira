@@ -6,8 +6,8 @@
 #include <QPixmap>
 #include <QPushButton>
 
-#include "../widgets/FlowLayout.h"
-#include "../widgets/Labels.h"
+#include "../components/FlowLayout.h"
+#include "../components/Labels.h"
 #include "GamePresentation.h"
 
 namespace mira_gui {

@@ -14,11 +14,11 @@
 #include <QVBoxLayout>
 
 #include "../client/api/Artwork.h"
+#include "../components/FlowLayout.h"
+#include "../components/ProgressRail.h"
+#include "../components/Scrolling.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/ProgressRail.h"
-#include "../widgets/Scrolling.h"
 #include "HeroBackdrop.h"
 
 namespace mira_gui {

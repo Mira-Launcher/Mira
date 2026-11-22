@@ -4,9 +4,9 @@
 #include <QLabel>
 #include <QPushButton>
 
+#include "../components/Labels.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
-#include "../widgets/Labels.h"
 
 namespace mira_gui {
 namespace {

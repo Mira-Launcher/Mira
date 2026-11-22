@@ -12,9 +12,9 @@
 #include <functional>
 #include <utility>
 
+#include "../components/Card.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GamePresentation.h"
-#include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 

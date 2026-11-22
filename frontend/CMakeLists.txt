@@ -25,9 +25,35 @@ message(STATUS "Qt6 ${Qt6_VERSION} found, building mira-gui")
 
 qt_standard_project_setup()
 
+# The Qt and standard headers most files include, parsed once.
+set(MIRA_GUI_PCH
+  <QString> <QStringList> <QObject> <QWidget> <QLabel> <QPushButton> <QVBoxLayout> <QHBoxLayout>
+  <QPointer> <QTimer> <QHash> <QSet> <algorithm> <functional> <map> <memory> <optional> <string> <vector>)
+
+# The component library and the theme it draws with, as a library of its own: it links nothing
+# else of the GUI, so a component that reaches into feature code fails to build.
+file(GLOB MIRA_GUI_COMPONENT_SOURCES CONFIGURE_DEPENDS
+  components/*.cpp components/*.h theme/*.cpp theme/*.h)
+qt_add_library(mira_gui_components STATIC ${MIRA_GUI_COMPONENT_SOURCES})
+target_include_directories(mira_gui_components PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(mira_gui_components PUBLIC Qt6::Widgets Qt6::DBus PRIVATE mira_third_party)
+target_compile_features(mira_gui_components PUBLIC cxx_std_20)
+if(MIRA_PCH)
+  target_precompile_headers(mira_gui_components PRIVATE ${MIRA_GUI_PCH})
+endif()
+if(TARGET mira_glibc_compat)
+  target_link_libraries(mira_gui_components PRIVATE mira_glibc_compat)
+endif()
+# Links every object of the library on its own, so a call into feature code is an undefined
+# symbol here instead of resolving quietly inside mira-gui.
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/components_link_check.cpp "int main() { return 0; }\n")
+add_executable(mira_gui_components_check ${CMAKE_CURRENT_BINARY_DIR}/components_link_check.cpp)
+target_link_libraries(mira_gui_components_check PRIVATE
+  "$<LINK_LIBRARY:WHOLE_ARCHIVE,mira_gui_components>" mira_third_party)
+
 # Each folder is one area of the GUI; docs/frontend.md lists what each holds.
 set(MIRA_GUI_DIRS
-  activity app bigscreen client client/api dialogs downloads game library runners settings setup sidebar sources system tags theme updates widgets window)
+  activity app bigscreen client client/api dialogs downloads game library runners settings setup sidebar sources system tags updates window)
 set(MIRA_GUI_SOURCES main.cpp)
 foreach(dir IN LISTS MIRA_GUI_DIRS)
   file(GLOB dir_sources CONFIGURE_DEPENDS ${dir}/*.cpp ${dir}/*.h)
@@ -77,7 +103,7 @@ qt_add_resources(mira-gui "themes"
 # backend code, so linking it does not violate the "never link mira_core"
 # rule in docs/backend.md: it's the same REST-client toolkit `mira`
 # uses, not a shortcut past the API.
-target_link_libraries(mira-gui PRIVATE Qt6::Widgets Qt6::DBus Qt6::Network Qt6::Multimedia mira_third_party Threads::Threads)
+target_link_libraries(mira-gui PRIVATE mira_gui_components Qt6::Widgets Qt6::DBus Qt6::Network Qt6::Multimedia mira_third_party Threads::Threads)
 target_compile_features(mira-gui PRIVATE cxx_std_20)
 
 # Optional: lets big screen focus a game's X11/XWayland window as it opens.
@@ -90,11 +116,8 @@ if(XCB_FOUND)
   target_compile_definitions(mira-gui PRIVATE MIRA_HAVE_XCB)
 endif()
 
-# The Qt and standard headers most files include, parsed once.
 if(MIRA_PCH)
-  target_precompile_headers(mira-gui PRIVATE
-    <QString> <QStringList> <QObject> <QWidget> <QLabel> <QPushButton> <QVBoxLayout> <QHBoxLayout>
-    <QPointer> <QTimer> <QHash> <QSet> <algorithm> <functional> <map> <memory> <optional> <string> <vector>)
+  target_precompile_headers(mira-gui PRIVATE ${MIRA_GUI_PCH})
 endif()
 if(TARGET mira_glibc_compat)
   target_link_libraries(mira-gui PRIVATE mira_glibc_compat)
@@ -147,12 +170,7 @@ add_executable(mira_gui_tests
   settings/SettingsSearch.cpp
   setup/SetupFlow.cpp
   sources/Sources.cpp
-  theme/Theme.cpp
   updates/UpdateRows.cpp
-  widgets/FocusRing.cpp
-  widgets/Labels.cpp
-  widgets/SpatialNav.cpp
-  widgets/TileFit.cpp
 )
 target_include_directories(mira_gui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 qt_add_resources(mira_gui_tests "test_themes"
@@ -166,14 +184,12 @@ qt_add_resources(mira_gui_tests "test_themes"
 # the tests that open a window (offscreen).
 # Test for QAbstractItemModelTester, which checks the models' row signals.
 find_package(Qt6 REQUIRED COMPONENTS Test)
-target_link_libraries(mira_gui_tests PRIVATE mira_third_party Qt6::Widgets Qt6::Test)
+target_link_libraries(mira_gui_tests PRIVATE mira_gui_components mira_third_party Qt6::Widgets Qt6::Test)
 target_compile_features(mira_gui_tests PRIVATE cxx_std_20)
 target_compile_options(mira_gui_tests PRIVATE -Wall -Wextra)
 if(MIRA_PCH)
   # The app's headers (see above): the tests compile many of the same files and parsed Qt for each.
-  target_precompile_headers(mira_gui_tests PRIVATE
-    <QString> <QStringList> <QObject> <QWidget> <QLabel> <QPushButton> <QVBoxLayout> <QHBoxLayout>
-    <QPointer> <QTimer> <QHash> <QSet> <algorithm> <functional> <map> <memory> <optional> <string> <vector>)
+  target_precompile_headers(mira_gui_tests PRIVATE ${MIRA_GUI_PCH})
 endif()
 add_test(NAME frontend_unit COMMAND mira_gui_tests)
 

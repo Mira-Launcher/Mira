@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "../settings/SettingsCard.h"
+#include "../components/Card.h"
 
 class QPushButton;
 

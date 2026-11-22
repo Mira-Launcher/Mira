@@ -14,8 +14,8 @@
 
 #include "../app/Shortcuts.h"
 #include "../client/Types.h"
+#include "../components/WindowCards.h"
 #include "../library/GameActions.h"
-#include "../widgets/WindowCards.h"
 
 class QGridLayout;
 class QLabel;

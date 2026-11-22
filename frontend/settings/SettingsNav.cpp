@@ -16,9 +16,9 @@
 #include <QVariantAnimation>
 #include <algorithm>
 
+#include "../components/Card.h"
+#include "../components/Scrolling.h"
 #include "../theme/Theme.h"
-#include "../widgets/Scrolling.h"
-#include "SettingsCard.h"
 #include "SettingsSearch.h"
 
 namespace mira_gui {

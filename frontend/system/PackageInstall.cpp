@@ -10,9 +10,9 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Config.h"
-#include "../widgets/CopyField.h"
-#include "../widgets/Labels.h"
-#include "../widgets/PopupDialog.h"
+#include "../components/CopyField.h"
+#include "../components/Labels.h"
+#include "../components/PopupDialog.h"
 
 namespace mira_gui::system {
 namespace {

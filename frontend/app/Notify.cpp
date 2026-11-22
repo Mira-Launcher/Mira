@@ -4,8 +4,8 @@
 #include <QPushButton>
 #include <QWidget>
 
+#include "../components/PopupDialog.h"
 #include "../theme/Theme.h"
-#include "../widgets/PopupDialog.h"
 #include "SystemNotifier.h"
 
 namespace mira_gui::notify {

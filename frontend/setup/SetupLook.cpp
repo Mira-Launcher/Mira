@@ -16,15 +16,15 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../components/Card.h"
+#include "../components/Labels.h"
+#include "../components/Segmented.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
-#include "../settings/SettingsCard.h"
 #include "../sidebar/SidebarGames.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/Segmented.h"
 #include "SetupWork.h"
 
 namespace mira_gui {

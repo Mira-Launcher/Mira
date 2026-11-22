@@ -1,4 +1,4 @@
-#include "SettingsCard.h"
+#include "Card.h"
 
 #include <QApplication>
 #include <QCursor>
@@ -22,9 +22,9 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/ToolTip.h"
+#include "Labels.h"
+#include "Scrolling.h"
+#include "ToolTip.h"
 
 namespace mira_gui {
 namespace {

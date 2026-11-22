@@ -12,11 +12,11 @@
 #include <QToolButton>
 #include <QUrl>
 
+#include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
 #include "../game/CardParts.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/WindowCards.h"
 
 #ifndef MIRA_VERSION
 #define MIRA_VERSION "dev"

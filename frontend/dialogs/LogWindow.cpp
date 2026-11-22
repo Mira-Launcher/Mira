@@ -27,10 +27,10 @@
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
 #include "../client/api/Logs.h"
+#include "../components/FramelessRoot.h"
+#include "../components/Labels.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../window/FramelessRoot.h"
 
 namespace mira_gui {
 namespace {

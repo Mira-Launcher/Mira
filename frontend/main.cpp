@@ -22,13 +22,13 @@
 #include "app/Tray.h"
 #include "bigscreen/Session.h"
 #include "client/api/Config.h"
+#include "components/FocusRing.h"
+#include "components/Scrolling.h"
+#include "components/SpatialNav.h"
+#include "components/ToolTip.h"
 #include "setup/SetupWindow.h"
 #include "theme/DesktopPortal.h"
 #include "theme/Theme.h"
-#include "widgets/FocusRing.h"
-#include "widgets/Scrolling.h"
-#include "widgets/SpatialNav.h"
-#include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
 
 int main(int argc, char** argv) {

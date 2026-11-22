@@ -9,7 +9,7 @@
 #include <utility>
 
 #include "../client/Types.h"
-#include "../widgets/Labels.h"
+#include "../components/Labels.h"
 #include "LinkDownloads.h"
 
 namespace mira_gui {

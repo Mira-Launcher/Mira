@@ -6,8 +6,8 @@
 #include <QVBoxLayout>
 
 #include "../client/Types.h"
+#include "../components/Card.h"
 #include "../library/ArtworkStore.h"
-#include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 
 namespace mira_gui {

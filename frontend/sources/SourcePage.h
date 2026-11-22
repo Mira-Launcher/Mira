@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../widgets/TileView.h"
+#include "../components/TileView.h"
 #include "Sources.h"
 
 class QLabel;

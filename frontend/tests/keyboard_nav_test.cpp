@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "NavWindow.h"
-#include "widgets/FocusRing.h"
-#include "widgets/SpatialNav.h"
+#include "components/FocusRing.h"
+#include "components/SpatialNav.h"
 
 using nav_test::App;
 using nav_test::Library;

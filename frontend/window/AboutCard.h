@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../settings/SettingsCard.h"
+#include "../components/Card.h"
 
 class QLabel;
 

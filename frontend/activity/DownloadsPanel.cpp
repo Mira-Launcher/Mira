@@ -7,7 +7,7 @@
 #include <QScrollArea>
 #include <QVBoxLayout>
 
-#include "../widgets/Scrolling.h"
+#include "../components/Scrolling.h"
 #include "DownloadList.h"
 #include "DownloadTracker.h"
 

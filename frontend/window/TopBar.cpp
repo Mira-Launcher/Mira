@@ -8,10 +8,10 @@
 #include <QToolButton>
 #include <QWindow>
 
+#include "../components/Labels.h"
+#include "../components/SpatialNav.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/SpatialNav.h"
 
 namespace mira_gui {
 

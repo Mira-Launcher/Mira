@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../widgets/TileView.h"
+#include "../components/TileView.h"
 
 class QGridLayout;
 class QLabel;

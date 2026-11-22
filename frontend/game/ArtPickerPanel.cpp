@@ -41,9 +41,9 @@
 #include "../client/EventHub.h"
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
+#include "../components/FlowLayout.h"
+#include "../components/TabRow.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/TabRow.h"
 #include "HeroBackdrop.h"
 
 namespace mira_gui {

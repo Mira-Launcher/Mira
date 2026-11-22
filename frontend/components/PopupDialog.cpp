@@ -14,9 +14,9 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
-#include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "Card.h"
 
 namespace mira_gui {
 namespace {

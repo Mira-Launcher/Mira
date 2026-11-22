@@ -6,7 +6,7 @@
 #include <QStyle>
 #include <QVBoxLayout>
 
-#include "../widgets/Labels.h"
+#include "../components/Labels.h"
 
 namespace mira_gui {
 

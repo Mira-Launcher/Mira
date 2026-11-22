@@ -17,9 +17,9 @@
 #include <algorithm>
 
 #include "../client/Types.h"
+#include "../components/FlowLayout.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
 
 namespace mira_gui {
 

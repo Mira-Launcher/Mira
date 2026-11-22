@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../settings/SettingsCard.h"
+#include "../components/Card.h"
 
 namespace mira_gui {
 

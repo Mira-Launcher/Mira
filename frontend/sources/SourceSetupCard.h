@@ -4,7 +4,7 @@
 #include <QString>
 
 #include "../client/Types.h"
-#include "../settings/SettingsCard.h"
+#include "../components/Card.h"
 #include "Sources.h"
 
 class QLabel;

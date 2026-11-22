@@ -12,11 +12,11 @@
 #include "../app/Notify.h"
 #include "../client/Jobs.h"
 #include "../client/api/Stores.h"
+#include "../components/Labels.h"
+#include "../components/ProgressRail.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ProgressRail.h"
 
 namespace mira_gui {
 namespace {

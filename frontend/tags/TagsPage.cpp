@@ -27,11 +27,11 @@
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
 #include "../client/api/Tags.h"
+#include "../components/Card.h"
+#include "../components/Labels.h"
 #include "../library/ArtworkStore.h"
-#include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
 #include "TagPicker.h"
 
 namespace mira_gui {

@@ -5,7 +5,7 @@
 #include <QLabel>
 #include <QPushButton>
 
-#include "../widgets/Labels.h"
+#include "../components/Labels.h"
 
 namespace mira_gui {
 

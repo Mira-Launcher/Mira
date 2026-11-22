@@ -7,8 +7,8 @@
 #include <algorithm>
 
 #include "../client/api/Artwork.h"
+#include "../components/PopupCard.h"
 #include "../theme/Theme.h"
-#include "../widgets/PopupCard.h"
 #include "GamePresentation.h"
 
 namespace mira_gui {

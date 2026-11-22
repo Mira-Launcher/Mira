@@ -7,10 +7,10 @@
 #include <QPushButton>
 #include <algorithm>
 
+#include "../components/Labels.h"
 #include "../library/ArtworkStore.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
 
 namespace mira_gui {
 namespace {

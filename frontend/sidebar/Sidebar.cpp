@@ -27,6 +27,11 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
+#include "../components/HoverDwell.h"
+#include "../components/Labels.h"
+#include "../components/Scrolling.h"
+#include "../components/TabRow.h"
+#include "../components/WindowCards.h"
 #include "../library/AddGamesCard.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
@@ -39,11 +44,6 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../updates/UpdateChecker.h"
-#include "../widgets/HoverDwell.h"
-#include "../widgets/Labels.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/TabRow.h"
-#include "../widgets/WindowCards.h"
 
 namespace mira_gui {
 namespace {

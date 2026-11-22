@@ -10,10 +10,10 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "../components/Labels.h"
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
 
 namespace mira_gui::sidebar {
 namespace {
