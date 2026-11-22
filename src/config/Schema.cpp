@@ -1223,6 +1223,28 @@ Schema::Schema() {
                                 {"integrated", "Integrated GPU"}}),
          .keywords = "graphics card prime nvidia optimus hybrid laptop discrete"});
 
+  s.Add({.key = "launch.nvapi",
+         .label = "NVIDIA DLSS and Reflex",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Let the game use NVIDIA's DLSS, Reflex and other NVAPI features, which Proton "
+                "turns on by default. Turn off for a game that crashes or looks wrong with them. "
+                "Only matters with an NVIDIA GPU.",
+         .keywords = "nvidia nvapi dlss reflex gpu",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.hide_nvidia",
+         .label = "Hide the NVIDIA GPU",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "Report an NVIDIA GPU to the game as an AMD one, for a game that refuses to run or "
+                "picks broken settings on NVIDIA under Proton. Turns DLSS off. Only matters with "
+                "an NVIDIA GPU.",
+         .keywords = "nvidia gpu spoof amd vendor",
+         .applies = {.platforms = {"windows"}}});
+
   s.Group("Scripts");
   s.ResetTogether();
 

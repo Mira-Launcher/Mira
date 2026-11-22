@@ -309,6 +309,9 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
                  "Settings to start it without one.");
     }
     for (const auto& [name, value] : *runtimes) command->env.try_emplace(name, value);
+    if (!resolver.GetBool("launch.nvapi")) command->env.try_emplace("PROTON_DISABLE_NVAPI", "1");
+    if (resolver.GetBool("launch.hide_nvidia"))
+      command->env.try_emplace("PROTON_HIDE_NVIDIA_GPU", "1");
   }
   if (resolved->runner->kind() == "proton" && resolver.GetBool("launch.proton_log")) {
     const std::filesystem::path logs = proc::ProtonLogDir(s.games.Dir(), game.id);
