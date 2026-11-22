@@ -11,6 +11,7 @@
 #include "../client/Types.h"
 #include "../components/Button.h"
 #include "../components/Labels.h"
+#include "../components/Metrics.h"
 #include "LinkDownloads.h"
 
 namespace mira_gui {
@@ -19,7 +20,7 @@ PasswordPopup::PasswordPopup(LinkDownloads* downloads, QWidget* parent)
     : Popover(parent), downloads_(downloads) {
   setFixedWidth(340);
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(18, 14, 18, 14);
+  layout->setContentsMargins(kRowPaddingX, 14, kRowPaddingX, 14);
   layout->setSpacing(8);
 
   name_ = new ElidedLabel(QString(), this);

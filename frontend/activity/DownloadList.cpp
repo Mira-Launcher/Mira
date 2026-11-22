@@ -16,6 +16,7 @@
 #include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/ListRow.h"
+#include "../components/Metrics.h"
 #include "../components/ProgressRail.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
@@ -220,7 +221,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   row->setProperty("download_running", entry.state == State::Running);
   row->setProperty("link_state", entry.link_state);
   auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(18, 10, 18, 10);
+  layout->setContentsMargins(kRowPaddingX, 10, kRowPaddingX, 10);
   layout->setSpacing(12);
 
   auto* cover = new QLabel(row);

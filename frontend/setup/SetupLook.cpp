@@ -675,7 +675,7 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
 
   QFrame* card = SetupCard(this);
   auto* grid = new QGridLayout(card);
-  grid->setContentsMargins(14, 4, 14, 4);
+  grid->setContentsMargins(kSetupListMargins);
   grid->setHorizontalSpacing(14);
   grid->setVerticalSpacing(0);
   corners_ =
@@ -827,7 +827,7 @@ SidebarPage::SidebarPage(const SetupContext& context) : context_(context) {
   left->setSpacing(10);
   QFrame* card = SetupCard(this);
   auto* rows = new QVBoxLayout(card);
-  rows->setContentsMargins(14, 4, 14, 4);
+  rows->setContentsMargins(kSetupListMargins);
   rows->setSpacing(0);
   const std::vector<std::pair<QString, QString>> styles = {
       {"covers", "Covers"}, {"hero", "Banners"}, {"shelf", "Shelf"}};

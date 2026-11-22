@@ -5,7 +5,7 @@ namespace mira_gui {
 
 // Every control's height in a card (base.qss), so a row is as tall whatever it holds.
 constexpr int kControlHeight = 32;
-// The space right of a row's controls, to the card's edge.
+// The space either side of a row in a card or a popover: before its first part, after its last.
 constexpr int kRowPaddingX = 18;
 // Where a row's label starts in its card (the line's margin, the dot and the spaces after it), and
 // so where a card's title and anything else under it start.

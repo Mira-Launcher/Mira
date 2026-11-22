@@ -153,7 +153,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   sticky_layout->setContentsMargins(0, kTitleClearance, 0, 20);
   sticky_layout->setSpacing(kTitleGap);
   sticky_group_ = new QLabel(sticky_);
-  sticky_group_->setProperty("role", "nav_heading");
+  SetTextStyle(sticky_group_, text::kGroup);
   sticky_title_ = new QLabel(sticky_);
   SetTextStyle(sticky_title_, text::kHeading);
   sticky_layout->addWidget(sticky_group_);
@@ -279,7 +279,8 @@ SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph 
     current_heading_ = nullptr;
     if (!nav_group.isEmpty()) {
       current_heading_ = new QLabel(nav_group.toUpper(), nav_);
-      current_heading_->setProperty("role", "nav_heading");
+      SetTextStyle(current_heading_, text::kGroup);
+      current_heading_->setContentsMargins(4, 12, 4, 3);
       nav_layout_->insertWidget(nav_layout_->count() - 1, current_heading_);
     }
   }

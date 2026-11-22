@@ -9,6 +9,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "../components/Metrics.h"
 #include "../components/SheetCard.h"
 #include "../components/Text.h"
 #include "../components/WindowCards.h"
@@ -60,7 +61,7 @@ QWidget* Keycaps(const QString& text, QWidget* parent) {
     if (!key.isEmpty()) keys << key;
     for (const QString& name : keys) {
       auto* cap = new QLabel(name, caps);
-      cap->setProperty("role", "keycap");
+      cap->setObjectName("keycap");
       layout->addWidget(cap);
     }
   }
@@ -99,7 +100,7 @@ class ReferenceCard : public SheetCard {
 
     auto* body = new QWidget(this);
     auto* columns = new QHBoxLayout(body);
-    columns->setContentsMargins(18, 4, 18, 12);
+    columns->setContentsMargins(kRowPaddingX, 4, kRowPaddingX, 12);
     columns->setSpacing(28);
     QVBoxLayout* column[2] = {new QVBoxLayout(), new QVBoxLayout()};
     for (QVBoxLayout* layout : column) layout->setSpacing(0);

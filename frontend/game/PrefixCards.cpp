@@ -17,6 +17,7 @@
 #include "../components/Chip.h"
 #include "../components/FlowLayout.h"
 #include "../components/Labels.h"
+#include "../components/Metrics.h"
 #include "../components/PathField.h"
 #include "../components/ProgressRail.h"
 #include "../components/SearchField.h"
@@ -44,7 +45,7 @@ QHBoxLayout* StatusButtonRow(Card* card, ProgressRail*& rail, QLabel*& status,
                              QPushButton** trailing = nullptr) {
   auto* row = new QWidget(card);
   auto* layout = new QVBoxLayout(row);
-  layout->setContentsMargins(18, 8, 18, 10);
+  layout->setContentsMargins(kRowPaddingX, 8, kRowPaddingX, 10);
   layout->setSpacing(8);
   rail = new ProgressRail(row);
   rail->SetProgress(-1);
@@ -151,7 +152,7 @@ WinetricksCard::WinetricksCard(std::string game_id, const QString& name, QWidget
 
   auto* pick = new QWidget(this);
   auto* pick_layout = new QVBoxLayout(pick);
-  pick_layout->setContentsMargins(18, 10, 18, 10);
+  pick_layout->setContentsMargins(kRowPaddingX, 10, kRowPaddingX, 10);
   pick_layout->setSpacing(10);
   verb_ = new SearchField("Search or type a verb", pick);
   pick_layout->addWidget(verb_);

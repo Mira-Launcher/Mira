@@ -9,6 +9,7 @@
 #include "../app/ErrorHelp.h"
 #include "../client/api/Stores.h"
 #include "../components/Format.h"
+#include "../components/Metrics.h"
 #include "../components/SettingRow.h"
 #include "../components/Text.h"
 #include "../theme/Theme.h"
@@ -24,12 +25,12 @@ ItchCollectionsCard::ItchCollectionsCard(QWidget* parent)
       this);
   SetTextStyle(intro, text::kDetail);
   intro->setWordWrap(true);
-  intro->setContentsMargins(18, 8, 18, 8);
+  intro->setContentsMargins(kRowPaddingX, 8, kRowPaddingX, 8);
   AddRow(intro);
 
   status_ = new QLabel(this);
   status_->setWordWrap(true);
-  status_->setContentsMargins(18, 8, 18, 8);
+  status_->setContentsMargins(kRowPaddingX, 8, kRowPaddingX, 8);
   AddRow(status_);
 
   auto* add_row = new SettingRow("Add by link", "A collection's itch.io address", this);

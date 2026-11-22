@@ -20,6 +20,7 @@
 #include "../components/Button.h"
 #include "../components/Labels.h"
 #include "../components/ListRow.h"
+#include "../components/Metrics.h"
 #include "../components/ProgressRail.h"
 #include "../components/Scrolling.h"
 #include "../components/Text.h"
@@ -70,7 +71,7 @@ UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpda
   layout->setSpacing(0);
 
   auto* header = new QHBoxLayout();
-  header->setContentsMargins(18, 12, 10, 6);
+  header->setContentsMargins(kRowPaddingX, 12, 10, 6);
   auto* title = new QLabel("Updates", this);
   SetTextStyle(title, text::kSection);
   header->addWidget(title);
@@ -86,7 +87,7 @@ UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpda
   empty_ = new QLabel("Mira and everything it downloaded are up to date", this);
   SetTextStyle(empty_, text::kSubtle);
   empty_->setWordWrap(true);
-  empty_->setContentsMargins(18, 6, 18, 10);
+  empty_->setContentsMargins(kRowPaddingX, 6, kRowPaddingX, 10);
   layout->addWidget(empty_);
 
   auto* scroll = new QScrollArea(this);
@@ -184,7 +185,7 @@ void UpdatesPanel::Rebuild() {
   for (const UpdateGroup& group : GroupUpdates(checker_->Updates())) {
     auto* heading = new ListRow(first);
     auto* heading_layout = new QVBoxLayout(heading);
-    heading_layout->setContentsMargins(18, 10, 18, 2);
+    heading_layout->setContentsMargins(kRowPaddingX, 10, kRowPaddingX, 2);
     heading_layout->addWidget(MakeGroupHeading(heading, group.heading));
     rows_->addWidget(heading);
     first = false;
@@ -216,7 +217,7 @@ QWidget* UpdatesPanel::BuildMiraRow() {
   const UpdateInfo entry = *MiraEntry(checker_->Updates());
   auto* row = new ListRow(/*first=*/true);
   auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(18, 10, 18, 10);
+  layout->setContentsMargins(kRowPaddingX, 10, kRowPaddingX, 10);
   layout->setSpacing(12);
 
   auto* badge = new QLabel("M", row);
@@ -304,7 +305,7 @@ bool UpdatesPanel::Updating(const UpdateRow& update) const {
 QWidget* UpdatesPanel::BuildRow(const UpdateRow& update, bool first) {
   auto* row = new ListRow(first);
   auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(18, 8, 18, 8);
+  layout->setContentsMargins(kRowPaddingX, 8, kRowPaddingX, 8);
   layout->setSpacing(12);
 
   auto* icon = new QLabel(row);

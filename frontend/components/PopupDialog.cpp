@@ -16,6 +16,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "Button.h"
+#include "Metrics.h"
 #include "ModalOverlay.h"
 #include "SheetCard.h"
 #include "Text.h"
@@ -81,7 +82,7 @@ PopupDialog::PopupDialog(QWidget* parent, Tone tone, const QString& title)
   // Lined up under the title, past the icon.
   auto* body = new QWidget(card_);
   body_ = new QVBoxLayout(body);
-  body_->setContentsMargins(18 + kIcon + 10, 0, 18, 6);
+  body_->setContentsMargins(kRowPaddingX + kIcon + 10, 0, kRowPaddingX, 6);
   body_->setSpacing(6);
   message_ = new QLabel(body);
   message_->setWordWrap(true);

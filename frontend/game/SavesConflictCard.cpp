@@ -12,6 +12,7 @@
 #include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/LaidOutButton.h"
+#include "../components/Metrics.h"
 #include "../library/ArtworkStore.h"
 #include "../sources/Sources.h"
 #include "SavesText.h"
@@ -83,7 +84,7 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
 
   auto* choices = new QWidget(this);
   auto* choices_layout = new QHBoxLayout(choices);
-  choices_layout->setContentsMargins(18, 8, 18, 4);
+  choices_layout->setContentsMargins(kRowPaddingX, 8, kRowPaddingX, 4);
   choices_layout->setSpacing(12);
   const auto choice = [&](const QString& name, QLabel** detail, const QString& effect,
                           const std::string& answer) {
@@ -97,19 +98,14 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
       ->setFocus();
   AddRow(choices);
 
-  auto* foot = new QWidget(this);
-  auto* foot_layout = new QHBoxLayout(foot);
-  foot_layout->setContentsMargins(18, 10, 18, 10);
-  foot_layout->setSpacing(8);
-  auto* skip = new Button("Play without syncing", ButtonKind::Text, foot);
+  QHBoxLayout* buttons = ButtonRow();
+  auto* skip = new Button("Play without syncing", ButtonKind::Text, this);
   skip->setToolTip("Start with the saves here and leave the cloud's as they are");
   connect(skip, &QPushButton::clicked, this, [this] { emit Chosen("skip"); });
-  foot_layout->addWidget(skip);
-  foot_layout->addStretch(1);
-  auto* cancel = new QPushButton("Cancel", foot);
+  buttons->insertWidget(0, skip);
+  auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, [this] { emit Chosen({}); });
-  foot_layout->addWidget(cancel);
-  AddRow(foot);
+  buttons->addWidget(cancel);
 
   api::GetSavesAsync(this, id_, [this](SavesResult result) {
     if (!result.ok || !result.cloud) return;

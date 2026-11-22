@@ -224,8 +224,8 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
   outer->setSpacing(0);
   outer->addWidget(new HeroStrip(context.art, this));
   auto* layout = new QVBoxLayout();
-  layout->setContentsMargins(36, 14, 36, 22);
-  layout->setSpacing(12);
+  layout->setContentsMargins(kSetupPageMargins);
+  layout->setSpacing(kSetupPageSpacing);
   outer->addLayout(layout);
 
   auto* features = new QGridLayout();
@@ -263,7 +263,7 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
 
   QFrame* folder = SetupCard(this);
   auto* card = new QVBoxLayout(folder);
-  card->setContentsMargins(16, 14, 16, 14);
+  card->setContentsMargins(kSetupCardMargins);
   card->setSpacing(8);
   auto* head = new QHBoxLayout();
   head->setSpacing(8);
@@ -612,7 +612,7 @@ void FoundPage::Show() {
   if (steam_.found) {
     QFrame* card = SetupCard(this);
     auto* column = new QVBoxLayout(card);
-    column->setContentsMargins(16, 14, 16, 14);
+    column->setContentsMargins(kSetupCardMargins);
     column->setSpacing(6);
     auto* head = new QHBoxLayout();
     head->setSpacing(14);
@@ -739,7 +739,7 @@ void FoundPage::Show() {
     text->setSpacing(1);
     text->addWidget(Bold(card, source.name));
     text->addWidget(
-        MakeLabel(card, games > 0 ? QString("%1 games added").arg(games) : QString(importer.adds),
+        MakeLabel(card, games > 0 ? Counted(games, "game") + " added" : QString(importer.adds),
                   text::kDetail));
     line->addLayout(text, /*stretch=*/1);
     if (games == 0) {
@@ -950,7 +950,7 @@ AppsPage::AppsPage(const SetupContext& context) : context_(context) {
 
   QFrame* card = SetupCard(this);
   auto* rows = new QVBoxLayout(card);
-  rows->setContentsMargins(14, 4, 14, 4);
+  rows->setContentsMargins(kSetupListMargins);
   rows->setSpacing(0);
   in_all_ = new Switch(card);
   rows->addWidget(SetupRow(card, "Apps under All",
@@ -990,8 +990,8 @@ StorePage::StorePage(const SetupContext& context, const QString& store)
     : context_(context), store_(store) {
   const SignInGuide guide = GuideFor(store.toStdString());
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(36, 14, 36, 22);
-  layout->setSpacing(12);
+  layout->setContentsMargins(kSetupPageMargins);
+  layout->setSpacing(kSetupPageSpacing);
   auto* head = new QHBoxLayout();
   head->setSpacing(12);
   head->addWidget(MakeSourceBadge(*FindSourceInfo(store), 44, this));
@@ -1045,8 +1045,8 @@ void StorePage::Enter() {
 
 OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context) {
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(36, 14, 36, 22);
-  layout->setSpacing(12);
+  layout->setContentsMargins(kSetupPageMargins);
+  layout->setSpacing(kSetupPageSpacing);
   auto* head = new QHBoxLayout();
   head->setSpacing(12);
   head->addWidget(MakeSourceBadge(*FindSourceInfo("office"), 44, this));
@@ -1067,7 +1067,7 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
 
   QFrame* plan_card = SetupCard(this);
   auto* plan_rows = new QVBoxLayout(plan_card);
-  plan_rows->setContentsMargins(14, 4, 14, 4);
+  plan_rows->setContentsMargins(kSetupListMargins);
   plans_ = new Segmented(plan_card);
   for (const OfficePlan& plan : OfficePlans()) plans_->AddOption(plan.value, plan.short_name);
   connect(plans_, &Segmented::Changed, this, [this](const QString& plan) { plan_ = plan; });
@@ -1165,7 +1165,7 @@ void OfficeSetupPage::Leave() {
 
 DonePage::DonePage(const SetupContext& context) : context_(context) {
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(36, 14, 36, 22);
+  layout->setContentsMargins(kSetupPageMargins);
   layout->setSpacing(10);
   auto* check = new QLabel(this);
   check->setObjectName("setup_check");
@@ -1191,7 +1191,7 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
 
   QFrame* switches = SetupCard(this);
   auto* switch_rows = new QVBoxLayout(switches);
-  switch_rows->setContentsMargins(14, 4, 14, 4);
+  switch_rows->setContentsMargins(kSetupListMargins);
   switch_rows->setSpacing(0);
   login_ = new Switch(switches);
   login_->setChecked(context.prefs->start_on_login.value_or(true));
@@ -1227,7 +1227,7 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   auto* star = new QFrame(this);
   star->setObjectName("setup_star");
   auto* star_line = new QHBoxLayout(star);
-  star_line->setContentsMargins(16, 14, 16, 14);
+  star_line->setContentsMargins(kSetupCardMargins);
   star_line->setSpacing(14);
   auto* glyph = new QLabel(QString::fromUtf8("\xe2\x98\x85"), star);
   glyph->setObjectName("setup_star_glyph");

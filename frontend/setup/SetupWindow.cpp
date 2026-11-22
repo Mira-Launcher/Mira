@@ -73,8 +73,8 @@ class StepDots : public QWidget {
 QVBoxLayout* SetupPageLayout(SetupStep* page, icons::Glyph glyph, const QString& eyebrow,
                              const QString& title, const QString& lead) {
   auto* layout = new QVBoxLayout(page);
-  layout->setContentsMargins(36, 14, 36, 22);
-  layout->setSpacing(12);
+  layout->setContentsMargins(kSetupPageMargins);
+  layout->setSpacing(kSetupPageSpacing);
   auto* head = new QHBoxLayout();
   head->setSpacing(14);
   auto* badge = new QLabel(page);

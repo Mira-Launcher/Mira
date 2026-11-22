@@ -33,6 +33,7 @@
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
+#include "../components/Metrics.h"
 #include "../components/SearchField.h"
 #include "../components/Segmented.h"
 #include "../components/SettingRow.h"
@@ -64,7 +65,7 @@ QStringList ListSetting(const ConfigResult& config, const std::string& key) {
 // The glyph on a tile before each of the first page's rows.
 QLabel* Tile(QWidget* parent, icons::Glyph glyph) {
   auto* tile = new QLabel(parent);
-  tile->setProperty("role", "tile_icon");
+  tile->setObjectName("tile_icon");
   tile->setFixedSize(kTile, kTile);
   tile->setAlignment(Qt::AlignCenter);
   icons::Follow(tile, glyph, 18, &theme::Tokens::accent);
@@ -565,7 +566,7 @@ void AddGamesCard::ShowLinks() {
   for (const std::string& link : copied) text->appendPlainText(QString::fromStdString(link));
   auto* box = new QWidget(page);
   auto* box_layout = new QVBoxLayout(box);
-  box_layout->setContentsMargins(18, 0, 18, 10);
+  box_layout->setContentsMargins(kRowPaddingX, 0, kRowPaddingX, 10);
   box_layout->addWidget(text);
   page->AddRow(box);
 

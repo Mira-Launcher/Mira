@@ -36,7 +36,7 @@ QLabel[tone="warning"] { color: @warning; }
 QLabel[tone="danger"] { color: @error; }
 
 /* A glyph on a tile, before a card row's label (Add games' choices). */
-QLabel[role="tile_icon"] {
+QLabel#tile_icon {
   background: @surface_alt;
   border-radius: 7px;
 }
@@ -57,7 +57,7 @@ QWidget#drop_line {
 }
 
 /* One key of a shortcut, drawn as a keycap. */
-QLabel[role="keycap"] {
+QLabel#keycap {
   font-family: monospace;
   font-size: @font_size_small;
   background: @surface_alt;
@@ -65,30 +65,6 @@ QLabel[role="keycap"] {
   border-bottom-width: 2px;
   border-radius: 5px;
   padding: 0px 6px;
-}
-
-/* A game's lifecycle state, set as a "status" property so a theme change
- * recolors it without the widget having to be repopulated (theme/Theme.h's
- * SetStyleProperty). "running" is not a status mirad reports; it is the
- * frontend's own "playing right now". */
-QLabel[status="ready"],
-QLabel[status="setting_up"],
-QLabel[status="broken"],
-QLabel[status="missing"],
-QLabel[status="needs_install"] {
-  font-size: @font_size_small;
-  font-weight: 600;
-}
-
-QLabel[status="ready"] { color: @status_ready; }
-QLabel[status="setting_up"] { color: @status_setting_up; }
-QLabel[status="broken"] { color: @status_broken; }
-QLabel[status="missing"] { color: @status_missing; }
-QLabel[status="needs_install"] { color: @status_needs_install; }
-QLabel[status="running"] {
-  font-size: @font_size_small;
-  font-weight: 600;
-  color: @running;
 }
 
 /* --- The custom top bar -------------------------------------------------- */
@@ -668,22 +644,9 @@ QWidget#settings_nav QScrollArea > QWidget > QWidget {
   background: transparent;
 }
 
-QLabel[role="nav_heading"] {
-  color: @text_muted;
-  font-size: @font_size_small;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 12px 4px 3px 4px;
-}
-
 QScrollArea#settings_page,
 QWidget#settings_canvas {
   background: @window;
-}
-
-/* The group heading above the first page of each group, flush with the titles. */
-QWidget#settings_section QLabel[role="nav_heading"] {
-  padding: 0;
 }
 
 /* The current page's group and title, held at the top of the scroll over the column
@@ -695,10 +658,6 @@ QWidget#settings_sticky {
 
 QWidget#settings_sticky[pushed="true"] {
   border-bottom: 1px solid transparent;
-}
-
-QWidget#settings_sticky QLabel[role="nav_heading"] {
-  padding: 0;
 }
 
 /* A card, and an achievement on the same raised surface. */

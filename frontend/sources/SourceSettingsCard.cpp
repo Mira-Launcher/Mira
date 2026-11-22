@@ -16,6 +16,7 @@
 #include "../components/Button.h"
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
+#include "../components/Metrics.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
 #include "../components/Text.h"
@@ -52,7 +53,7 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
 
   footer_ = new QWidget(this);
   auto* footer = new QHBoxLayout(footer_);
-  footer->setContentsMargins(12, 8, 18, 6);
+  footer->setContentsMargins(12, 8, kRowPaddingX, 6);
   auto* all = new Button("All settings…", ButtonKind::Link, footer_);
   all->setCursor(Qt::PointingHandCursor);
   connect(all, &QPushButton::clicked, this, [this] {
@@ -377,7 +378,7 @@ void SourceSettingsCard::LoadSettings() {
         if (i == first_shared) {
           auto* heading = new QLabel("All emulators", this);
           SetTextStyle(heading, text::kSection);
-          heading->setContentsMargins(18, 12, 18, 2);
+          heading->setContentsMargins(kRowPaddingX, 12, kRowPaddingX, 2);
           AddRow(heading);
         }
         AddRow(editor.Build(this));

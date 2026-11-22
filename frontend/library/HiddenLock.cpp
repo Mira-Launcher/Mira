@@ -37,7 +37,7 @@ QString Problem(const ApiError& error, const QString& wrong) {
 
 }  // namespace
 
-HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : Card("Unlock hidden games", parent) {
+HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : SheetCard("Unlock hidden games", parent) {
   setFixedWidth(440);
   auto* row = new SettingRow("Password", QString(), this);
   password_ = PasswordField(row);
@@ -45,29 +45,22 @@ HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : Card("Unlock hidden games"
   row->AddControl(password_, 1);
   AddRow(row);
 
-  error_ = ErrorLabel(this);
-  error_->setContentsMargins(18, 4, 18, 0);
-  AddRow(error_);
+  error_ = ErrorLine();
 
-  auto* buttons = new QWidget(this);
-  auto* layout = new QHBoxLayout(buttons);
-  layout->setContentsMargins(18, 12, 18, 10);
-  layout->setSpacing(8);
-  layout->addStretch(1);
-  auto* cancel = new QPushButton("Cancel", buttons);
+  QHBoxLayout* buttons = ButtonRow();
+  auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, &HiddenUnlockCard::CloseRequested);
-  layout->addWidget(cancel);
-  unlock_ = new Button("Unlock", ButtonKind::Primary, buttons);
+  buttons->addWidget(cancel);
+  unlock_ = new Button("Unlock", ButtonKind::Primary, this);
   unlock_->setDefault(true);
   connect(unlock_, &QPushButton::clicked, this, &HiddenUnlockCard::Unlock);
-  layout->addWidget(unlock_);
-  AddRow(buttons);
+  buttons->addWidget(unlock_);
 
   connect(password_, &QLineEdit::returnPressed, this, &HiddenUnlockCard::Unlock);
 }
 
 void HiddenUnlockCard::showEvent(QShowEvent* event) {
-  Card::showEvent(event);
+  SheetCard::showEvent(event);
   // After the overlay has taken focus for itself.
   QTimer::singleShot(0, password_, [this] { password_->setFocus(); });
 }

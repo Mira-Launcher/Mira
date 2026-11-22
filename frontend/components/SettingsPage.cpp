@@ -113,7 +113,7 @@ void SettingsPage::Rearrange() {
 void SettingsPage::SetGroupHeading(const QString& text) {
   auto* heading = new QLabel(text.toUpper(), this);
   heading->setObjectName("settings_title");
-  heading->setProperty("role", "nav_heading");
+  SetTextStyle(heading, text::kGroup);
   static_cast<CenteredColumn*>(layout())->InsertWidget(0, heading);
 }
 

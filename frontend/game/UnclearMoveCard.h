@@ -3,7 +3,7 @@
 #include <string>
 
 #include "../client/Types.h"
-#include "../components/Card.h"
+#include "../components/SheetCard.h"
 
 namespace mira_gui {
 
@@ -12,7 +12,7 @@ class GameLibraryModel;
 
 // Asked when a folder turned up in a library folder that could be any of several games moved by
 // hand: which one it is, or a new game. An in-window card over the library.
-class UnclearMoveCard : public Card {
+class UnclearMoveCard : public SheetCard {
   Q_OBJECT
 
  public:

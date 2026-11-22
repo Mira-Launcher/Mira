@@ -80,20 +80,15 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
   app_row->AddControl(app_);
   AddRow(app_row);
 
-  auto* buttons = new QWidget(this);
-  auto* buttons_layout = new QHBoxLayout(buttons);
-  buttons_layout->setContentsMargins(18, 12, 18, 10);
-  buttons_layout->setSpacing(8);
-  buttons_layout->addStretch(1);
-  auto* keep = new QPushButton("Keep as is", buttons);
+  QHBoxLayout* buttons = ButtonRow();
+  auto* keep = new QPushButton("Keep as is", this);
   connect(keep, &QPushButton::clicked, this, &InstallPromptCard::CloseRequested);
-  buttons_layout->addWidget(keep);
-  use_ = new Button("Use this program", ButtonKind::Primary, buttons);
+  buttons->addWidget(keep);
+  use_ = new Button("Use this program", ButtonKind::Primary, this);
   use_->setDefault(true);
   connect(use_, &QPushButton::clicked, this,
           [this] { emit Accepted(exe_path_, app_->isChecked()); });
-  buttons_layout->addWidget(use_);
-  AddRow(buttons);
+  buttons->addWidget(use_);
 
   ShowProgram();
 }
