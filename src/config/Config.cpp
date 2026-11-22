@@ -15,6 +15,16 @@
 namespace mira::config {
 namespace {
 
+// Local date and time for a backup's name: "20261121-143005".
+std::string Stamp() {
+  const std::time_t now = std::time(nullptr);
+  std::tm local{};
+  localtime_r(&now, &local);
+  char text[32];
+  std::strftime(text, sizeof(text), "%Y%m%d-%H%M%S", &local);
+  return text;
+}
+
 constexpr mode_t kSettingsMode = 0600;  // it holds API keys
 using nlohmann::json;
 
@@ -154,17 +164,28 @@ void Config::Load(const std::string& fallback) {
     // An individual bad value falls back to its default rather than
     // rejecting the whole file, so one typo cannot leave the user with a
     // daemon that refuses to start.
+    const json before_reset = whole;
     ResetInvalid(whole, [](const Entry&) { return std::nullopt; }, "(using the default)");
+    const bool reset = whole != before_reset;
     loaded_text_ = text;
     file_as_loaded_ = whole;
     std::vector<std::string> unknown;
     DropUnknown(whole, "", unknown);
     const bool cleaned = !text.starts_with(kHeader) && DropWrittenDefaults(whole);
-    if (cleaned || !unknown.empty()) {
-      // Each kind of cleaning keeps its own copy, so a later one can't overwrite the first's.
-      const char* suffix = cleaned ? ".with-defaults" : ".with-removed-settings";
+    if (cleaned || reset || !unknown.empty()) {
+      // Stamped, so a later release's cleaning never replaces an earlier copy.
+      const std::string suffix = std::string(cleaned ? ".with-defaults"
+                                             : reset ? ".with-invalid-settings"
+                                                     : ".with-removed-settings") +
+                                 "." + Stamp();
       std::filesystem::copy_file(file_, std::filesystem::path(file_) += suffix,
-                                 std::filesystem::copy_options::overwrite_existing, ec);
+                                 std::filesystem::copy_options::skip_existing, ec);
+      if (reset) {
+        log::Warn(
+            "settings: values of the wrong kind went back to their defaults (the file as "
+            "it was is {}{})",
+            file_.string(), suffix);
+      }
       if (cleaned) {
         log::Info(
             "settings: kept only the values that differ from Mira's defaults (the file as it "
@@ -178,6 +199,7 @@ void Config::Load(const std::string& fallback) {
             "settings: dropped what no setting reads any more: {} (the file as it was is {}{})",
             keys, file_.string(), suffix);
       }
+      // Written back too, so the next start doesn't back the same values up again.
       SetLocked(std::move(whole));
       loaded_text_ = TextLocked();
       write_text(loaded_text_);

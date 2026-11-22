@@ -78,21 +78,21 @@ void TakeScreenshot(QObject* context, const QString& game_name,
                      const bool ok =
                          status == QProcess::NormalExit && code == 0 && QFileInfo(path).size() > 0;
                      report(ok ? path : QString(),
-                            ok ? QString() : QStringLiteral("The screenshot tool failed."));
+                            ok ? QString() : QStringLiteral("The screenshot tool failed"));
                      process->deleteLater();
                    });
 
   QTimer::singleShot(kTimeoutMs, process, [process, report] {
     if (process->state() == QProcess::NotRunning) return;
     process->kill();
-    report({}, "The screenshot tool didn't finish.");
+    report({}, "The screenshot tool didn't finish");
   });
 
   // A tool that can't start never sends finished.
   QObject::connect(process, &QProcess::errorOccurred, process,
                    [process, report](QProcess::ProcessError error) {
                      if (error != QProcess::FailedToStart) return;
-                     report({}, "The screenshot tool couldn't start.");
+                     report({}, "The screenshot tool couldn't start");
                      process->deleteLater();
                    });
   process->start(tool.program, tool.args);

@@ -188,7 +188,7 @@ void SourcesPage::CloseSetup() {
 void SourcesPage::InstallEmulator(QWidget* window, const QString& id) {
   api::GetEmulatorsAsync(window, [window, id](EmulatorsResult result) {
     if (!result.ok)
-      return notify::FailedRequest(window, "Could not install the emulator.", result.error);
+      return notify::FailedRequest(window, "Could not install the emulator", result.error);
     const auto it = std::ranges::find(result.emulators, id.toStdString(), &EmulatorInfo::id);
     if (it == result.emulators.end() || it->installed) return;
     // A package emulator comes from the system; asks for it the same way its page does.
@@ -264,7 +264,7 @@ void SourcesPage::OpenSetup(const QString& id) {
   if (source.kind == SourceInfo::Kind::ModManager) {
     api::AddSourceAsync(
         this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
-          if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+          if (!r.ok) return notify::FailedRequest(this, "Could not add that source", r.error);
           emit Imported(id);
           // Installed unless it already is; the install outlives this page.
           api::GetModManagersAsync(
@@ -284,9 +284,9 @@ void SourcesPage::OpenSetup(const QString& id) {
   // Owned games come from Steam's own files; the Web API key is optional, in Settings.
   if (id == "steam") {
     api::AddSourceAsync(this, id.toStdString(), [this, id](PatchConfigResult r) {
-      if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+      if (!r.ok) return notify::FailedRequest(this, "Could not add that source", r.error);
       api::ScanSteamAsync(this, [this, id](SteamScanResult scan) {
-        if (!scan.ok) notify::FailedRequest(this, "Could not scan the Steam library.", scan.error);
+        if (!scan.ok) notify::FailedRequest(this, "Could not scan the Steam library", scan.error);
         emit Imported(id);
         emit OpenRequested(id);
       });
@@ -296,7 +296,7 @@ void SourcesPage::OpenSetup(const QString& id) {
   if (source.kind == SourceInfo::Kind::Emulator) {
     api::AddSourceAsync(
         this, id.toStdString(), [this, id, name = source.name](PatchConfigResult r) {
-          if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+          if (!r.ok) return notify::FailedRequest(this, "Could not add that source", r.error);
           emit Imported(id);
           InstallEmulator(window(), id);  // before the page opens, which closes this one
           OfferExistingGames(window(), id, name);
@@ -345,7 +345,7 @@ void SourcesPage::OpenSetup(const QString& id) {
   const auto added = [this, id] {
     CloseSetup();
     api::AddSourceAsync(this, id.toStdString(), [this, id](PatchConfigResult r) {
-      if (!r.ok) return notify::FailedRequest(this, "Could not add that source.", r.error);
+      if (!r.ok) return notify::FailedRequest(this, "Could not add that source", r.error);
       emit Imported(id);
       emit OpenRequested(id);
     });

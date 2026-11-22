@@ -142,8 +142,8 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
     action->setVisible(!emulated);
   winetricks->setEnabled(prefix);
   winetricks->setToolTip(prefix                      ? QString()
-                         : game.platform == "native" ? "Native games have no Wine or Proton prefix."
-                                                     : "HTML games have no Wine or Proton prefix.");
+                         : game.platform == "native" ? "Native games have no Wine or Proton prefix"
+                                                     : "HTML games have no Wine or Proton prefix");
   // The resolved setting isn't on GameSummary. The menu opens at once and the
   // entry fills in when mirad answers, a moment later.
   QAction* desktop_entry = menu.addAction("Desktop entry");
@@ -269,7 +269,7 @@ void GameMenus::ShowBatchMenu(const std::vector<std::string>& ids, const QPoint&
     // Activity shows it going; a notice sums it up at the end.
     api::RefreshMetadataManyAsync(this, ids, [this](MetadataBatchResult result) {
       if (!result.ok) {
-        notify::FailedRequest(parent_, "Could not refresh metadata.", result.error);
+        notify::FailedRequest(parent_, "Could not refresh metadata", result.error);
       } else {
         notify::Notice(parent_, BatchRefreshSummary(result));
       }
@@ -314,12 +314,12 @@ void GameMenus::SetTag(const std::vector<std::string>& ids, const std::string& t
       const QString games = one ? "this game's" : "these games'";
       notify::FailedRequest(
           parent_,
-          tag == tags::kHidden ? QString("Could not change %1 visibility.").arg(games)
+          tag == tags::kHidden ? QString("Could not change %1 visibility").arg(games)
           : tag == tags::kApp
-              ? QString("Could not change what %1 marked as.").arg(one ? "this is" : "these are")
-          : tag == tags::kPinned ? QString("Could not change whether %1 pinned.")
+              ? QString("Could not change what %1 marked as").arg(one ? "this is" : "these are")
+          : tag == tags::kPinned ? QString("Could not change whether %1 pinned")
                                        .arg(one ? "this game is" : "these games are")
-                                 : QString("Could not change %1 tags.").arg(games),
+                                 : QString("Could not change %1 tags").arg(games),
           result.error);
       return;
     }

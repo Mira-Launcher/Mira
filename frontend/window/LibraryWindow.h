@@ -383,6 +383,10 @@ class LibraryWindow : public QMainWindow,
   // so a scan's burst of them opens nothing.
   std::vector<std::string> pending_added_;
   QTimer* added_timer_ = nullptr;
+  // A rise in the activity count waits a moment, so a job over in a blink (a refresh's scan)
+  // doesn't flash a number that shifts the top bar.
+  QTimer* activity_timer_ = nullptr;
+  int activity_shown_ = 0;
   // Games the user explicitly asked to refresh: a metadata failure for one
   // of these is worth a toast; the dozens from an automatic scan are not.
   std::set<std::string> awaiting_metadata_;

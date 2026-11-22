@@ -563,7 +563,7 @@ void TagsPage::Refresh() {
   const int serial = ++refresh_serial_;
   api::GetTagsAsync(this, [this, serial](TagsResult result) {
     if (serial != refresh_serial_) return;  // a newer refresh is in flight
-    if (!result.ok) return Failed("Could not list the tags.", result.error);
+    if (!result.ok) return Failed("Could not list the tags", result.error);
     tags_ = std::move(result);
     tags_loaded_ = true;
     Sync();
@@ -576,14 +576,14 @@ void TagsPage::Refresh() {
         fetching_steam_ = false;
         if (!fetched.ok) {
           g_fetching_steam = false;  // asked again on the next refresh
-          return Failed("Could not get tags from Steam.", fetched.error);
+          return Failed("Could not get tags from Steam", fetched.error);
         }
         Refresh();
       });
     }
   });
   api::GetConfigAsync(this, [this](ConfigResult result) {
-    if (!result.ok) return Failed("Could not read the tag settings.", result.error);
+    if (!result.ok) return Failed("Could not read the tag settings", result.error);
     const auto value = [&](const char* key) {
       const auto found = result.values.find(key);
       return found != result.values.end() ? found->second : std::string();
@@ -773,14 +773,14 @@ void TagsPage::FilterSteam() {
                                         : QString("Show %1 more on one game each").arg(rare));
   QString note;
   if (!settings_.steam) {
-    note = "Getting tags from Steam is off (Tag settings).";
+    note = "Getting tags from Steam is off (Tag settings)";
   } else if (g_fetching_steam && tags_.steam_missing > 0) {
     note = "Getting tags from Steam…";
   } else if (shown == 0 && rare == 0) {
-    note = search.isEmpty() ? QString("No Steam tags on your games yet.")
-                            : QString("No Steam tag matches.");
+    note = search.isEmpty() ? QString("No Steam tags on your games yet")
+                            : QString("No Steam tag matches");
   } else if (shown == 0 && !search.isEmpty()) {
-    note = "No Steam tag matches.";
+    note = "No Steam tag matches";
   }
   steam_note_->Label()->setText(note);
   steam_note_->setVisible(!note.isEmpty());
@@ -874,7 +874,7 @@ void TagsPage::ShowMenu(const std::string& name, QWidget* anchor) {
     ++asked_;
     bar_apply_ = [this, name] {
       api::RemoveTagAsync(this, name, [this](PatchGamesResult result) {
-        if (!result.ok) return Failed("Could not remove that tag.", result.error);
+        if (!result.ok) return Failed("Could not remove that tag", result.error);
         emit GamesChanged(result.games);
         Refresh();
       });
@@ -966,7 +966,7 @@ void TagsPage::Rename(const std::string& from, const std::string& to) {
       merge ? "Merge" : "Rename",
       [this, from, to] {
         api::RenameTagAsync(this, from, to, [this](PatchGamesResult result) {
-          if (!result.ok) return Failed("Could not rename that tag.", result.error);
+          if (!result.ok) return Failed("Could not rename that tag", result.error);
           emit GamesChanged(result.games);
           Refresh();
         });
@@ -1008,7 +1008,7 @@ void TagsPage::AskThenApply(std::optional<std::vector<std::string>> folders,
         if (asked != asked_) return;
         if (!result.ok) {
           Sync();
-          return Failed("Could not check what would move.", result.error);
+          return Failed("Could not check what would move", result.error);
         }
         const int moving = static_cast<int>(result.moving.size());
         // Nothing on disk changes, so nothing to ask.
@@ -1033,7 +1033,7 @@ void TagsPage::SetFolder(const std::string& name, bool folder) {
         api::SetTagAsync(this, name, ids, folder, [this](PatchGamesResult result) {
           if (!result.ok) {
             Sync();
-            return Failed("Could not change that folder tag.", result.error);
+            return Failed("Could not change that folder tag", result.error);
           }
           emit GamesChanged(result.games);
           Refresh();
@@ -1064,7 +1064,7 @@ void TagsPage::PatchSetting(const std::string& key, const std::string& type,
   api::PatchConfigAsync(this, {{key, type, value}}, [this](PatchConfigResult result) {
     if (!result.ok) {
       Sync();
-      return Failed("Could not save that setting.", result.error);
+      return Failed("Could not save that setting", result.error);
     }
     g_fetching_steam = false;  // Steam turned on, or matching widened: what's missing is fetched
     Refresh();

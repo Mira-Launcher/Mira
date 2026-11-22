@@ -17,6 +17,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <semaphore>
 #include <set>
 #include <span>
 #include <sstream>
@@ -132,10 +133,18 @@ json CurlJson(std::vector<std::string> argv) {
 
 // CurlJson for SteamGridDB: its key goes through a private curl config, not curl's command line,
 // which other users can read.
+// A few at once: opening the art picker asks for every slot's pages and counts together, and
+// SteamGridDB slows down or refuses such a burst, which came back as "nothing found".
 json GriddbJson(const std::string& auth_header, const std::string& url) {
+  static std::counting_semaphore<4> slots(4);
+  slots.acquire();
+  struct Release {
+    ~Release() { slots.release(); }
+  } release;
+  // Longer than other sources: its first answer for a game is often slow while it builds it.
   const Result<runner::ExecResult> result = runner::RunCurlWithSecrets(
-      {"-sSL", "--max-time", std::string(kMaxTime), "--max-filesize", std::string(kMaxJsonBytes),
-       "--retry", "2", "--retry-max-time", "30", url},
+      {"-sSL", "--max-time", "25", "--max-filesize", std::string(kMaxJsonBytes), "--retry", "3",
+       "--retry-connrefused", "--retry-max-time", "60", url},
       runner::CurlConfigLine("header", auth_header));
   if (!result || result->exit_code != 0) return json(json::value_t::discarded);
   return json::parse(result->output, nullptr, false);
@@ -399,16 +408,18 @@ void FetchGriddbSlot(const config::Config& config, const std::string& auth_heade
 // a hard error beforehand) and one that already has Steam's own art
 // (FetchSteamOwned, where a missing key or no name match just means no
 // alternates to offer).
-// SteamGridDB's top match for `name`, or 0.
-std::int64_t FindGriddbId(const std::string& auth_header, const std::string& name) {
+// SteamGridDB's top match for `name`, 0 when it has none, nullopt when it couldn't be asked (not
+// "no match": that's said only when SteamGridDB says so).
+std::optional<std::int64_t> FindGriddbId(const std::string& auth_header, const std::string& name) {
   const json search = GriddbJson(
       auth_header,
       std::format("https://www.steamgriddb.com/api/v2/search/autocomplete/{}", UrlEncode(name)));
-  if (search.is_discarded() || !Value(search, "success", false) ||
-      Value(search, "data", json::array()).empty()) {
-    return 0;
+  if (search.is_discarded() || !Value(search, "success", false)) {
+    log::Warn("couldn't search SteamGridDB for {}", name);
+    return std::nullopt;
   }
-  return Value(search["data"][0], "id", std::int64_t{0});
+  const json data = Value(search, "data", json::array());
+  return data.empty() ? 0 : Value(data[0], "id", std::int64_t{0});
 }
 
 void FetchGriddbCandidates(const config::Config& config, const std::string& api_key,
@@ -416,7 +427,8 @@ void FetchGriddbCandidates(const config::Config& config, const std::string& api_
                            std::int64_t chosen_id, json& info) {
   const std::string auth_header = std::format("Authorization: Bearer {}", api_key);
   // metadata.steamgriddb_id, when the top match was wrong
-  const std::int64_t griddb_id = chosen_id != 0 ? chosen_id : FindGriddbId(auth_header, name);
+  const std::int64_t griddb_id =
+      chosen_id != 0 ? chosen_id : FindGriddbId(auth_header, name).value_or(0);
   if (griddb_id == 0) return;
   info["steamgriddb_id"] = griddb_id;
   // SteamGridDB's top pick from an earlier fetch of the same match stays: its order changes as art
@@ -1359,7 +1371,8 @@ Result<void> FetchTitleWith(const config::Config& config, store::MetadataStore& 
   if (!picked && !cache.ArtFor(game.id, "cover")) {
     if (!FetchStoreCover(config, game, info, steam_item) && !api_key.empty()) {
       const std::string auth_header = std::format("Authorization: Bearer {}", api_key);
-      if (const std::int64_t griddb_id = FindGriddbId(auth_header, game.name); griddb_id != 0) {
+      if (const std::int64_t griddb_id = FindGriddbId(auth_header, game.name).value_or(0);
+          griddb_id != 0) {
         FetchGriddbSlot(config, auth_header, griddb_id, game.id, "grids", "cover", info);
       }
     }
@@ -1708,7 +1721,13 @@ Result<json> FetchCandidatePage(const config::Config& config, store::MetadataSto
   const std::string auth_header = std::format("Authorization: Bearer {}", api_key);
   std::int64_t griddb_id = Value(cache.Read(game_id), "steamgriddb_id", std::int64_t{0});
   if (griddb_id == 0 && !name.empty()) {
-    griddb_id = FindGriddbId(auth_header, name);
+    const std::optional<std::int64_t> found = FindGriddbId(auth_header, name);
+    if (!found) {
+      return Err("steamgriddb_unreachable", "couldn't reach SteamGridDB",
+                 "Check the internet connection. SteamGridDB also limits requests, so waiting a "
+                 "minute can help.");
+    }
+    griddb_id = *found;
     if (griddb_id != 0) {
       const std::lock_guard lock(MetadataFileMutex());
       if (cache.Has(game_id)) {

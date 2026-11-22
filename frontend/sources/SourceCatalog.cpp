@@ -124,7 +124,7 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     button->setAccessibleName((imports ? "Import games from " : "Set up ") + source.name);
     button->setToolTip(
         imports ? QString("Adds %1's games now. They stay playable in %1.").arg(source.name)
-                : QString("Walks you through adding %1.").arg(source.name));
+                : QString("Walks you through adding %1").arg(source.name));
     connect(button, &QPushButton::clicked, this, [this, id] { emit SetUpRequested(id); });
     auto* footer = new QHBoxLayout();
     footer->addStretch(1);
@@ -175,11 +175,11 @@ void SourceCatalog::ApplyFilter() {
   }
   empty_->setVisible(!any);
   if (tiles_.empty()) {
-    empty_->setText("Every source is set up.");
+    empty_->setText("Every source is set up");
   } else if (!filter_.isEmpty()) {
     empty_->setText("No source matches that. It may already be under Added.");
   } else {
-    empty_->setText("Nothing to add here.");
+    empty_->setText("Nothing to add here");
   }
 }
 

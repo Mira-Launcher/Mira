@@ -177,7 +177,7 @@ void SaveSetupPrefs(const SetupContext& context, const FrontendPrefs& change) {
       context.work ? qobject_cast<QWidget*>(context.work->parent()) : nullptr;
   api::SaveFrontendPrefsAsync(qApp, change, [window](PatchConfigResult result) {
     if (!result.ok && window)
-      notify::FailedRequest(window, "Could not save the appearance.", result.error);
+      notify::FailedRequest(window, "Could not save the appearance", result.error);
   });
 }
 

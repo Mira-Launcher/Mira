@@ -41,7 +41,7 @@ void RunnerUpdater::DownloadChanged(const QString& key) {
                       "Remove", /*destructive=*/true)) {
     api::DeleteRunnerAsync(this, old.kind, old.name, [this](RunnerRemoveResult result) {
       if (!result.ok)
-        notify::FailedRequest(window_, "Could not remove the old build.", result.error);
+        notify::FailedRequest(window_, "Could not remove the old build", result.error);
     });
   }
 }

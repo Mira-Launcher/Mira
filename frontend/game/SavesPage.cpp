@@ -458,11 +458,11 @@ void SavesPage::BackUp() {
   api::BackUpSavesAsync(this, id_, [this](SavesJobResult result) {
     SetBusy(false);
     if (!result.ok) {
-      notify::FailedRequest(this, "Could not back up the saves.", result.error);
+      notify::FailedRequest(this, "Could not back up the saves", result.error);
       return;
     }
     // Nothing changed since the newest: the list already shows it, so say so.
-    if (!result.taken) notify::Notice(this, "Nothing changed since the last backup.");
+    if (!result.taken) notify::Notice(this, "Nothing changed since the last backup");
   });
 }
 
@@ -471,7 +471,7 @@ void SavesPage::Restore(const SaveSnapshot& snapshot) {
   api::RestoreSavesAsync(this, id_, snapshot.id, [this, snapshot](SavesJobResult result) {
     SetBusy(false);
     if (!result.ok) {
-      notify::FailedRequest(this, "Could not restore the saves.", result.error);
+      notify::FailedRequest(this, "Could not restore the saves", result.error);
       return;
     }
     restored_ = Restored{snapshot.taken_at, result.undo};
@@ -488,7 +488,7 @@ void SavesPage::Delete(const SaveSnapshot& snapshot) {
     return;
   if (restored_ && restored_->undo == snapshot.id) restored_.reset();
   api::DeleteSaveBackupAsync(this, id_, snapshot.id, [this](GameActionResult result) {
-    if (!result.ok) notify::FailedRequest(this, "Could not delete the backup.", result.error);
+    if (!result.ok) notify::FailedRequest(this, "Could not delete the backup", result.error);
   });
 }
 
@@ -499,7 +499,7 @@ void SavesPage::Sync(const std::string& action) {
     SetBusy(false);
     // A conflict is what the cloud card shows next, with its two choices.
     if (!result.ok && result.error.code != "saves_conflict")
-      notify::FailedRequest(this, "Could not sync the saves.", result.error);
+      notify::FailedRequest(this, "Could not sync the saves", result.error);
   });
 }
 
@@ -507,7 +507,7 @@ void SavesPage::Pin(const SaveSnapshot& snapshot) {
   api::PinSaveBackupAsync(
       this, id_, snapshot.id, !snapshot.pinned, [this](GameActionResult result) {
         if (!result.ok)
-          notify::FailedRequest(this, "Could not change the backup's pin.", result.error);
+          notify::FailedRequest(this, "Could not change the backup's pin", result.error);
       });
 }
 
@@ -520,14 +520,14 @@ void SavesPage::AddFolder() {
   api::ChangeSaveFolderAsync(this, id_, /*add=*/true, QDir::cleanPath(folder).toStdString(),
                              [this](GameActionResult result) {
                                if (!result.ok)
-                                 notify::FailedRequest(this, "Could not add the folder.",
+                                 notify::FailedRequest(this, "Could not add the folder",
                                                        result.error);
                              });
 }
 
 void SavesPage::RemoveFolder(const std::string& pattern) {
   api::ChangeSaveFolderAsync(this, id_, /*add=*/false, pattern, [this](GameActionResult result) {
-    if (!result.ok) notify::FailedRequest(this, "Could not remove the folder.", result.error);
+    if (!result.ok) notify::FailedRequest(this, "Could not remove the folder", result.error);
   });
 }
 

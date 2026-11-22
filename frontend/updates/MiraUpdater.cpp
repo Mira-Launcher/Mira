@@ -110,7 +110,7 @@ void MiraUpdater::Start(const QString& latest) {
 void MiraUpdater::Cancel() {
   if (state_ != State::Downloading || job_.empty()) return;
   jobs::Cancel(this, job_, [this](ApiError error) {
-    if (!error.message.empty()) notify::FailedRequest(window_, "Could not cancel it.", error);
+    if (!error.message.empty()) notify::FailedRequest(window_, "Could not cancel it", error);
   });
 }
 
@@ -149,6 +149,13 @@ void MiraUpdater::WaitForDaemon(int attempts_left) {
     if (status.reachable && attempts_left > 0) {
       QTimer::singleShot(kPollMs, this,
                          [this, attempts_left] { WaitForDaemon(attempts_left - 1); });
+      return;
+    }
+    // The new build would attach to the old mirad, which saves settings by its older schema.
+    if (status.reachable) {
+      SetState(State::Failed,
+               "Mira is updated, but its background service didn't stop. Close Mira and open it "
+               "again.");
       return;
     }
     // Nothing to hand over: the new build starts its own mirad.

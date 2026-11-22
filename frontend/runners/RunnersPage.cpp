@@ -443,7 +443,7 @@ void RunnersPage::RebuildCatalog() {
     }
     catalog_->AddRow(row);
   }
-  if (releases_.empty()) catalog_->AddRow(NoteRow("No builds found."));
+  if (releases_.empty()) catalog_->AddRow(NoteRow("No builds found"));
 }
 
 void RunnersPage::RebuildTools() {

@@ -490,8 +490,8 @@ bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
           const GameSummary* game =
               library_->Find(hover_row_->property("hover_game").toString().toStdString());
           if (game == nullptr) return;
-          const QString hint = game->running             ? "Right-click to stop it."
-                               : game->status == "ready" ? "Click to play."
+          const QString hint = game->running             ? "Right-click to stop it"
+                               : game->status == "ready" ? "Click to play"
                                                          : QString();
           emit HoverRequested(
               game->id, QRect(hover_row_->mapToGlobal(QPoint(0, 0)), hover_row_->size()), hint);
@@ -721,7 +721,7 @@ void Sidebar::SetSourceEnabled(const QString& id, bool enabled) {
   api::PatchSourceAsync(
       this, id.toStdString(), enabled, std::nullopt, [this](PatchConfigResult result) {
         if (!result.ok) {
-          notify::FailedRequest(this, "Could not change that source.", result.error);
+          notify::FailedRequest(this, "Could not change that source", result.error);
         }
         RefreshSources();
       });
@@ -791,7 +791,7 @@ void Sidebar::SetSourceOrder(std::vector<QString> order) {
   std::vector<std::string> ids;
   for (const QString& source : order) ids.push_back(source.toStdString());
   api::SetSourceOrderAsync(this, ids, [this](PatchConfigResult result) {
-    if (!result.ok) notify::FailedRequest(this, "Could not save the sources' order.", result.error);
+    if (!result.ok) notify::FailedRequest(this, "Could not save the sources' order", result.error);
   });
 }
 
@@ -810,7 +810,7 @@ void Sidebar::SetHiddenSidebarMirrors(bool mirrors) {
   emit SourcesChanged();
   api::SetHiddenSidebarMirrorsAsync(this, mirrors, [this](PatchConfigResult result) {
     if (!result.ok)
-      notify::FailedRequest(this, "Could not save which sources the sidebar shows.", result.error);
+      notify::FailedRequest(this, "Could not save which sources the sidebar shows", result.error);
     RefreshSources();
   });
 }
@@ -833,7 +833,7 @@ void Sidebar::SetSourceHidden(const QString& id, bool hidden) {
     api::SetSourceInHiddenSidebarAsync(
         this, id.toStdString(), !hidden, [this](PatchConfigResult result) {
           if (!result.ok) {
-            notify::FailedRequest(this, "Could not save which sources the sidebar shows.",
+            notify::FailedRequest(this, "Could not save which sources the sidebar shows",
                                   result.error);
           }
           RefreshSources();
@@ -849,7 +849,7 @@ void Sidebar::SetSourceHidden(const QString& id, bool hidden) {
   api::PatchSourceAsync(
       this, id.toStdString(), std::nullopt, !hidden, [this](PatchConfigResult result) {
         if (!result.ok) {
-          notify::FailedRequest(this, "Could not save which sources the sidebar shows.",
+          notify::FailedRequest(this, "Could not save which sources the sidebar shows",
                                 result.error);
         }
         RefreshSources();
@@ -985,7 +985,7 @@ void Sidebar::SetStyleChoices(const SidebarStyleCard::Choices& choices) {
   prefs.sidebar_recent_count = style_.recent_count;
   prefs.sidebar_recent_when = style_.recent_when;
   // Shown already, so a failed write would otherwise only surface as the old look after a restart.
-  SavePrefs(this, prefs, "Could not save the sidebar's look.");
+  SavePrefs(this, prefs, "Could not save the sidebar's look");
 }
 
 bool Sidebar::ShowsArtOf(const QString& id) const {

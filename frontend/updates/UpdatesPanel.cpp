@@ -97,7 +97,7 @@ UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpda
   header->addWidget(update_all_);
   layout->addLayout(header);
 
-  empty_ = new QLabel("Mira and everything it downloaded are up to date.", this);
+  empty_ = new QLabel("Mira and everything it downloaded are up to date", this);
   empty_->setProperty("role", "subtle");
   empty_->setWordWrap(true);
   empty_->setContentsMargins(18, 6, 18, 10);
@@ -282,15 +282,15 @@ QWidget* UpdatesPanel::BuildMiraRow() {
       if (mira_->Current() == MiraUpdater::State::Idle) text->addWidget(ReleaseLink(row, entry));
       if (entry.install == "manual") {
         line(system::DetectDistro().family == system::Distro::Family::Arch
-                 ? QString("Built from the PKGBUILD, so rebuild it to update.")
+                 ? QString("Built from the PKGBUILD, so rebuild it to update")
                  : QString("Mira can't replace this install, so get the new version from its "
                            "release page."));
         break;
       }
       const bool failed = mira_->Current() == MiraUpdater::State::Failed;
       if (!failed) {
-        line(entry.install == "appimage" ? QString("Restarts Mira when it's done.")
-                                         : QString("Asks for your password, then restarts Mira."));
+        line(entry.install == "appimage" ? QString("Restarts Mira when it's done")
+                                         : QString("Asks for your password, then restarts Mira"));
       }
       action = new QPushButton(failed ? "Retry" : "Update", row);
       action->setDefault(!failed);

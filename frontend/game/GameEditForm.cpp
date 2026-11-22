@@ -723,7 +723,7 @@ void GameEditForm::MoveFolder(bool prefix) {
         if (!result.ok) {
           button->setEnabled(true);
           notify::FailedRequest(
-              this, prefix ? "Could not move the prefix." : "Could not move the " + noun_ + ".",
+              this, prefix ? "Could not move the prefix" : "Could not move the " + noun_,
               result.error);
           return;
         }
@@ -747,7 +747,7 @@ void GameEditForm::ConfirmExecutable() {
   api::PatchGameAsync(this, id_, patch, [this](PatchGameResult result) {
     looks_right_->setEnabled(true);
     if (!result.ok) {
-      notify::FailedRequest(this, "Could not confirm the executable.", result.error);
+      notify::FailedRequest(this, "Could not confirm the executable", result.error);
       return;
     }
     check_tag_->hide();

@@ -61,11 +61,11 @@ void SetupWork::DownloadProton() {
     if (!catalog.ok || catalog.releases.empty()) {
       proton_running_ = false;
       if (!catalog.ok)
-        notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not list Proton versions.",
+        notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not list Proton versions",
                               catalog.error);
       else
         notify::Notice(qobject_cast<QWidget*>(parent()),
-                       "No Proton versions are available right now.");
+                       "No Proton versions are available right now");
       return emit Changed();
     }
     const RunnerRelease& newest = catalog.releases.front();
@@ -73,7 +73,7 @@ void SetupWork::DownloadProton() {
                              [this](RunnerDownloadResult result) {
                                if (result.ok) return;  // RunnersChanged ends it
                                notify::FailedRequest(qobject_cast<QWidget*>(parent()),
-                                                     "Could not download Proton.", result.error);
+                                                     "Could not download Proton", result.error);
                                proton_running_ = false;
                                emit Changed();
                              });

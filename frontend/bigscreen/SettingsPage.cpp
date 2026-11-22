@@ -102,7 +102,7 @@ void SettingsPage::Build() {
        {}},
       {"Movement",
        "Scroll speed",
-       "How fast lists move while a direction is held.",
+       "How fast lists move while a direction is held",
        [w] { return LabelOf(kRepeat, w->prefs().big_screen_repeat.value_or("normal")); },
        edit([](FrontendPrefs& p, int step) {
          p.big_screen_repeat = Cycle(kRepeat, p.big_screen_repeat.value_or("normal"), step);
@@ -139,7 +139,7 @@ void SettingsPage::Build() {
          {}},
         {"",
          "Sounds",
-         "Short sounds as you move around and pick things.",
+         "Short sounds as you move around and pick things",
          shows(&FrontendPrefs::big_screen_sounds, true),
          flip(&FrontendPrefs::big_screen_sounds, true),
          {}},
@@ -157,13 +157,13 @@ void SettingsPage::Build() {
          {}},
         {"",
          "Trailer sound",
-         "Plays a trailer's sound, not only its picture.",
+         "Plays a trailer's sound, not only its picture",
          shows(&FrontendPrefs::big_screen_trailer_sound, false),
          flip(&FrontendPrefs::big_screen_trailer_sound, false),
          {}},
         {"",
          "Trailer volume",
-         "How loud a trailer plays when its sound is on.",
+         "How loud a trailer plays when its sound is on",
          [w] { return QString("%1%").arg(w->prefs().big_screen_trailer_volume.value_or(50)); },
          edit([](FrontendPrefs& p, int step) {
            p.big_screen_trailer_volume =
@@ -203,13 +203,13 @@ void SettingsPage::Build() {
       {"System",
        {{"",
          "Open in big screen when Mira starts",
-         "The same as starting Mira with mira-gui --big-screen.",
+         "The same as starting Mira with mira-gui --big-screen",
          shows(&FrontendPrefs::big_screen_at_start, false),
          flip(&FrontendPrefs::big_screen_at_start, false),
          {}},
         {"",
          "Start Mira when you log in",
-         "Adds Mira to your desktop's autostart.",
+         "Adds Mira to your desktop's autostart",
          shows(&FrontendPrefs::start_on_login, false),
          flip(&FrontendPrefs::start_on_login, false),
          {}},
@@ -229,23 +229,23 @@ void SettingsPage::Build() {
          {},
          [w] { w->UpdateSystem(); }}}},
       {"Power",
-       {{"", "Suspend", "Puts the computer to sleep.", {}, {}, [w] { w->PowerAction("Suspend"); }},
+       {{"", "Suspend", "Puts the computer to sleep", {}, {}, [w] { w->PowerAction("Suspend"); }},
         {"",
          "Restart",
-         "Restarts the computer.",
+         "Restarts the computer",
          {},
          {},
          [w] {
-           w->Confirm("Restart the computer?", "Anything running is closed.", "Restart",
+           w->Confirm("Restart the computer?", "Anything running is closed", "Restart",
                       [w] { w->PowerAction("Reboot"); });
          }},
         {"",
          "Shut down",
-         "Turns the computer off.",
+         "Turns the computer off",
          {},
          {},
          [w] {
-           w->Confirm("Shut down the computer?", "Anything running is closed.", "Shut down",
+           w->Confirm("Shut down the computer?", "Anything running is closed", "Shut down",
                       [w] { w->PowerAction("PowerOff"); });
          }}}},
   };
@@ -262,7 +262,7 @@ void SettingsPage::Build() {
        {},
        {},
        0},
-      {"", "Screen and sound", "Text size, sounds and trailers.", {}, {}, {}, 1},
+      {"", "Screen and sound", "Text size, sounds and trailers", {}, {}, {}, 1},
       {"",
        "Apps",
        "Show applications, add a streaming app, or switch to Steam Big Picture.",
@@ -277,8 +277,8 @@ void SettingsPage::Build() {
        {},
        {},
        3},
-      {"", "Power", "Suspend, restart or shut down the computer.", {}, {}, {}, 4},
-      {"", "Exit big screen", "Back to the desktop library.", {}, {}, [w] { w->Exit(); }},
+      {"", "Power", "Suspend, restart or shut down the computer", {}, {}, {}, 4},
+      {"", "Exit big screen", "Back to the desktop library", {}, {}, [w] { w->Exit(); }},
   };
 }
 
@@ -398,13 +398,12 @@ void SettingsPage::PaintTest(QPainter& painter, double u) {
   painter.setFont(Font(u, 1.0));
   if (!input.available()) {
     painter.setPen(tokens.text_muted);
-    painter.drawText(QPointF(kMargin * u, y + u * 2.2),
-                     "Controllers need SDL3 (the sdl3 package).");
+    painter.drawText(QPointF(kMargin * u, y + u * 2.2), "Controllers need SDL3 (the sdl3 package)");
     return;
   }
   if (input.pads().empty()) {
     painter.setPen(tokens.text_muted);
-    painter.drawText(QPointF(kMargin * u, y + u * 2.2), "None connected.");
+    painter.drawText(QPointF(kMargin * u, y + u * 2.2), "None connected");
   }
   for (size_t i = 0; i < input.pads().size(); ++i) {
     const GamepadInput::Pad& pad = input.pads()[i];

@@ -91,6 +91,18 @@ fs::path TempFile(const char* name) {
 std::int64_t DefaultDebounce() {
   return Schema::Instance().Find("scan.debounce_ms")->default_value.get<std::int64_t>();
 }
+// The stamped backup Load kept as <file><suffix>.<time>, or an empty path; `remove` deletes them.
+fs::path Backup(const fs::path& file, const std::string& suffix, bool remove = false) {
+  const std::string start = file.filename().string() + suffix + ".";
+  std::error_code ec;
+  for (const auto& entry : fs::directory_iterator(file.parent_path(), ec)) {
+    if (!entry.path().filename().string().starts_with(start)) continue;
+    if (!remove) return entry.path();
+    fs::remove(entry.path(), ec);
+  }
+  return {};
+}
+
 std::string ReadText(const fs::path& file) {
   std::ifstream in(file);
   return {std::istreambuf_iterator<char>(in), {}};
@@ -129,8 +141,7 @@ TEST_CASE("A settings file that holds every default is cleaned once, keeping cho
   REQUIRE(pattern != nullptr);
   REQUIRE_FALSE(pattern->old_defaults.empty());
   const fs::path file = TempFile("settings-old-default.toml");
-  const fs::path backup = fs::path(file) += ".with-defaults";
-  fs::remove(backup);
+  Backup(file, ".with-defaults", /*remove=*/true);
   std::ostringstream old_text;
   old_text << "[runner_sources.legendary]\nasset_pattern = " << pattern->old_defaults.front().dump()
            << "\nrepo = \"me/legendary-fork\"\n\n[scan]\ndebounce_ms = " << DefaultDebounce()
@@ -146,7 +157,7 @@ TEST_CASE("A settings file that holds every default is cleaned once, keeping cho
   CHECK(text.find("me/legendary-fork") != std::string::npos);
   CHECK(text.find("asset_pattern") == std::string::npos);
   CHECK(text.find("debounce_ms") == std::string::npos);
-  CHECK(ReadText(backup) == old_text.str());
+  CHECK(ReadText(Backup(file, ".with-defaults")) == old_text.str());
 
   // Once cleaned, an earlier default chosen on purpose stays.
   REQUIRE(config.Set("runner_sources.legendary.asset_pattern", pattern->old_defaults.front())
@@ -158,9 +169,8 @@ TEST_CASE("A settings file that holds every default is cleaned once, keeping cho
 
 TEST_CASE("Loading drops what no setting reads, keeping the file as it was") {
   const fs::path file = TempFile("settings-removed.toml");
-  const fs::path backup = fs::path(file) += ".with-removed-settings";
   fs::remove(file);
-  fs::remove(backup);
+  Backup(file, ".with-removed-settings", /*remove=*/true);
   {
     Config config(file);
     config.Load();
@@ -179,7 +189,16 @@ TEST_CASE("Loading drops what no setting reads, keeping the file as it was") {
   CHECK(saved.find("debounce_ms = 9000") != std::string::npos);
   for (const char* gone : {"old_knob", "prefix_provider", "tile_width", "[frontend]"})
     CHECK(saved.find(gone) == std::string::npos);
-  CHECK(ReadText(backup) == text);
+  CHECK(ReadText(Backup(file, ".with-removed-settings")) == text);
+
+  // A value of the wrong kind goes back to its default, backed up once and written back.
+  Backup(file, ".with-invalid-settings", /*remove=*/true);
+  std::ofstream(file, std::ios::trunc) << "[scan]\ndebounce_ms = \"soon\"\n";
+  Config reset(file);
+  reset.Load();
+  CHECK(reset.GetInt("scan.debounce_ms") == DefaultDebounce());
+  CHECK(ReadText(file).find("soon") == std::string::npos);
+  CHECK(ReadText(Backup(file, ".with-invalid-settings")).find("soon") != std::string::npos);
 }
 
 TEST_CASE(

@@ -20,7 +20,7 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
   const std::string id = source.id.toStdString();
   api::GetRemovalPlanAsync(parent, id, [parent, id, name, on_removed](RemovalPlanResult plan) {
     if (!plan.ok) {
-      notify::FailedRequest(parent, "Could not plan the removal.", plan.error);
+      notify::FailedRequest(parent, "Could not plan the removal", plan.error);
       return;
     }
     const QString item = CopyFor(id).item;
@@ -61,8 +61,8 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
       lines << "Deletes " + tools.join(" and ") + ", which Mira downloaded.";
     }
     if (!plan.kept.empty())
-      lines << (item == "app" ? "Keeps app data and settings (prefixes stay on disk)."
-                              : "Keeps game data and saves (prefixes stay on disk).");
+      lines << (item == "app" ? "Keeps app data and settings (prefixes stay on disk)"
+                              : "Keeps game data and saves (prefixes stay on disk)");
     lines << name + " goes back to Add source, to set up again any time.";
     PopupDialog dialog(parent, notify::Level::Warning, "Remove " + name);
     dialog.SetMessage(lines.join("\n"));

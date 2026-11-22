@@ -153,6 +153,7 @@ class ArtPickerPanel : public QWidget {
   int griddb_total_ = -1;  // unknown until the first page
   // RequestCounts' page requests by slot, and each slot's art that isn't SteamGridDB's.
   bool counts_requested_ = false;
+  std::optional<GameMetadataResult> counts_from_;  // the metadata to count from, until the page
   std::map<std::string, std::string> count_requests_;
   std::map<std::string, int> own_counts_;
   // What the pages loaded are for (a style, adult only), and the candidates they brought.

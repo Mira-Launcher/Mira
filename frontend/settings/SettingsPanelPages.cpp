@@ -295,7 +295,7 @@ void SettingsPanel::BuildInterfacePage() {
             "this only catches changes made while it was stopped.",
             "scan startup", &FrontendPrefs::scan_on_startup, true);
   AddToggle(general, "Drag to select games",
-            "Drag across the library to select several games at once.", "rubber band multiple",
+            "Drag across the library to select several games at once", "rubber band multiple",
             &FrontendPrefs::drag_select, true);
   AddToggle(general, "Double-click a game to play it",
             "Double-clicking a game in the library or on a source page starts it, or stops it "
@@ -324,7 +324,7 @@ void SettingsPanel::BuildInterfacePage() {
                 "Large cards for running and recently played games above the grid.",
                 "library cards recently played recent", &FrontendPrefs::library_continue_row, true);
   continue_count_row_ =
-      new SettingRow("Cards to show", "How many cards the Continue playing row shows.");
+      new SettingRow("Cards to show", "How many cards the Continue playing row shows");
   continue_count_ = new QSpinBox(continue_count_row_);
   continue_count_->setRange(1, 6);
   continue_count_->setValue(3);
@@ -342,7 +342,7 @@ void SettingsPanel::BuildInterfacePage() {
   AddToggle(library, "Apps in library",
             "Show apps in the library. Off, they're only on their source's page and in a search.",
             "library apps hide search sources", &FrontendPrefs::library_apps, true);
-  AddToggle(library, "Apps under All", "List apps under the All tab too, not only under Apps.",
+  AddToggle(library, "Apps under All", "List apps under the All tab too, not only under Apps",
             "library apps all tab filter", &FrontendPrefs::library_apps_in_all, true);
   AddToggle(library, "Apps in Continue playing",
             "Show recently used apps in the Continue playing row, not only games.",
@@ -402,9 +402,9 @@ void SettingsPanel::BuildInterfacePage() {
             &FrontendPrefs::grid_margin);
   shape_row(tile_radius_, "Cover rounding", "Corner radius of game covers. 0 is square.", 40,
             &FrontendPrefs::tile_radius);
-  shape_row(panel_radius_, "Panel rounding", "Corner radius of panels, cards and notices.", 24,
+  shape_row(panel_radius_, "Panel rounding", "Corner radius of panels, cards and notices", 24,
             &FrontendPrefs::panel_radius);
-  shape_row(control_radius_, "Control rounding", "Corner radius of buttons, fields and dropdowns.",
+  shape_row(control_radius_, "Control rounding", "Corner radius of buttons, fields and dropdowns",
             20, &FrontendPrefs::control_radius);
   AddCardReset(layout, std::move(layout_fields), {});
   RefreshShapeDefaults();
@@ -555,9 +555,9 @@ void SettingsPanel::BuildBigScreenPage() {
             false);
 
   SettingsCard* screen = page->AddCard("Screen and sound");
-  AddToggle(screen, "Large text", "Scales big screen up by 15%, for a TV across the room.",
+  AddToggle(screen, "Large text", "Scales big screen up by 15%, for a TV across the room",
             "big screen text size font tv", &FrontendPrefs::big_screen_large_text, false);
-  AddToggle(screen, "Sounds", "Short sounds as you move around and pick things.",
+  AddToggle(screen, "Sounds", "Short sounds as you move around and pick things",
             "big screen sound navigation audio", &FrontendPrefs::big_screen_sounds, true);
   AddToggle(screen, "Full screen games",
             "A game that opens in a window fills the screen, without borders.",
@@ -587,7 +587,7 @@ void SettingsPanel::BuildBigScreenPage() {
             "How far the stick moves before it counts. High suits worn sticks less well.",
             "big screen controller stick deadzone", &FrontendPrefs::big_screen_stick,
             bigscreen::kStick, std::string("medium"));
-  AddChoice(controller, "Scroll speed", "How fast lists move while a direction is held.",
+  AddChoice(controller, "Scroll speed", "How fast lists move while a direction is held",
             "big screen controller repeat scroll", &FrontendPrefs::big_screen_repeat,
             bigscreen::kRepeat, std::string("normal"));
   AddChoice(controller, "Vibration",
@@ -596,9 +596,9 @@ void SettingsPanel::BuildBigScreenPage() {
             bigscreen::kRumble, std::string("light"));
 
   SettingsCard* trailers = page->AddCard("Trailers");
-  AddToggle(trailers, "Trailers", "A trailer plays behind the game you rest on.",
+  AddToggle(trailers, "Trailers", "A trailer plays behind the game you rest on",
             "big screen trailer video", &FrontendPrefs::big_screen_trailers, true);
-  AddSeconds(trailers, "Start after", "How long to rest on a game before its trailer starts.",
+  AddSeconds(trailers, "Start after", "How long to rest on a game before its trailer starts",
              "big screen trailer delay wait", &FrontendPrefs::big_screen_trailer_delay_ms, 3000,
              10);
   AddSeconds(trailers, "Skip the opening",
@@ -610,10 +610,10 @@ void SettingsPanel::BuildBigScreenPage() {
             "Skips trailers below 720p instead of showing them blurry.",
             "big screen trailer quality low resolution", &FrontendPrefs::big_screen_trailer_hd_only,
             false);
-  AddToggle(trailers, "Trailer sound", "Plays a trailer's sound, not only its picture.",
+  AddToggle(trailers, "Trailer sound", "Plays a trailer's sound, not only its picture",
             "big screen trailer audio sound mute", &FrontendPrefs::big_screen_trailer_sound, false);
   auto* volume_row =
-      new SettingRow("Trailer volume", "How loud a trailer plays when its sound is on.");
+      new SettingRow("Trailer volume", "How loud a trailer plays when its sound is on");
   trailer_volume_ = new QSpinBox(volume_row);
   trailer_volume_->setRange(10, 100);
   trailer_volume_->setSingleStep(10);
@@ -685,13 +685,12 @@ void SettingsPanel::BuildSidebarPage() {
   // Moved onto the Sources page once the schema loads (BuildSchemaPages).
   sources_card_ = page->AddCard("In the sidebar");
   AddToggle(sources_card_, "Show game counts",
-            "Show how many games each source has next to its name.", "sidebar source numbers",
+            "Show how many games each source has next to its name", "sidebar source numbers",
             &FrontendPrefs::sidebar_source_counts, true);
   AddToggle(sources_card_, "Covers on source rows",
             "Show a few of each source's games next to its name. Off shows a colored dot instead.",
             "sidebar source covers colors icons", &FrontendPrefs::sidebar_source_covers, true);
-  auto* sources_row =
-      new SettingRow("Sources", "Which sources show, their order, and adding more.");
+  auto* sources_row = new SettingRow("Sources", "Which sources show, their order, and adding more");
   auto* open = new QPushButton("Open Sources", sources_row);
   connect(open, &QPushButton::clicked, this, &SettingsPanel::SourcesPageRequested);
   sources_row->AddControl(open);
@@ -724,7 +723,7 @@ void SettingsPanel::BuildShortcutsPage() {
         aliases << alias.toString(QKeySequence::NativeText);
       auto* also = new QLabel("also " + aliases.join(", "), row);
       also->setProperty("role", "subtle");
-      also->setToolTip("Always works too and can't be changed.");
+      also->setToolTip("Always works too and can't be changed");
       row->AddControl(also);
     }
     auto* edit = new ShortcutEdit(current, row);

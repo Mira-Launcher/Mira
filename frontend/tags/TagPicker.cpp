@@ -145,7 +145,7 @@ void TagPicker::Apply() {
   api::SetTagAsync(this, name, ids, folder, [this](PatchGamesResult result) {
     if (!result.ok) {
       UpdateBar();
-      notify::FailedRequest(window(), "Could not change that tag.", result.error);
+      notify::FailedRequest(window(), "Could not change that tag", result.error);
       return;
     }
     emit Applied(result.games);

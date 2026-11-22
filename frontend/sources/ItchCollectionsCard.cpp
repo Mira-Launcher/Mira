@@ -28,7 +28,7 @@ ItchCollectionsCard::ItchCollectionsCard(QWidget* parent)
   status_->setContentsMargins(18, 8, 18, 8);
   AddRow(status_);
 
-  auto* add_row = new SettingRow("Add by link", "A collection's itch.io address.", this);
+  auto* add_row = new SettingRow("Add by link", "A collection's itch.io address", this);
   link_ = new QLineEdit(add_row);
   link_->setPlaceholderText("https://itch.io/c/123456/collection-name");
   link_->setMinimumWidth(240);
@@ -59,7 +59,7 @@ void ItchCollectionsCard::ShowCollections(const ItchCollectionsResult& result) {
     SetStatus("Could not list the collections: " + error_help::Describe(result.error), true);
     return;
   }
-  SetStatus(result.collections.empty() ? "No collections yet." : QString());
+  SetStatus(result.collections.empty() ? "No collections yet" : QString());
   for (const ItchCollection& collection : result.collections) {
     auto* row = new SettingRow(QString::fromStdString(collection.title), QString(), this);
     auto* count = new QLabel(QString("%1 game%2")

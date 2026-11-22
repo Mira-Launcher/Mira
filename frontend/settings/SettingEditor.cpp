@@ -54,9 +54,9 @@ void AskDisplay(const ConfigSchemaEntry& entry, SettingRow* row, Switch* toggle,
     QString note;
     if (key != "display.hdr") {
     } else if (!display.ok || !display.supported) {
-      note = "Needs Plasma on Wayland.";
+      note = "Needs Plasma on Wayland";
     } else if (!display.hdr) {
-      note = QString("%1, your main monitor, can't do HDR.")
+      note = QString("%1, your main monitor, can't do HDR")
                  .arg(QString::fromStdString(display.output));
     }
     if (!note.isEmpty()) row->SetBelow(MakeLabel(row, note, "subtle"));

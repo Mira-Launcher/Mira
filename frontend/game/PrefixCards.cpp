@@ -272,7 +272,7 @@ void WinetricksCard::HandleEvent(const std::string& type, const std::string& dat
   }
   installed_.insert(event.verb);
   RebuildChips();
-  SetStatus(QString("%1 finished.").arg(verb));
+  SetStatus(QString("%1 finished").arg(verb));
 }
 
 }  // namespace mira_gui

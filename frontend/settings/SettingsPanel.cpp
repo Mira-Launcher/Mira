@@ -452,16 +452,16 @@ void SettingsPanel::LoadGameModeStatus() {
     QString text;
     bool error = false;
     if (!result.ok) {
-      text = "Could not check (mirad unreachable).";
+      text = "Could not check (mirad unreachable)";
       error = true;
     } else if (!result.installed) {
       text = "Not installed: gamemoded isn't on PATH.";
       error = true;
     } else if (!result.daemon_running) {
-      text = "Installed, but the daemon isn't running right now.";
+      text = "Installed, but the daemon isn't running right now";
       error = true;
     } else {
-      text = "Installed and running.";
+      text = "Installed and running";
     }
     gamemode_status_->setText(text);
     theme::SetStyleProperty(gamemode_status_, "role", error ? "error" : "subtle");
@@ -625,7 +625,7 @@ void SettingsPanel::Save() {
     if (ok) {
       for (const size_t i : indices) fields_[i].original = sent[i];
     } else if (save_error_.isEmpty()) {
-      save_error_ = error.empty() ? QString("Could not save.") : QString::fromStdString(error);
+      save_error_ = error.empty() ? QString("Could not save") : QString::fromStdString(error);
     }
     if (--saves_pending_ == 0) FinishSave(save_error_.isEmpty(), save_error_);
   };
@@ -658,7 +658,7 @@ void SettingsPanel::FinishSave(bool ok, const QString& error) {
   emit SaveFinished(ok, error);
   // Once everything is saved: display settings take a restart.
   if (std::exchange(restart_prompt_, false) && ok &&
-      notify::Confirm(this, "Restart Mira?", "Mira applies this the next time it opens.",
+      notify::Confirm(this, "Restart Mira?", "Mira applies this the next time it opens",
                       "Restart now")) {
     display::Restart({"--desktop"});
   }
@@ -757,7 +757,7 @@ void SettingsPanel::EditMiraFolders(
   // From the settings as saved now: Library folders may have been saved since this page loaded.
   api::GetConfigAsync(this, [this, edit](ConfigResult config) {
     if (!config.ok) {
-      notify::FailedRequest(this, "Could not change the Mira folders.", config.error);
+      notify::FailedRequest(this, "Could not change the Mira folders", config.error);
       return;
     }
     QStringList folders = ListValue(config, "mira_folders");
@@ -779,7 +779,7 @@ void SettingsPanel::SaveMiraFolders(const QStringList& folders, const QStringLis
   };
   api::PatchConfigAsync(this, edits, [this](PatchConfigResult result) {
     if (!result.ok) {
-      notify::FailedRequest(this, "Could not change the Mira folders.", result.error);
+      notify::FailedRequest(this, "Could not change the Mira folders", result.error);
       return;
     }
     api::GetConfigAsync(this, [this](ConfigResult config) {

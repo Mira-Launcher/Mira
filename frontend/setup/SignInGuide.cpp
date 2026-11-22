@@ -68,9 +68,9 @@ SignInGuide GuideFor(const std::string& id) {
   guide.done = "Signed in";
   if (id == "epic") {
     guide.title = "Sign in to Epic Games";
-    guide.line = "Lists the games you own on Epic and installs them.";
+    guide.line = "Lists the games you own on Epic and installs them";
     guide.open = "Open the Epic sign-in page";
-    guide.steps = {"Sign in with your Epic account.",
+    guide.steps = {"Sign in with your Epic account",
                    "The page then shows a short block of text. Press <code>Ctrl+A</code>, then "
                    "<code>Ctrl+C</code> to copy all of it. Mira picks out the code."};
     guide.sketch.address =
@@ -84,9 +84,9 @@ SignInGuide GuideFor(const std::string& id) {
     guide.sketch.caption = "Copy the whole page. Mira finds <b>authorizationCode</b> in it.";
   } else if (id == "gog") {
     guide.title = "Sign in to GOG";
-    guide.line = "Lists the games you own on GOG and installs them.";
+    guide.line = "Lists the games you own on GOG and installs them";
     guide.open = "Open the GOG sign-in page";
-    guide.steps = {"Sign in with your GOG account.", "The page goes blank. That's expected.",
+    guide.steps = {"Sign in with your GOG account", "The page goes blank. That's expected.",
                    kCopyAddress};
     guide.sketch.address = "embed.gog.com/on_login_success?origin=client&code=Kx9pR2vQ8mWZ4tLbN0yA";
     guide.sketch.address_marked = true;
@@ -96,40 +96,40 @@ SignInGuide GuideFor(const std::string& id) {
     guide.title = "Sign in to Amazon Games";
     guide.line = "Lists the games you own on Amazon, including Prime Gaming, and installs them.";
     guide.open = "Open the Amazon sign-in page";
-    guide.steps = {"Sign in with your Amazon account.",
+    guide.steps = {"Sign in with your Amazon account",
                    "Amazon shows an error or a blank page. That's expected.", kCopyAddress};
     guide.sketch.address =
         "www.amazon.com/"
         "?openid.assoc_handle=amzn_sonic_games_launcher&openid.oa2.authorization_code=ANbXqzKpLmVt";
     guide.sketch.address_marked = true;
     guide.sketch.parts = {Part(Kind::Heading, "Sorry, something went wrong"),
-                          Part(Kind::Text, "The page you asked for isn't available.")};
+                          Part(Kind::Text, "The page you asked for isn't available")};
     guide.sketch.caption = "The error is expected. Copy the address.";
   } else if (id == "itch") {
     guide.title = "Connect itch.io";
-    guide.line = "Lists the games you own on itch.io and installs them.";
+    guide.line = "Lists the games you own on itch.io and installs them";
     guide.open = "Open itch.io API keys";
     guide.intro = "itch.io uses a key instead of a sign-in.";
-    guide.steps = {"Sign in if itch.io asks.", "Press <b>Generate new API key</b>.",
+    guide.steps = {"Sign in if itch.io asks", "Press <b>Generate new API key</b>",
                    "Copy the key that appears. Press View if it's hidden."};
     guide.sketch.address = "itch.io/user/settings/api-keys";
     guide.sketch.parts = {Part(Kind::Heading, "API keys"),
-                          Part(Kind::Text, "Keys let other programs use your account."),
+                          Part(Kind::Text, "Keys let other programs use your account"),
                           Part(Kind::Button, "Generate new API key", true, 1),
                           Part(Kind::Code, "a7Xp3QnR9vLm2KwT8bYza7Xp3QnR9vLm2KwT8bYz", true, 2)};
-    guide.sketch.caption = "Press the button, then copy the new key.";
+    guide.sketch.caption = "Press the button, then copy the new key";
     guide.done = "Connected";
   } else if (id == "humble") {
     guide.title = "Sign in to Humble Bundle";
-    guide.line = "Lists your bundles and downloads their games.";
+    guide.line = "Lists your bundles and downloads their games";
     guide.open = "Open humblebundle.com";
     guide.steps = {
-        "Sign in.", "Press <code>F12</code> to open the developer tools.",
+        "Sign in", "Press <code>F12</code> to open the developer tools",
         "Open <b>Storage</b>, then <b>Cookies</b>, then <b>https://www.humblebundle.com</b>.",
         "Find <code>_simpleauth_sess</code>. Double-click its value and copy it."};
     guide.sketch = Cookies(true);
     guide.other_steps = {
-        "Sign in.", "Press <code>F12</code> to open the developer tools.",
+        "Sign in", "Press <code>F12</code> to open the developer tools",
         "Open <b>Application</b>, then <b>Cookies</b>, then <b>https://www.humblebundle.com</b>.",
         "Find <code>_simpleauth_sess</code>. Click it and copy its value from the box below."};
     guide.other_sketch = Cookies(false);
@@ -143,9 +143,9 @@ SignInGuide GuideFor(const std::string& id) {
         "Mira lists the Steam games you own, installed or not, from Steam's files on this "
         "computer. A free key from Steam is optional: it adds playtime from your other computers "
         "and games Steam here hasn't seen yet.";
-    guide.steps = {"Sign in with your Steam account.",
+    guide.steps = {"Sign in with your Steam account",
                    "The form asks for a domain name. Type <code>localhost</code>.",
-                   "Tick the box to agree, then press <b>Register</b>.", "Copy the key."};
+                   "Tick the box to agree, then press <b>Register</b>", "Copy the key"};
     guide.sketch.address = "steamcommunity.com/dev/apikey";
     guide.sketch.parts = {Part(Kind::Heading, "Register Steam Web API Key"),
                           Part(Kind::Text, "Domain Name:"),
@@ -153,7 +153,7 @@ SignInGuide GuideFor(const std::string& id) {
                           Part(Kind::Button, "Register"),
                           Part(Kind::Text, "Your Steam Web API Key"),
                           Part(Kind::Code, "8C1F04D2E7A93B5F6D20C8E1A47B9F35", true, 2)};
-    guide.sketch.caption = "Type localhost, register, then copy the key.";
+    guide.sketch.caption = "Type localhost, register, then copy the key";
     guide.note = "Steam only gives keys to accounts that have spent at least US$5.";
     guide.done = "Key saved";
   } else if (id == "battlenet") {
