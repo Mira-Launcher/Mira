@@ -31,7 +31,7 @@ namespace bigscreen {
 class BigScreenWindow;
 }
 class ArtworkStore;
-class DownloadsWindow;
+class DownloadsPage;
 class LinkDownloads;
 class PasswordPopup;
 class DaemonSupervisor;
@@ -239,7 +239,10 @@ class LibraryWindow : public QMainWindow,
   // The Sources page, in the grid's place like the Runners page. `catalog` shows Add source.
   void OpenSourcesPage(bool catalog);
   void CloseSourcesPage();
+  // Sources or Downloads, sized to the space beside the sidebar.
   void SizeSourcesCard();
+  void OpenDownloadsPage();
+  void CloseDownloadsPage();
   // A card that changes the sidebar (the pinned and recently played style),
   // over the content with the sidebar left undimmed as its
   // preview. Showing one replaces any other.
@@ -328,9 +331,10 @@ class LibraryWindow : public QMainWindow,
   mira_gui::RunnersPage* runners_page_ = nullptr;
   mira_gui::TagsPage* tags_page_ = nullptr;
   QPointer<mira_gui::SourcesPage> sources_page_;  // the sidebar card while it shows Sources
+  mira_gui::DownloadsPage* downloads_page_ = nullptr;
 
   QSplitter* splitter_ = nullptr;
-  // The splitter's right side: grid_page_, source_page_, or runners_page_.
+  // The splitter's right side: grid_page_, source_page_, runners_page_ or downloads_page_.
   QStackedWidget* main_stack_ = nullptr;
   mira_gui::LibraryPage* grid_page_ = nullptr;
   // Swaps the splitter out for Settings, full-screen. A game's card is a
@@ -372,7 +376,6 @@ class LibraryWindow : public QMainWindow,
   mira_gui::UpdatesPanel* updates_panel_ = nullptr;
   mira_gui::LinkDownloads* link_downloads_ = nullptr;
   mira_gui::PasswordPopup* password_popup_ = nullptr;
-  mira_gui::DownloadsWindow* downloads_window_ = nullptr;
   // What the top bar's notice is now, so a click does the right thing.
   enum class Notice { None, MiraBusy, Password, Failed, Update };
   Notice notice_ = Notice::None;
@@ -384,7 +387,7 @@ class LibraryWindow : public QMainWindow,
   // of these is worth a toast; the dozens from an automatic scan are not.
   std::set<std::string> awaiting_metadata_;
   bool steamgriddb_notice_shown_ = false;
-  // Set by "Fetch missing cover art": its fetches were asked for, so a
+  // Set by a refresh fetching missing art: its fetches were asked for, so a
   // missing SteamGridDB key is worth reporting.
   bool artwork_fetch_requested_ = false;
   // The tile width Ctrl+0 returns to, and the one a frontend.toml with

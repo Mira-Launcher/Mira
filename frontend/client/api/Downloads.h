@@ -17,9 +17,10 @@ DownloadInfo ParseDownload(const nlohmann::json& entry);
 void GetDownloadsAsync(QObject* context, std::function<void(DownloadsResult)> callback);
 void CheckLinksAsync(QObject* context, const std::vector<std::string>& links,
                      std::function<void(LinkCheckResult)> callback);
+// An empty name is guessed by mirad, an empty folder is the default Mira folder.
 void AddDownloadAsync(QObject* context, const std::string& name,
                       const std::vector<std::string>& links, const std::string& password,
-                      std::function<void(StoreActionResult)> callback);
+                      const std::string& folder, std::function<void(StoreActionResult)> callback);
 // `action` is pause, resume, retry or front.
 void DownloadActionAsync(QObject* context, const std::string& id, const std::string& action,
                          std::function<void(StoreActionResult)> callback);

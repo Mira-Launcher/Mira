@@ -3,95 +3,18 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QLocale>
-#include <QPointer>
 #include <QPushButton>
-#include <QScreen>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
-#include "../app/ErrorHelp.h"
-#include "../app/Notify.h"
-#include "../client/Jobs.h"
-#include "../client/api/Stores.h"
-#include "../library/ArtworkStore.h"
-#include "../theme/Icons.h"
-#include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ProgressRail.h"
 #include "../widgets/Scrolling.h"
+#include "DownloadList.h"
 #include "DownloadTracker.h"
 
 namespace mira_gui {
-namespace {
-
-using Kind = DownloadTracker::Kind;
-using State = DownloadTracker::State;
-
-const QSize kCover(40, 60);
-
-QString RunningText(const DownloadTracker::Entry& entry) {
-  switch (entry.kind) {
-    case Kind::Game:
-      return entry.bytes > 0 ? "Installing… " + SizeText(entry.bytes) + " written"
-                             : QString("Installing…");
-    case Kind::Title: {
-      if (entry.source == "steam" && !entry.update) return "Handing to Steam…";
-      const QString verb = entry.update ? "Updating…" : "Installing…";
-      const QString progress = DownloadTracker::ProgressText(entry);
-      return progress.isEmpty() ? verb : verb + " " + progress;
-    }
-    case Kind::Launcher:
-      return "Installing…";
-    case Kind::Job:
-      return entry.message.isEmpty() ? QString("Working…") : entry.message;
-    case Kind::Link:
-      if (!entry.message.isEmpty()) return entry.message;
-      return entry.progress >= 0 ? DownloadTracker::ProgressText(entry) : QString("Downloading…");
-    default: {
-      const QString progress = DownloadTracker::ProgressText(entry);
-      return progress.isEmpty() ? QString("Downloading…") : "Downloading… " + progress;
-    }
-  }
-}
-
-QString FinishedText(const DownloadTracker::Entry& entry) {
-  switch (entry.kind) {
-    case Kind::Game:
-    case Kind::Launcher:
-      return "Installed";
-    case Kind::Title:
-      if (entry.update) return "Updated";
-      return entry.source == "steam" ? "Sent to Steam" : "Installed";
-    case Kind::Job:
-      return "Done";
-    default:
-      return "Downloaded";
-  }
-}
-
-// What it's from, before the state: "GOG", "Proton", or nothing for a
-// game's own installer.
-QString Origin(const DownloadTracker& tracker, const DownloadTracker::Entry& entry) {
-  switch (entry.kind) {
-    case Kind::Game:
-    case Kind::Job:
-    case Kind::Link:
-      return QString();
-    case Kind::Runner:
-      return entry.source.isEmpty() ? QString()
-                                    : entry.source.left(1).toUpper() + entry.source.mid(1);
-    case Kind::Tool:
-      return tracker.source_name ? tracker.source_name(entry.source) + " helper" : QString();
-    default:
-      return tracker.source_name ? tracker.source_name(entry.source) : entry.source;
-  }
-}
-
-}  // namespace
 
 DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, QWidget* parent)
-    : QWidget(parent, Qt::Popup), tracker_(tracker), artwork_(artwork) {
+    : QWidget(parent, Qt::Popup), tracker_(tracker) {
   setObjectName("downloads_popover");
   setAttribute(Qt::WA_StyledBackground);
   setFixedWidth(380);
@@ -106,7 +29,7 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   title->setProperty("role", "section");
   header->addWidget(title);
   header->addStretch(1);
-  auto* manage = new QPushButton("Manage downloads", this);
+  auto* manage = new QPushButton("All downloads", this);
   manage->setObjectName("text_button");
   connect(manage, &QPushButton::clicked, this, [this] {
     hide();
@@ -125,314 +48,41 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   empty_->setContentsMargins(18, 6, 18, 10);
   layout->addWidget(empty_);
 
-  auto* scroll = new QScrollArea(this);
-  scroll->setObjectName("downloads_scroll");
-  scroll->setFrameShape(QFrame::NoFrame);
-  scroll->setWidgetResizable(true);
-  scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  SetUpScrolling(scroll, this);
-  auto* list = new QWidget(scroll);
-  rows_ = new QVBoxLayout(list);
-  rows_->setContentsMargins(0, 0, 0, 0);
-  rows_->setSpacing(0);
-  scroll->setWidget(list);
-  layout->addWidget(scroll);
+  scroll_ = new QScrollArea(this);
+  scroll_->setObjectName("downloads_scroll");
+  scroll_->setFrameShape(QFrame::NoFrame);
+  scroll_->setWidgetResizable(true);
+  scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  SetUpScrolling(scroll_, this);
+  list_ = new DownloadList(tracker_, artwork, DownloadList::Style::Compact, scroll_);
+  scroll_->setWidget(list_);
+  layout->addWidget(scroll_);
 
-  connect(tracker_, &DownloadTracker::Changed, this, [this](const QString& key) {
-    if (isVisible() && !UpdateRow(key)) Rebuild();
-  });
-  // Only the rows showing that cover: a library-wide cover load would otherwise rebuild every row
-  // per cover.
-  connect(artwork_, &ArtworkStore::CoverChanged, this, [this](const QString& id) {
-    if (isVisible()) UpdateCover(id);
-  });
-  // A store title's cover asked for here and dropped as scrolled past.
-  connect(artwork_, &ArtworkStore::RequestsDropped, this, [this] {
-    if (isVisible()) Rebuild();
-  });
+  connect(list_, &DownloadList::Rebuilt, this, &DownloadsPanel::Fit);
+  connect(list_, &DownloadList::Leaving, this, &QWidget::hide);
+  connect(list_, &DownloadList::ShowGameRequested, this, &DownloadsPanel::ShowGameRequested);
+  connect(list_, &DownloadList::LogRequested, this, &DownloadsPanel::LogRequested);
+  connect(list_, &DownloadList::LinkAction, this, &DownloadsPanel::LinkAction);
+  connect(list_, &DownloadList::LinkPasswordRequested, this,
+          &DownloadsPanel::LinkPasswordRequested);
 }
 
 void DownloadsPanel::ShowBelow(QWidget* anchor) {
-  Rebuild();
+  list_->Rebuild();
   const QPoint corner = anchor->mapToGlobal(QPoint(anchor->width(), anchor->height() + 4));
   move(corner.x() - width(), corner.y());
   show();
 }
 
-void DownloadsPanel::Rebuild() {
-  while (QLayoutItem* item = rows_->takeAt(0)) {
-    // Deferred: a row's own button click may be what led here.
-    if (item->widget() != nullptr) {
-      item->widget()->hide();
-      item->widget()->deleteLater();
-    }
-    delete item;
-  }
-  const auto& entries = tracker_->Entries();
-  for (int i = 0; i < static_cast<int>(entries.size()); ++i) rows_->addWidget(BuildRow(i));
-  rows_->addStretch(1);
-  empty_->setVisible(entries.empty());
-  clear_->setEnabled(tracker_->RunningCount() < static_cast<int>(entries.size()));
-
+void DownloadsPanel::Fit() {
+  const int count = list_->Count();
+  empty_->setVisible(count == 0);
+  clear_->setEnabled(tracker_->RunningCount() < static_cast<int>(tracker_->Entries().size()));
   // Grows with its rows up to six, then scrolls. Measured at the popover's width, since a
   // failed row's message and hint wrap onto more lines than a cover's height.
-  int height = 0;
-  for (int i = 0; i < std::min(rows_->count(), 6); ++i) {
-    if (QWidget* row = rows_->itemAt(i)->widget()) {
-      height += row->hasHeightForWidth() ? row->heightForWidth(width()) : row->sizeHint().height();
-    }
-  }
-  auto* scroll = findChild<QScrollArea*>("downloads_scroll");
-  scroll->setVisible(!entries.empty());
-  scroll->setFixedHeight(height);
+  scroll_->setVisible(count > 0);
+  scroll_->setFixedHeight(list_->HeightFor(width(), 6));
   adjustSize();
-}
-
-bool DownloadsPanel::UpdateRow(const QString& key) {
-  const DownloadTracker::Entry* entry = tracker_->Find(key);
-  if (entry == nullptr || entry->state != State::Running) return false;
-  for (int i = 0; i < rows_->count(); ++i) {
-    QWidget* row = rows_->itemAt(i)->widget();
-    if (row == nullptr || row->property("download_key").toString() != key) continue;
-    if (!row->property("download_running").toBool()) return false;
-    // A link's buttons follow its state.
-    if (row->property("link_state").toString() != entry->link_state) return false;
-    // Its job became known after the row was built: rebuilt with Cancel.
-    if ((row->findChild<QPushButton*>("download_cancel") == nullptr) !=
-        tracker_->JobFor(*entry).isEmpty())
-      return false;
-    const QString origin = Origin(*tracker_, *entry);
-    const QString state = RunningText(*entry);
-    row->findChild<QLabel*>("download_title")->setText(tracker_->NameFor(*entry));
-    row->findChild<QLabel*>("download_status")
-        ->setText(origin.isEmpty() ? state : origin + "  ·  " + state);
-    row->findChild<ProgressRail*>()->SetProgress(entry->progress);
-    return true;
-  }
-  return false;
-}
-
-namespace {
-
-// A game's or store title's row cover.
-QPixmap EntryCover(const DownloadTracker& tracker, ArtworkStore* artwork,
-                   const DownloadTracker::Entry& entry, qreal dpr) {
-  const QString name = tracker.NameFor(entry);
-  if (entry.kind == Kind::Title)
-    return artwork->TitleCover(entry.source, entry.ref, name, kCover, dpr);
-  GameSummary game;
-  game.id = entry.ref.toStdString();
-  game.name = name.toStdString();
-  return artwork->Cover(game, kCover, dpr);
-}
-
-}  // namespace
-
-void DownloadsPanel::UpdateCover(const QString& id) {
-  for (QLabel* cover : findChildren<QLabel*>("download_cover")) {
-    if (cover->property("cover_id").toString() != id) continue;
-    const QString key = cover->parentWidget()->property("download_key").toString();
-    if (const DownloadTracker::Entry* entry = tracker_->Find(key)) {
-      cover->setPixmap(EntryCover(*tracker_, artwork_, *entry, devicePixelRatioF()));
-    }
-  }
-}
-
-QWidget* DownloadsPanel::BuildRow(int index) {
-  const DownloadTracker::Entry& entry = tracker_->Entries()[static_cast<size_t>(index)];
-  const theme::Tokens& tokens = theme::Current();
-  const QString name = tracker_->NameFor(entry);
-
-  auto* row = new QFrame();
-  row->setObjectName("download_row");
-  row->setProperty("download_key", entry.key);
-  row->setProperty("download_running", entry.state == State::Running);
-  row->setProperty("link_state", entry.link_state);
-  row->setProperty("first", index == 0);
-  auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(18, 10, 18, 10);
-  layout->setSpacing(12);
-
-  auto* cover = new QLabel(row);
-  cover->setFixedSize(kCover);
-  cover->setAlignment(Qt::AlignCenter);
-  if (entry.kind == Kind::Game || entry.kind == Kind::Title) {
-    cover->setObjectName("download_cover");
-    cover->setProperty("cover_id",
-                       entry.kind == Kind::Game ? entry.ref : entry.source + "-" + entry.ref);
-    cover->setPixmap(EntryCover(*tracker_, artwork_, entry, devicePixelRatioF()));
-  } else {
-    icons::Glyph glyph = icons::Glyph::Download;
-    if (entry.kind == Kind::Runner || entry.kind == Kind::Tool) glyph = icons::Glyph::Wrench;
-    if (entry.kind == Kind::Job) {
-      if (entry.source == "scan") glyph = icons::Glyph::Search;
-      if (entry.source == "relocate") glyph = icons::Glyph::Refresh;
-      if (entry.source == "metadata") glyph = icons::Glyph::Image;
-      if (entry.source == "saves") glyph = icons::Glyph::Layers;  // as the game card's saves line
-      if (entry.source == "delete" || entry.source == "remove_source") glyph = icons::Glyph::Trash;
-    }
-    icons::Follow(cover, glyph, 22);
-  }
-  layout->addWidget(cover);
-
-  auto* text = new QVBoxLayout();
-  text->setSpacing(3);
-  // Elided, and the status below free to shrink: the panel is a fixed width, and a long name or
-  // an unbreakable path would otherwise push the buttons past its right edge.
-  auto* title = new ElidedLabel(name, row);
-  title->setObjectName("download_title");
-  title->setStyleSheet("font-weight: 600;");
-  title->setToolTip(name);
-  text->addWidget(title);
-
-  QString state;
-  const char* role = "muted";
-  if (entry.state == State::Running) {
-    state = RunningText(entry);
-  } else if (entry.state == State::Paused && !entry.message.isEmpty()) {
-    state = entry.message;
-  } else if (entry.state == State::Paused) {
-    state = entry.progress >= 0 ? QString("Paused at %1%").arg(qRound(entry.progress * 100))
-                                : QString("Paused");
-  } else if (entry.state == State::Finished) {
-    state = FinishedText(entry);
-  } else {
-    state = "Failed";
-    if (!entry.error.empty()) state += ": " + error_help::Describe(entry.error);
-    role = "error";
-  }
-  const QString origin = Origin(*tracker_, entry);
-  auto* status = new QLabel(origin.isEmpty() ? state : origin + "  ·  " + state, row);
-  status->setObjectName("download_status");
-  status->setProperty("role", role);
-  status->setWordWrap(true);
-  status->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-  text->addWidget(status);
-
-  if (entry.state == State::Running || entry.state == State::Paused) {
-    // Busy unless the source reports how far along it is.
-    auto* rail = new ProgressRail(row);
-    rail->SetProgress(entry.progress);
-    text->addWidget(rail);
-  }
-  text->addStretch(1);
-  layout->addLayout(text, /*stretch=*/1);
-
-  // Every row, whatever its state: what it did, or is doing. A link's goes to the daemon's log, so
-  // its row keeps to its progress and one button.
-  if (entry.kind != Kind::Link) {
-    auto* log = new QPushButton("Log", row);
-    log->setObjectName("text_button");
-    log->setToolTip("Open its live log in a window");
-    connect(log, &QPushButton::clicked, this,
-            [this, channel = DownloadTracker::LogChannelFor(entry), name] {
-              emit LogRequested(channel, name);
-            });
-    layout->addWidget(log, 0, Qt::AlignVCenter);
-  }
-
-  // Stacked, so Pause or Resume sits over Cancel at the same width.
-  auto* actions = new QVBoxLayout();
-  actions->setSpacing(6);
-  actions->addStretch(1);
-  const QString game_id = DownloadTracker::GameIdFor(entry);
-  const bool tracked = tracker_->game_name && !tracker_->game_name(game_id.toStdString()).isEmpty();
-  if (entry.kind == Kind::Link) {
-    const QString id = entry.ref;
-    const auto action = [this, row, actions, id](const QString& label, const QString& name) {
-      auto* button = new QPushButton(label, row);
-      connect(button, &QPushButton::clicked, this, [this, id, name] { emit LinkAction(id, name); });
-      actions->addWidget(button);
-    };
-    if (entry.link_state == "downloading" || entry.link_state == "queued" ||
-        entry.link_state == "service")
-      action("Pause", "pause");
-    if (entry.link_state == "paused") action("Resume", "resume");
-    if (entry.link_state == "failed") action("Retry", "retry");
-    if (entry.link_state == "password") {
-      auto* enter = new QPushButton("Enter password", row);
-      connect(enter, &QPushButton::clicked, this, [this, id] {
-        hide();
-        emit LinkPasswordRequested(id);
-      });
-      actions->addWidget(enter);
-    }
-  } else if (const QString job = tracker_->JobFor(entry); !job.isEmpty()) {
-    if (DownloadTracker::CanPause(entry)) {
-      auto* pause = new QPushButton("Pause", row);
-      pause->setObjectName("download_pause");
-      connect(pause, &QPushButton::clicked, this,
-              [this, pause, source = entry.source.toStdString(), ref = entry.ref.toStdString()] {
-                pause->setEnabled(false);
-                api::PauseStoreInstallAsync(
-                    this, source, ref, [this, pause = QPointer(pause)](StoreActionResult result) {
-                      if (result.ok) return;
-                      if (pause) pause->setEnabled(true);
-                      notify::FailedRequest(this, "Could not pause it.", result.error);
-                    });
-              });
-      actions->addWidget(pause);
-    }
-    auto* cancel = new QPushButton("Cancel", row);
-    cancel->setObjectName("download_cancel");
-    connect(cancel, &QPushButton::clicked, this, [this, cancel, job] {
-      cancel->setEnabled(false);  // the row goes once mirad says it's cancelled
-      jobs::Cancel(this, job.toStdString(), [this, cancel = QPointer(cancel)](ApiError error) {
-        if (error.message.empty()) return;
-        if (cancel) cancel->setEnabled(true);
-        notify::FailedRequest(this, "Could not cancel it.", error);
-      });
-    });
-    actions->addWidget(cancel);
-  } else if (entry.state == State::Paused) {
-    const std::string source = entry.source.toStdString();
-    const std::string ref = entry.ref.toStdString();
-    auto* resume = new QPushButton("Resume", row);
-    resume->setObjectName("download_resume");
-    connect(resume, &QPushButton::clicked, this,
-            [this, resume, source, ref, update = entry.update] {
-              resume->setEnabled(false);
-              api::InstallStoreTitleAsync(
-                  this, source, ref, update,
-                  [this, resume = QPointer(resume)](StoreActionResult result) {
-                    if (result.ok) return;
-                    if (resume) resume->setEnabled(true);
-                    notify::FailedRequest(this, "Could not resume it.", result.error);
-                  });
-            });
-    actions->addWidget(resume);
-    auto* discard = new QPushButton("Cancel", row);
-    discard->setObjectName("download_cancel");
-    connect(discard, &QPushButton::clicked, this, [this, discard, source, ref] {
-      discard->setEnabled(false);
-      api::DiscardPausedInstallAsync(
-          this, source, ref, [this, discard = QPointer(discard)](StoreActionResult result) {
-            if (result.ok) return;
-            if (discard) discard->setEnabled(true);
-            notify::FailedRequest(this, "Could not cancel it.", result.error);
-          });
-    });
-    actions->addWidget(discard);
-  } else if (entry.state == State::Finished && !game_id.isEmpty() && tracked) {
-    auto* show = new QPushButton("Show", row);
-    connect(show, &QPushButton::clicked, this, [this, game_id] {
-      hide();
-      emit ShowGameRequested(game_id);
-    });
-    actions->addWidget(show);
-  } else if (entry.state == State::Failed) {
-    if (const auto action = error_help::ActionFor(entry.error)) {
-      auto* fix = new QPushButton(action->label, row);
-      connect(fix, &QPushButton::clicked, this, [this, run = action->run] {
-        hide();
-        run();
-      });
-      actions->addWidget(fix);
-    }
-  }
-  actions->addStretch(1);
-  layout->addLayout(actions);
-  return row;
 }
 
 }  // namespace mira_gui

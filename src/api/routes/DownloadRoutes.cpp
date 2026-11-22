@@ -47,13 +47,14 @@ void RegisterDownloadRoutes(Router& http, Services& s) {
   });
 
   http.Post("/v1/downloads", [&s](const Request& req, Response& res) {
-    const auto body =
-        BodyObject(req, res, R"({"name": "...", "links": ["..."], "password": "..."})");
+    const auto body = BodyObject(
+        req, res, R"({"name"?: "...", "links": ["..."], "password"?: "...", "folder"?: "..."})");
     if (!body) return;
     const auto links = StringList(*body, "links");
     if (!links) return SendError(res, 400, "invalid_body", "links must be a list of strings");
     const auto added = s.downloads.Add(body->value("name", std::string()), *links,
-                                       body->value("password", std::string()));
+                                       body->value("password", std::string()),
+                                       body->value("folder", std::string()));
     if (!added) return SendError(res, 400, added.error());
     SendJson(res, *added, 201);
   });
@@ -73,8 +74,9 @@ void RegisterDownloadRoutes(Router& http, Services& s) {
   http.Post(R"(/v1/downloads/([^/]+)/password)", [&s](const Request& req, Response& res) {
     const auto body = BodyObject(req, res, R"({"password": "..."})");
     if (!body) return;
-    SendDone(res,
-             s.downloads.SubmitPassword(req.matches[1], body->value("password", std::string())));
+    const std::string password = body->value("password", std::string());
+    if (password.empty()) return SendError(res, 400, "invalid_password", "enter a password");
+    SendDone(res, s.downloads.SubmitPassword(req.matches[1], password));
   });
   http.Delete(R"(/v1/downloads/([^/]+))", [&s](const Request& req, Response& res) {
     SendDone(res, s.downloads.Remove(req.matches[1]));

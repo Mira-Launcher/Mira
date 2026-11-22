@@ -3,6 +3,7 @@
 #include <cctype>
 #include <format>
 #include <json.hpp>
+#include <optional>
 #include <regex>
 #include <sstream>
 
@@ -24,34 +25,48 @@ struct Probe {
   std::int64_t size = 0;
 };
 
-// What the server says the address is, following redirects, without downloading it.
-Result<Probe> Head(const std::string& url) {
-  Command command;
-  command.argv = {
-      "curl",
-      "-sIL",
-      "--max-time",
-      "20",
-      "-o",
-      "/dev/null",
-      "-w",
-      "%{http_code}\n%header{content-type}\n%header{content-disposition}\n%header{content-length}",
-      "--",
-      url};
-  const auto result = runner::RunAndWait(command);
-  if (!result || result->exit_code != 0)
-    return Err("link_unreachable", std::format("couldn't reach {}", url));
-  std::istringstream lines(result->output);
+constexpr const char* kProbeFormat =
+    "%{http_code}\n%header{content-type}\n%header{content-disposition}\n%header{content-length}"
+    "\n%header{content-range}";
+
+std::optional<Probe> ReadProbe(const std::string& output) {
+  std::istringstream lines(output);
   Probe probe;
-  std::string size;
   std::string status;
+  std::string length;
+  std::string range;
   std::getline(lines, status);
   probe.status = std::atoi(status.c_str());
+  if (probe.status == 0) return std::nullopt;
   std::getline(lines, probe.content_type);
   std::getline(lines, probe.disposition);
-  std::getline(lines, size);
-  probe.size = std::strtoll(size.c_str(), nullptr, 10);
+  std::getline(lines, length);
+  std::getline(lines, range);
+  // "bytes 0-0/12345" from a ranged request.
+  const size_t slash = range.rfind('/');
+  probe.size = slash != std::string::npos ? std::strtoll(range.c_str() + slash + 1, nullptr, 10)
+                                          : std::strtoll(length.c_str(), nullptr, 10);
   return probe;
+}
+
+// What the server says the address is, following redirects, without downloading it. A server that
+// drops HEAD requests gets a one-byte GET instead.
+Result<Probe> Head(const std::string& url) {
+  Command head;
+  head.argv = {"curl",      "-sIL", "--max-time", "20", "-o",
+               "/dev/null", "-w",   kProbeFormat, "--", url};
+  if (const auto result = runner::RunAndWait(head); result && result->exit_code == 0) {
+    if (auto probe = ReadProbe(result->output)) return *probe;
+  }
+  Command get;
+  get.argv = {"curl", "-sL", "--max-time", "20", "-r",         "0-0", "--max-filesize",
+              "1",    "-o",  "/dev/null",  "-w", kProbeFormat, "--",  url};
+  // A server ignoring the range answers the whole file, which --max-filesize stops after the
+  // headers.
+  if (const auto result = runner::RunAndWait(get)) {
+    if (auto probe = ReadProbe(result->output)) return *probe;
+  }
+  return Err("link_unreachable", std::format("couldn't reach {}", url));
 }
 
 Result<std::string> Page(const std::string& url) {
@@ -210,6 +225,12 @@ Result<std::vector<LinkFile>> Resolve(const std::string& link) {
     for (LinkFile& file : *files) file.name = CleanFileName(file.name, file.url);
   }
   return files;
+}
+
+// "Some_Game.part1.rar" → "Some Game".
+std::string GuessGameName(std::string file) {
+  static const std::regex kVolume(R"((\.part\d+)?(\.[A-Za-z0-9]{1,5})(\.\d{3})?$)");
+  return strings::CleanGameName(std::regex_replace(file, kVolume, ""));
 }
 
 }  // namespace mira::downloads

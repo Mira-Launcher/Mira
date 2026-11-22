@@ -23,6 +23,7 @@
 #include "../theme/Theme.h"
 #include "../widgets/FlatCombo.h"
 #include "../widgets/Labels.h"
+#include "../widgets/PageHeader.h"
 #include "../widgets/ProgressRail.h"
 #include "../widgets/Scrolling.h"
 #include "../widgets/Segmented.h"
@@ -94,13 +95,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   outer->setContentsMargins(0, 0, 0, 0);
   outer->setSpacing(0);
 
-  auto* header_box = new QWidget(this);
-  header_box->setObjectName("settings_canvas");
-  auto* header = new QHBoxLayout(header_box);
-  header->setContentsMargins(32, 22, 32, 6);
-  auto* title = new QLabel("Runners", this);
-  title->setObjectName("page_title");
-  header->addWidget(title, /*stretch=*/1);
+  auto* header = new PageHeader("Runners", this);
   // Only the two kinds with builds to download. `native` has none, and
   // `steam` resolves its build per game from Steam's own prefix.
   kinds_ = new Segmented({{"proton", "Proton"}, {"wine", "Wine"}}, this);
@@ -112,8 +107,8 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
     RefreshSources();
     RebuildTools();
   });
-  header->addWidget(kinds_);
-  outer->addWidget(header_box);
+  header->AddControl(kinds_);
+  outer->addWidget(header);
 
   // Both columns scroll together, each as tall as its own cards.
   auto* scroll = new QScrollArea(this);

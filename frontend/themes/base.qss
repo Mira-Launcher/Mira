@@ -245,14 +245,15 @@ QWidget#left_sidebar QToolButton#add_games::menu-indicator {
   width: 0px;
 }
 
-QWidget#left_sidebar QToolButton#fetch_art {
+QWidget#left_sidebar QToolButton#sidebar_square {
   background: transparent;
   border: 1px solid @border;
   border-radius: @radius_control;
   padding: 6px;
 }
 
-QWidget#left_sidebar QToolButton#fetch_art:hover {
+QWidget#left_sidebar QToolButton#sidebar_square:hover,
+QWidget#left_sidebar QToolButton#sidebar_square:checked {
   border-color: @accent;
   background: @surface_alt;
 }
@@ -1429,13 +1430,11 @@ QPlainTextEdit#log_view {
 }
 
 /* dialogs/LogWindow: the task's name in the window's own bar. */
-QLabel#log_title,
-QLabel#downloads_title {
+QLabel#log_title {
   font-weight: 600;
 }
 
-QWidget#log_frame,
-QWidget#downloads_frame {
+QWidget#log_frame {
   background: @window;
   border: 1px solid @border;
 }

@@ -106,12 +106,6 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
   connect(runners_nav_, &QPushButton::clicked, this, &Sidebar::RunnersClicked);
   layout->addWidget(runners_nav_);
 
-  tags_nav_ = new QPushButton("Tags", this);
-  tags_nav_->setFlat(true);
-  tags_nav_->setCheckable(true);
-  connect(tags_nav_, &QPushButton::clicked, this, &Sidebar::TagsClicked);
-  layout->addWidget(tags_nav_);
-
   settings_button_ = new QPushButton("Settings", this);
   settings_button_->setObjectName("sidebar_settings");
   settings_button_->setFlat(true);
@@ -193,22 +187,33 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
   connect(add_games_, &QToolButton::clicked, this,
           [this] { cards::Show(this, new AddGamesCard()); });
   actions->addWidget(add_games_, /*stretch=*/1);
+  add_games_->installEventFilter(this);
 
-  fetch_art_button_ = new QToolButton(this);
-  fetch_art_button_->setObjectName("fetch_art");
-  // mirad only fetches on its own for a newly found game, so one that failed
-  // once stays bare until asked again.
-  fetch_art_button_->setToolTip("Fetch missing cover art for every game without one");
-  connect(fetch_art_button_, &QToolButton::clicked, this, &Sidebar::FetchArtRequested);
-  actions->addWidget(fetch_art_button_);
+  downloads_ = new QToolButton(this);
+  downloads_->setObjectName("sidebar_square");
+  downloads_->setCheckable(true);
+  downloads_->setToolTip("Downloads");
+  connect(downloads_, &QToolButton::clicked, this, &Sidebar::DownloadsClicked);
+  actions->addWidget(downloads_);
   layout->addSpacing(6);
   layout->addLayout(actions);
 
+  // The count of games shown, with Tags under Downloads.
+  auto* footer_row = new QHBoxLayout();
+  footer_row->setContentsMargins(0, 6, 0, 0);
+  footer_row->setSpacing(6);
   footer_ = new QLabel(this);
   footer_->setProperty("role", "muted");
-  footer_->setContentsMargins(6, 8, 6, 2);
+  footer_->setContentsMargins(6, 0, 6, 0);
   footer_->setWordWrap(true);
-  layout->addWidget(footer_);
+  footer_row->addWidget(footer_, /*stretch=*/1);
+  tags_ = new QToolButton(this);
+  tags_->setObjectName("sidebar_square");
+  tags_->setCheckable(true);
+  tags_->setToolTip("Tags");
+  connect(tags_, &QToolButton::clicked, this, &Sidebar::TagsClicked);
+  footer_row->addWidget(tags_, 0, Qt::AlignTop);
+  layout->addLayout(footer_row);
 
   ApplyIcons();
   connect(library_, &GameLibraryModel::Changed, this, [this] {
@@ -261,10 +266,12 @@ void Sidebar::ApplyPrefs(const FrontendPrefs& prefs) {
   RefreshGames();
 }
 
-void Sidebar::SetActive(bool library, bool runners, bool tags, const QString& source_id) {
+void Sidebar::SetActive(bool library, bool runners, bool tags, bool downloads,
+                        const QString& source_id) {
   library_active_ = library;
   runners_active_ = runners;
-  tags_active_ = tags;
+  tags_->setChecked(tags);
+  downloads_->setChecked(downloads);
   active_source_ = source_id;
   ShowActive();
 }
@@ -329,8 +336,6 @@ void Sidebar::ShowActive() {
   runners_nav_->setChecked(runners_active_);
   runners_nav_->setIcon(
       icons::For(Glyph::Wrench, runners_active_ ? tokens.on_accent : tokens.text));
-  tags_nav_->setChecked(tags_active_);
-  tags_nav_->setIcon(icons::For(Glyph::Tag, tags_active_ ? tokens.on_accent : tokens.text));
   const std::vector<SourceInfo>& sources = AllSources();
   for (int i = 0; i < static_cast<int>(source_rows_.size()); ++i) {
     SourceRow& row = source_rows_[i];
@@ -370,7 +375,7 @@ void Sidebar::SetFooter(const QString& shown, bool mirad_reachable) {
 
 void Sidebar::SetActionsEnabled(bool enabled) {
   for (QWidget* control :
-       std::initializer_list<QWidget*>{add_games_, settings_button_, fetch_art_button_}) {
+       std::initializer_list<QWidget*>{add_games_, downloads_, tags_, settings_button_}) {
     control->setEnabled(enabled);
   }
 }
@@ -381,13 +386,21 @@ void Sidebar::ApplyIcons() {
   settings_button_->setIcon(icons::For(Glyph::Settings));
   add_source_button_->setIcon(icons::For(Glyph::Plus));
   add_games_->setIcon(icons::For(Glyph::Plus, tokens.on_accent));
-  fetch_art_button_->setIcon(icons::For(Glyph::Image));
+  tags_->setIcon(icons::For(Glyph::Tag));
+  downloads_->setIcon(icons::For(Glyph::Download));
   for (QToolButton* button : {manage_sources_button_, pinned_customize_, recent_customize_}) {
     button->setIcon(icons::For(Glyph::Sliders, tokens.text_muted));
   }
 }
 
 bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
+  // Downloads and Tags: squares as tall as Add games, whatever the theme's padding makes it.
+  if (watched == add_games_ && event->type() == QEvent::Resize) {
+    const int side = add_games_->height();
+    downloads_->setFixedSize(side, side);
+    tags_->setFixedSize(side, side);
+    return false;
+  }
   if (auto* nav = qobject_cast<QPushButton*>(watched); SourceIndexOf(nav) >= 0) {
     auto* mouse = static_cast<QMouseEvent*>(event);
     if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton) {

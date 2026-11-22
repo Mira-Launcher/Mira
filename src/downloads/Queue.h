@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <json.hpp>
 #include <mutex>
@@ -35,8 +36,10 @@ std::vector<QueuedFile> MergeMirrors(std::vector<QueuedFile> files);
 struct Download {
   std::string id;
   std::string name;
+  bool name_guessed = false;  // none was given: guessed from the link, then from the files
+  std::string folder;         // the Mira folder it goes into
   std::vector<std::string> links;
-  // queued, resolving, service, downloading, paused, extracting, password, failed, done
+  // queued, resolving, service, downloading, paused, retrying, extracting, password, failed, done
   std::string state;
   Error error;
   std::vector<QueuedFile> files;
@@ -46,6 +49,8 @@ struct Download {
   std::string service;            // that service's name
   double service_progress = 0;    // 0 to 1, over `jobs`
   bool polling = false;
+  std::int64_t retry_at = 0;  // retrying: when it's queued again, in seconds since the epoch
+  int retries = 0;            // network failures in a row
 };
 
 // Runs the download queue. Survives restarts: it's saved on every state change, and what was in
@@ -60,8 +65,9 @@ class Queue {
   nlohmann::json List() const;
   // The files `links` stand for, for the confirm step: their names, sizes and sources.
   Result<nlohmann::json> Check(const std::vector<std::string>& links) const;
+  // An empty name is guessed from what's downloaded, an empty folder is the default Mira folder.
   Result<nlohmann::json> Add(const std::string& name, const std::vector<std::string>& links,
-                             const std::string& password);
+                             const std::string& password, const std::string& folder = {});
   Result<void> Pause(const std::string& id);
   Result<void> Resume(const std::string& id);
   // Removes it and everything it downloaded. A finished one only leaves the list.
@@ -80,7 +86,7 @@ class Queue {
   void Run(std::stop_token stop);
   void Tick();
   void StartNext();
-  void PollFiles(Download& download);
+  void PollFiles(Download& download, const std::vector<Result<FileStatus>>& statuses);
   void Fetch(const std::string& id);
   void PollService(const std::string& id);
   void StartFiles(Download& download);
@@ -89,9 +95,16 @@ class Queue {
   Result<void> Place(const Download& download, const std::filesystem::path& dir,
                      const std::filesystem::path& content);
   void SetState(Download& download, std::string state, Error error = {});
+  // Fails it, or on a network error waits and tries again by itself, continuing what's on disk.
+  void Fail(Download& download, Error error);
+  // Stops and forgets its aria2 downloads; their files stay.
+  void DropFiles(Download& download);
+  bool HasRoom() const;
   Download* FindLocked(const std::string& id);
   void Announce(const Download& download);
   void Save();
+  // The Mira folder it goes into, and its work folder there.
+  std::filesystem::path HomeOf(const Download& download) const;
   std::filesystem::path WorkDir(const Download& download) const;
   void RememberPassword(const std::string& password);
 

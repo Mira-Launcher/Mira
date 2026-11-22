@@ -3,10 +3,12 @@
 #include <filesystem>
 #include <fstream>
 
+#include "core/Paths.h"
 #include "downloads/Links.h"
 #include "downloads/Queue.h"
 #include "downloads/Service.h"
 #include "library/ArchiveExtractor.h"
+#include "library/Drives.h"
 #include "runner/Exec.h"
 #include "support/TestEnv.h"
 
@@ -126,4 +128,32 @@ TEST_CASE("The same file from two hosts is one file with mirrors") {
   CHECK(merged[0].mirrors == std::vector<std::string>{"https://b/x", "https://c/x"});
   CHECK(merged[1].name == "game (2).7z");
   CHECK(merged[2].name == "other.bin");
+}
+
+TEST_CASE(
+    "Downloads guess a name, go to the default Mira folder, and drives are read from mounts") {
+  test::TestEnv env("download-add");
+  const fs::path home = paths::Home() / "Mira";
+  const fs::path drive = env.dir / "drive" / "Mira";
+  REQUIRE(env.config.Set("mira_folders", nlohmann::json::array({drive.string() + "/", "~/Mira"})));
+  REQUIRE(env.config.Set("downloads.parallel", 0));  // nothing starts
+  CHECK(library::DefaultMiraFolder(env.config) == home);
+  REQUIRE(env.config.Set("default_mira_folder", drive.string()));
+  CHECK(library::IsMiraFolder(env.config, drive));
+  CHECK(library::DefaultMiraFolder(env.config) == drive);
+
+  CHECK(GuessGameName("Some_Game.part01.rar") == "Some Game");
+  CHECK(GuessGameName("Some.Game.7z.001") == "Some Game");
+  CHECK(GuessGameName("Hollow_Knight_v1.5.78-GOG.zip") == "Hollow Knight");
+  Queue queue(env.config, env.games, env.events);
+  const auto elsewhere = queue.Add("", {"https://127.0.0.1:9/a.zip"}, "", "/nowhere");
+  REQUIRE_FALSE(elsewhere);
+  CHECK(elsewhere.error().code == "invalid_folder");
+
+  const auto mounts = library::ParseMounts(
+      "/dev/sda1 /mnt/My\\040Games ntfs3 rw,relatime 0 0\n/dev/sdb1 /mnt/old ext4 ro 0 0\n");
+  REQUIRE(mounts.size() == 2);
+  CHECK(mounts[0].path == "/mnt/My Games");
+  CHECK_FALSE(mounts[0].read_only);
+  CHECK(mounts[1].read_only);
 }

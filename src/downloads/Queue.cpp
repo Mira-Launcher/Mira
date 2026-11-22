@@ -8,15 +8,19 @@
 #include <iterator>
 #include <memory>
 #include <random>
+#include <regex>
 #include <stop_token>
 
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "core/Strings.h"
 #include "downloads/Service.h"
 #include "library/ArchiveExtractor.h"
 #include "library/AutoInstall.h"
+#include "library/Drives.h"
 #include "library/Drops.h"
 #include "library/Import.h"
+#include "model/Types.h"
 #include "runner/Exec.h"
 
 namespace mira::downloads {
@@ -45,6 +49,21 @@ bool IsLive(const std::string& state) {
 }
 
 constexpr int kServicePollTicks = 5;
+
+// The network went away mid-download (a suspend, a dropped Wi-Fi): it's retried, not failed.
+constexpr const char* kNetworkDown = "network_down";
+
+bool IsNetworkFailure(const Error& error) {
+  return error.code == kNetworkDown || error.code == "link_unreachable" ||
+         error.code == "aria2_unreachable" || error.code == "service_unreachable";
+}
+
+constexpr int kMaxRetries = 20;
+
+// 15 s, doubling to 5 minutes.
+std::int64_t RetryDelay(int retries) {
+  return std::min<std::int64_t>(300, std::int64_t{15} << std::min(retries - 1, 5));
+}
 
 std::vector<std::string> Addresses(const QueuedFile& file) {
   std::vector<std::string> out = {file.url};
@@ -136,6 +155,7 @@ json ToJson(const Download& download) {
   }
   json out = {{"id", download.id},
               {"name", download.name},
+              {"folder", download.folder},
               {"links", download.links},
               {"state", download.state},
               {"files", files},
@@ -143,6 +163,7 @@ json ToJson(const Download& download) {
               {"done", done},
               {"speed", speed},
               {"password", download.password}};
+  if (download.state == "retrying") out["retry_at"] = download.retry_at;
   if (download.state == "service")
     out["service"] = {{"name", download.service}, {"progress", download.service_progress}};
   if (!download.error.code.empty())
@@ -169,10 +190,30 @@ void Queue::Start() {
         Download download;
         download.id = item.value("id", std::string());
         download.name = item.value("name", std::string());
+        download.name_guessed = item.value("name_guessed", false);
+        download.folder = item.value("folder", std::string());
         download.state = item.value("state", std::string("queued"));
         download.password = item.value("password", std::string());
         download.use_service = item.value("use_service", false);
+        // Waiting out a dropped network: keeps its time and count, so a restart neither retries
+        // at once nor starts the 20 over.
+        download.retry_at = item.value("retry_at", std::int64_t{0});
+        download.retries = item.value("retries", 0);
         if (item.contains("links")) download.links = item["links"].get<std::vector<std::string>>();
+        // Only shown until it runs again: a paused one keeps its numbers across a restart.
+        if (item.contains("files") && item["files"].is_array()) {
+          for (const json& file : item["files"]) {
+            download.files.push_back({.url = "",
+                                      .name = file.value("name", std::string()),
+                                      .source = file.value("source", std::string()),
+                                      .gid = "",
+                                      .status = {.state = "paused",
+                                                 .total = file.value("total", std::int64_t{0}),
+                                                 .done = file.value("done", std::int64_t{0}),
+                                                 .speed = 0,
+                                                 .error = ""}});
+          }
+        }
         if (item.contains("error")) {
           download.error.code = item["error"].value("code", std::string());
           download.error.message = item["error"].value("message", std::string());
@@ -200,9 +241,33 @@ void Queue::Run(std::stop_token stop) {
 }
 
 void Queue::Tick() {
+  // aria2 is asked outside the lock, so a slow answer doesn't hold up the routes.
+  std::vector<std::pair<std::string, std::vector<std::string>>> polls;
+  {
+    std::lock_guard lock(mutex_);
+    const std::int64_t now = model::NowSeconds();
+    for (Download& download : downloads_) {
+      if (download.state == "retrying" && download.retry_at <= now) SetState(download, "queued");
+      if (download.state != "downloading") continue;
+      std::vector<std::string> gids;
+      for (const QueuedFile& file : download.files) gids.push_back(file.gid);
+      polls.emplace_back(download.id, std::move(gids));
+    }
+  }
+  std::vector<std::vector<Result<FileStatus>>> statuses;
+  for (const auto& [id, gids] : polls) {
+    std::vector<Result<FileStatus>>& out = statuses.emplace_back();
+    for (const std::string& gid : gids) out.push_back(aria2_.Status(gid));
+  }
   std::lock_guard lock(mutex_);
-  for (Download& download : downloads_) {
-    if (download.state == "downloading") PollFiles(download);
+  for (size_t i = 0; i < polls.size(); ++i) {
+    Download* download = FindLocked(polls[i].first);
+    if (download == nullptr || download->state != "downloading" ||
+        download->files.size() != polls[i].second.size())
+      continue;
+    const bool same =
+        std::ranges::equal(download->files, polls[i].second, std::equal_to<>(), &QueuedFile::gid);
+    if (same) PollFiles(*download, statuses[i]);
   }
   if (++ticks_ >= kServicePollTicks) {
     ticks_ = 0;
@@ -215,19 +280,20 @@ void Queue::Tick() {
   StartNext();
 }
 
+bool Queue::HasRoom() const {
+  const auto running = std::ranges::count_if(downloads_, [](const Download& download) {
+    return download.state == "resolving" || download.state == "downloading";
+  });
+  return running < std::max<std::int64_t>(1, config_.GetInt("downloads.parallel"));
+}
+
 void Queue::StartNext() {
   const std::int64_t limit = config_.GetInt("downloads.speed_limit_mb") * 1000 * 1000;
   if (limit != applied_limit_ && aria2_.SetSpeedLimit(limit)) applied_limit_ = limit;
-  int running = 0;
-  for (const Download& download : downloads_) {
-    if (download.state == "resolving" || download.state == "downloading") ++running;
-  }
-  const auto parallel = std::max<std::int64_t>(1, config_.GetInt("downloads.parallel"));
   for (Download& download : downloads_) {
-    if (running >= parallel) break;
+    if (!HasRoom()) break;
     if (download.state != "queued") continue;
     SetState(download, "resolving");
-    ++running;
     work_.Post([this, id = download.id] { Fetch(id); });
   }
 }
@@ -305,7 +371,7 @@ void Queue::Fetch(const std::string& id) {
   std::lock_guard lock(mutex_);
   Download* download = FindLocked(id);
   if (download == nullptr || download->state != "resolving") return;
-  if (!failure.code.empty()) return SetState(*download, "failed", failure);
+  if (!failure.code.empty()) return Fail(*download, failure);
   download->files = std::move(files);
   if (jobs.empty()) return StartFiles(*download);
   download->jobs = std::move(jobs);
@@ -319,9 +385,16 @@ void Queue::Fetch(const std::string& id) {
 void Queue::StartFiles(Download& download) {
   const fs::path dir = WorkDir(download);
   download.files = MergeMirrors(std::move(download.files));
+  if (download.name_guessed && !download.files.empty()) {
+    if (std::string name = GuessGameName(download.files.front().name); !FolderName(name).empty()) {
+      download.name = std::move(name);
+      download.name_guessed = false;
+      Announce(download);
+    }
+  }
   for (QueuedFile& file : download.files) {
     auto gid = aria2_.Add(Addresses(file), dir, file.name);
-    if (!gid) return SetState(download, "failed", gid.error());
+    if (!gid) return Fail(download, gid.error());
     file.gid = *gid;
   }
   SetState(download, "downloading");
@@ -346,7 +419,7 @@ void Queue::PollService(const std::string& id) {
     if (download->state == "service") apply(*download);
   };
   const auto fail = [&](Error error) {
-    finish([&](Download& download) { SetState(download, "failed", std::move(error)); });
+    finish([&](Download& download) { Fail(download, std::move(error)); });
   };
   const std::unique_ptr<Service> service = ActiveService(config_);
   if (service == nullptr) return fail(ServiceNeeded());
@@ -381,6 +454,13 @@ void Queue::PollService(const std::string& id) {
     }
   }
   finish([&](Download& download) {
+    // Ready there, but the "at once" limit is full: it waits its turn, and the service answers at
+    // once next time.
+    if (ready && !HasRoom()) {
+      download.jobs.clear();
+      download.files.clear();
+      return SetState(download, "queued");
+    }
     if (ready) {
       download.files.insert(download.files.end(), std::make_move_iterator(files.begin()),
                             std::make_move_iterator(files.end()));
@@ -392,36 +472,39 @@ void Queue::PollService(const std::string& id) {
   });
 }
 
-void Queue::PollFiles(Download& download) {
+void Queue::PollFiles(Download& download, const std::vector<Result<FileStatus>>& statuses) {
   bool all_done = !download.files.empty();
-  for (QueuedFile& file : download.files) {
-    const auto status = aria2_.Status(file.gid);
-    // aria2 restarted and lost it: add it again, continuing what's on disk.
+  for (size_t i = 0; i < download.files.size(); ++i) {
+    QueuedFile& file = download.files[i];
+    const Result<FileStatus>& status = statuses[i];
     if (!status) {
-      auto gid = aria2_.Add(Addresses(file), WorkDir(download), file.name);
-      if (!gid) return SetState(download, "failed", gid.error());
-      file.gid = *gid;
       all_done = false;
+      // A timeout or hiccup: ask again next tick. Only a gid aria2 forgot (it restarted) is added
+      // again, continuing what's on disk.
+      if (status.error().code != kUnknownGid) continue;
+      auto gid = aria2_.Add(Addresses(file), WorkDir(download), file.name);
+      if (!gid) return Fail(download, gid.error());
+      file.gid = *gid;
       continue;
     }
     file.status = *status;
+    if (status->speed > 0) download.retries = 0;
     if (status->state == "error") {
+      Error error{"download_failed",
+                  std::format("couldn't download {}: {}", file.name.empty() ? file.url : file.name,
+                              status->error),
+                  ""};
+      if (IsNetworkError(status->error_code))
+        return Fail(download, {kNetworkDown, error.message, ""});
       // The rest would keep downloading with nothing watching them. Retry continues what's on disk.
-      for (QueuedFile& other : download.files) {
-        if (!other.gid.empty()) aria2_.Remove(other.gid);
-        other.gid.clear();
-      }
       if (!download.use_service && ActiveService(config_) != nullptr) {
         log::Info("download {}: {} failed, trying the download service", download.name, file.name);
+        DropFiles(download);
         download.use_service = true;
         download.files.clear();
         return SetState(download, "queued");
       }
-      return SetState(download, "failed",
-                      {"download_failed",
-                       std::format("couldn't download {}: {}",
-                                   file.name.empty() ? file.url : file.name, status->error),
-                       ""});
+      return Fail(download, std::move(error));
     }
     if (status->state != "complete") all_done = false;
   }
@@ -492,8 +575,7 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
   if (auto placed = Place(download, dir, content); !placed) return placed;
 
   if (config_.GetBool("downloads.keep_archives")) {
-    const fs::path kept =
-        config_.GetPathArray("mira_folders").front() / "Archives" / FolderName(download.name);
+    const fs::path kept = HomeOf(download) / "Archives" / FolderName(download.name);
     fs::create_directories(kept, ec);
     for (const fs::path& path : entries) {
       if (fs::exists(path, ec)) fs::rename(path, kept / path.filename(), ec);
@@ -506,9 +588,7 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
 // A program goes straight to the library under the name the user confirmed, since they asked for it
 // to be added. A ROM or anything else goes to the Mira folder, for the usual sorting.
 Result<void> Queue::Place(const Download& download, const fs::path& dir, const fs::path& content) {
-  const auto folders = config_.GetPathArray("mira_folders");
-  if (folders.empty()) return Err("no_mira_folder", "Mira has no folder to put the game in");
-  const fs::path home = folders.front();
+  const fs::path home = HomeOf(download);
   std::error_code ec;
   const bool program = library::IsProgram(config_, content);
   const bool is_file = fs::is_regular_file(content, ec);
@@ -631,13 +711,22 @@ Result<nlohmann::json> Queue::Check(const std::vector<std::string>& links) const
 }
 
 Result<nlohmann::json> Queue::Add(const std::string& name, const std::vector<std::string>& links,
-                                  const std::string& password) {
-  if (FolderName(name).empty()) return Err("invalid_name", "the game needs a name");
+                                  const std::string& password, const std::string& folder) {
   if (links.empty()) return Err("invalid_links", "there are no links to download");
   if (auto valid = OnlyWebLinks(links); !valid) return std::unexpected(valid.error());
+  if (!folder.empty() && !library::IsMiraFolder(config_, folder))
+    return Err("invalid_folder", std::format("{} isn't one of the Mira folders", folder));
   Download download;
   download.id = NewId();
   download.name = name;
+  // Fixed now, so a later change of the default doesn't strand what's half downloaded.
+  download.folder =
+      (folder.empty() ? library::DefaultMiraFolder(config_) : paths::Expand(folder)).string();
+  if (FolderName(name).empty()) {
+    download.name = GuessGameName(CleanFileName("", links.front()));
+    download.name_guessed = true;
+  }
+  if (FolderName(download.name).empty()) download.name = "Download";
   download.links = links;
   download.state = "queued";
   download.password = password;
@@ -653,7 +742,7 @@ Result<void> Queue::Pause(const std::string& id) {
   std::lock_guard lock(mutex_);
   Download* download = FindLocked(id);
   if (download == nullptr) return Err("unknown_download", "no such download");
-  if (download->state == "queued") {
+  if (download->state == "queued" || download->state == "retrying") {
     SetState(*download, "paused");
     return {};
   }
@@ -669,6 +758,7 @@ Result<void> Queue::Pause(const std::string& id) {
     if (file.status.state == "complete") continue;
     if (auto paused = aria2_.Pause(file.gid); !paused) log::Warn("{}", paused.error().message);
     file.status.speed = 0;
+    file.status.state = "paused";
   }
   SetState(*download, "paused");
   return {};
@@ -681,7 +771,10 @@ Result<void> Queue::Resume(const std::string& id) {
   if (download->state != "paused") return Err("not_paused", "that download isn't paused");
   const bool live = std::ranges::any_of(download->files,
                                         [](const QueuedFile& file) { return !file.gid.empty(); });
-  if (!live) {
+  // Over the "at once" limit it waits its turn; aria2 continues what's on disk when it's added
+  // again.
+  if (!live || !HasRoom()) {
+    DropFiles(*download);
     SetState(*download, "queued");
     StartNext();
     return {};
@@ -739,9 +832,12 @@ Result<void> Queue::Retry(const std::string& id) {
   std::lock_guard lock(mutex_);
   Download* download = FindLocked(id);
   if (download == nullptr) return Err("unknown_download", "no such download");
-  if (download->state != "failed") return Err("not_failed", "that download hasn't failed");
+  if (download->state != "failed" && download->state != "retrying")
+    return Err("not_failed", "that download hasn't failed");
+  DropFiles(*download);
   download->files.clear();
   download->use_service = false;
+  download->retries = 0;
   SetState(*download, "queued");
   StartNext();
   return {};
@@ -787,6 +883,25 @@ void Queue::SetState(Download& download, std::string state, Error error) {
   Save();
 }
 
+void Queue::Fail(Download& download, Error error) {
+  DropFiles(download);
+  // About an hour and a half of tries: a server gone for good fails in the end.
+  if (!IsNetworkFailure(error) || download.retries >= kMaxRetries)
+    return SetState(download, "failed", std::move(error));
+  ++download.retries;
+  download.retry_at = model::NowSeconds() + RetryDelay(download.retries);
+  error.hint = "Mira tries again by itself and continues where it stopped.";
+  SetState(download, "retrying", std::move(error));
+}
+
+void Queue::DropFiles(Download& download) {
+  for (QueuedFile& file : download.files) {
+    if (!file.gid.empty()) aria2_.Remove(file.gid);
+    file.gid.clear();
+    file.status.speed = 0;
+  }
+}
+
 void Queue::Announce(const Download& download) {
   events_.Publish("download.changed", ToJson(download));
 }
@@ -795,19 +910,24 @@ void Queue::Save() {
   json saved = json::array();
   for (const Download& download : downloads_) {
     json item = ToJson(download);
-    item.erase("files");
     item.erase("service");
     item["use_service"] = download.use_service;
+    item["name_guessed"] = download.name_guessed;
+    item["retries"] = download.retries;
     saved.push_back(std::move(item));
   }
   if (auto done = games_.SetSecret(kQueueKey, saved.dump()); !done)
     log::Warn("couldn't save the download queue: {}", done.error().message);
 }
 
+fs::path Queue::HomeOf(const Download& download) const {
+  // One removed from the list since: the default instead.
+  if (library::IsMiraFolder(config_, download.folder)) return download.folder;
+  return library::DefaultMiraFolder(config_);
+}
+
 fs::path Queue::WorkDir(const Download& download) const {
-  const auto folders = config_.GetPathArray("mira_folders");
-  const fs::path home = folders.empty() ? paths::Home() / "Mira" : folders.front();
-  return home / ".mira-downloads" / download.id;
+  return HomeOf(download) / ".mira-downloads" / download.id;
 }
 
 }  // namespace mira::downloads

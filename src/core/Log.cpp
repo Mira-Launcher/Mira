@@ -2,6 +2,8 @@
 
 #include <atomic>
 #include <cstdio>
+#include <ctime>
+#include <fstream>
 #include <mutex>
 #include <string>
 
@@ -12,6 +14,7 @@ namespace {
 
 std::atomic<Level> g_level{Level::Info};
 std::mutex g_mutex;
+std::ofstream g_file;  // open after SetFile
 
 constexpr std::string_view Name(Level level) {
   switch (level) {
@@ -29,6 +32,14 @@ constexpr std::string_view Name(Level level) {
 
 }  // namespace
 
+void SetFile(const std::filesystem::path& file) {
+  std::error_code ec;
+  std::filesystem::create_directories(file.parent_path(), ec);
+  std::filesystem::rename(file, file.string() + ".1", ec);
+  std::lock_guard lock(g_mutex);
+  g_file.open(file, std::ios::trunc);
+}
+
 void SetLevel(Level level) {
   g_level.store(level, std::memory_order_relaxed);
 }
@@ -40,6 +51,14 @@ void Write(Level level, std::string_view message) {
   std::lock_guard lock(g_mutex);
   std::fprintf(stderr, "%-5.*s %.*s\n", static_cast<int>(Name(level).size()), Name(level).data(),
                static_cast<int>(message.size()), message.data());
+  if (g_file.is_open()) {
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_r(&now, &local);
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%F %T", &local);
+    g_file << std::format("{} {:<5} {}", stamp, Name(level), message) << std::endl;
+  }
 }
 
 }  // namespace mira::log

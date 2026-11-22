@@ -31,6 +31,10 @@ class AddGamesCard : public QWidget {
   // Already installed for anything else. A `name` replaces the one mirad guesses.
   void OpenPath(const QString& path, const QString& name = {});
 
+ signals:
+  // A download from links was added; the card has closed.
+  void DownloadStarted();
+
  private:
   void ShowPage(SettingsCard* page);
   void ShowMenu();
@@ -40,10 +44,8 @@ class AddGamesCard : public QWidget {
   void ShowInstalled(const QString& path, const ImportGuessResult& guess);
   void ShowInstaller(const QString& path, const ImportGuessResult& guess);
   void ShowAppMenu();
-  // Links pasted, read by mirad, then what they turned out to be with a name and password to give.
+  // Links pasted, with an optional name, password and Mira folder; Enter downloads.
   void ShowLinks();
-  void ShowLinksConfirm(const std::vector<std::string>& links,
-                        const std::vector<DownloadFile>& files);
   void FillMenuDetails();
   void Close();
   // Where moving something in puts it: the first Mira folder's Games or Applications.
@@ -55,7 +57,9 @@ class AddGamesCard : public QWidget {
   int request_ = 0;  // only the latest Classify's reply counts
   QStringList library_roots_;
   QString mira_folder_;
-  QString name_hint_;  // OpenPath's name, for the page it opens
+  QStringList mira_folders_;
+  QString default_folder_;  // where a download goes unless another is picked
+  QString name_hint_;       // OpenPath's name, for the page it opens
   std::optional<DesktopEntryCandidatesResult> candidates_;  // fetched as the card opens
   // The first page's lines that fill in once the config and the app menu are read.
   QPointer<QLabel> scan_detail_;

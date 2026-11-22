@@ -24,6 +24,7 @@
 
 #include "core/Lane.h"
 #include "core/Strings.h"
+#include "system/Packages.h"
 
 extern char** environ;
 
@@ -461,7 +462,12 @@ Result<void> Extract(const std::filesystem::path& archive, const std::filesystem
     command.argv = {"tar", "-xf", archive.string(), "-C", out_dir.string()};
   } else {
     const std::optional<std::string> seven_zip = SevenZip();
-    if (!seven_zip) return Err("extractor_missing", "install 7zip to extract archives");
+    if (!seven_zip) {
+      // Its fix installs 7-Zip, as for any other tool Mira needs.
+      if (auto ready = system::RequireFeature("archives", "Extracting archives"); !ready)
+        return std::unexpected(ready.error());
+      return Err("extractor_missing", "install 7zip to extract archives");
+    }
     command.argv = {
         *seven_zip, "x", "-y", "-bso0", "-bsp0", archive.string(), "-o" + out_dir.string()};
     // Always given one: without it 7-Zip stops to ask, which nothing here can answer.

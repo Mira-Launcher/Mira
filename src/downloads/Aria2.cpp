@@ -14,6 +14,7 @@
 
 #include "core/Log.h"
 #include "runner/Exec.h"
+#include "system/Packages.h"
 
 namespace mira::downloads {
 namespace {
@@ -65,6 +66,9 @@ Result<void> Aria2::Ensure() {
   }
   const auto binary = runner::FindOnPath("aria2c");
   if (!binary) {
+    // Its fix installs the package, as for any other tool Mira needs.
+    if (auto ready = system::RequireFeature("downloads", "Downloading from links"); !ready)
+      return std::unexpected(ready.error());
     return Err("aria2_missing", "Mira needs aria2 to download from links",
                "Install aria2 from your package manager.");
   }
@@ -113,11 +117,13 @@ Result<json> Aria2::Call(const std::string& method, json params) {
   httplib::Client client("127.0.0.1", port_);
   client.set_read_timeout(std::chrono::seconds(5));
   const auto response = client.Post("/jsonrpc", body.dump(), "application/json");
-  if (!response) return Err("aria2_failed", "couldn't reach aria2");
+  if (!response) return Err("aria2_unreachable", "couldn't reach aria2");
   const json answer = json::parse(response->body, nullptr, false);
   if (!answer.is_object()) return Err("aria2_failed", "aria2 gave an unreadable answer");
-  if (answer.contains("error"))
-    return Err("aria2_failed", answer["error"].value("message", std::string("aria2 failed")));
+  if (answer.contains("error")) {
+    const std::string message = answer["error"].value("message", std::string("aria2 failed"));
+    return Err(message.ends_with("is not found") ? kUnknownGid : "aria2_failed", message);
+  }
   return answer.value("result", json());
 }
 
@@ -128,6 +134,13 @@ Result<std::string> Aria2::Add(const std::vector<std::string>& urls,
   const auto gid = Call("aria2.addUri", json::array({urls, options}));
   if (!gid) return std::unexpected(gid.error());
   return gid->get<std::string>();
+}
+
+bool IsNetworkError(int aria2_code) {
+  // 1 is what a refused connection ends as ("No URI available"); then timeout, too slow,
+  // unfinished, network problem, name resolution, server overloaded.
+  return aria2_code == 1 || aria2_code == 2 || aria2_code == 5 || aria2_code == 6 ||
+         aria2_code == 7 || aria2_code == 19 || aria2_code == 29;
 }
 
 Result<void> Aria2::Pause(const std::string& gid) {
@@ -156,7 +169,8 @@ Result<FileStatus> Aria2::Status(const std::string& gid) {
                     .total = number("totalLength"),
                     .done = number("completedLength"),
                     .speed = number("downloadSpeed"),
-                    .error = status->value("errorMessage", std::string())};
+                    .error = status->value("errorMessage", std::string()),
+                    .error_code = static_cast<int>(number("errorCode"))};
 }
 
 Result<void> Aria2::SetSpeedLimit(std::int64_t bytes_per_second) {

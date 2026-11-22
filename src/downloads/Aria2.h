@@ -19,7 +19,14 @@ struct FileStatus {
   std::int64_t done = 0;
   std::int64_t speed = 0;  // bytes a second
   std::string error;       // when state is error
+  int error_code = 0;      // aria2's errorCode, when state is error
 };
+
+// aria2's error codes for a network that's down or flaky, or a server that's away for now.
+bool IsNetworkError(int aria2_code);
+
+// What Call gives when aria2 answered that it doesn't know the gid (it restarted).
+inline constexpr const char* kUnknownGid = "aria2_unknown_gid";
 
 // aria2c, run on demand and talked to over its RPC port. It keeps its own control files beside each
 // download, so adding the same file to the same folder later continues it.

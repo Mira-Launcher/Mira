@@ -57,7 +57,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../dialogs/LogWindow.h"
-#include "../downloads/DownloadsWindow.h"
+#include "../downloads/DownloadsPage.h"
 #include "../downloads/LinkDownloads.h"
 #include "../downloads/PasswordPopup.h"
 #include "../game/GameCard.h"
@@ -227,7 +227,6 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
 
   link_downloads_ = new mira_gui::LinkDownloads(this);
   password_popup_ = new mira_gui::PasswordPopup(link_downloads_, this);
-  downloads_window_ = new mira_gui::DownloadsWindow(link_downloads_, downloads_, this);
   connect(link_downloads_, &mira_gui::LinkDownloads::Changed, this, [this](const QString& id) {
     for (const mira_gui::DownloadInfo& download : link_downloads_->Downloads()) {
       if (id.isEmpty() || QString::fromStdString(download.id) == id) downloads_->SetLink(download);
@@ -246,8 +245,8 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
             link_downloads_->Unskip(id.toStdString());
             password_popup_->ShowBelow(top_bar_->activity_button(), id.toStdString());
           });
-  connect(downloads_panel_, &mira_gui::DownloadsPanel::ManageRequested, downloads_window_,
-          &mira_gui::DownloadsWindow::Open);
+  connect(downloads_panel_, &mira_gui::DownloadsPanel::ManageRequested, this,
+          &LibraryWindow::OpenDownloadsPage);
   connect(downloads_panel_, &mira_gui::DownloadsPanel::FinishedCleared, link_downloads_,
           &mira_gui::LinkDownloads::ClearFinished);
 
@@ -317,7 +316,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
         password_popup_->ShowBelow(top_bar_->notice_button());
         break;
       case Notice::Failed:
-        downloads_window_->Open();
+        OpenDownloadsPage();
         break;
       case Notice::Update:
         updates_panel_->StartMira(top_bar_->updates_button());
@@ -504,6 +503,8 @@ void LibraryWindow::BuildShortcuts() {
   // No default keys; Settings can give them some.
   add_action(this, "open_tags", "Tags", QKeySequence(), {}, [this] { OpenTags(); });
   add_action(this, "open_runners", "Runners", QKeySequence(), {}, [this] { OpenRunners(); });
+  add_action(this, "open_downloads", "Downloads", QKeySequence(), {},
+             [this] { OpenDownloadsPage(); });
   // F5 is the platform's own Refresh; Ctrl+R is the one every browser
   // taught, and a second binding costs nothing.
   add_action(this, "refresh", "Refresh the library", QKeySequence(QKeySequence::Refresh),
@@ -692,6 +693,8 @@ void LibraryWindow::ImportDropped(const QString& path) {
 
 void LibraryWindow::OpenAddGames(const QString& path) {
   auto* card = new mira_gui::AddGamesCard();
+  connect(card, &mira_gui::AddGamesCard::DownloadStarted, this, &LibraryWindow::OpenDownloadsPage,
+          Qt::QueuedConnection);
   mira_gui::cards::Show(this, card);
   if (!path.isEmpty()) card->OpenPath(path);
 }
@@ -709,6 +712,7 @@ void LibraryWindow::ClosePagesForTray() {
       source_page_ != nullptr ? source_page_->SettingsCard() : nullptr;
   if (source_page_ != nullptr && (card == nullptr || !card->IsDirty())) CloseSource();
   CloseRunners();
+  CloseDownloadsPage();
   CloseTags();
   HideHoverCard();
 }
@@ -803,6 +807,7 @@ void LibraryWindow::OpenRunners() {
   if (source_page_ != nullptr && !CloseSource([this] { OpenRunners(); })) return;
   CloseTags();
   CloseSourcesPage();
+  CloseDownloadsPage();
   runners_page_ = new mira_gui::RunnersPage(downloads_, runner_updater_, this);
   runners_page_->SetGames(ShownGames());
   main_stack_->addWidget(runners_page_);
@@ -853,6 +858,7 @@ void LibraryWindow::OpenTags() {
       [this] {
         if (source_page_ != nullptr && !CloseSource([this] { OpenTags(); })) return CloseTags();
         CloseRunners();
+        CloseDownloadsPage();
         CloseSourcesPage();
         main_stack_->setCurrentWidget(tags_page_);
         SetSourceControlsEnabled(false);
@@ -898,7 +904,9 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
   sidebar->SetOwnedTitles(owned_titles_);
   connect(sidebar, &Sidebar::LibraryClicked, this, &LibraryWindow::ShowLibrary);
   connect(sidebar, &Sidebar::RunnersClicked, this, &LibraryWindow::OpenRunners);
-  connect(sidebar, &Sidebar::TagsClicked, this, &LibraryWindow::OpenTags);
+  // A second click goes back to the library.
+  connect(sidebar, &Sidebar::DownloadsClicked, this,
+          [this] { downloads_page_ != nullptr ? ShowLibrary() : OpenDownloadsPage(); });
   connect(sidebar, &Sidebar::SettingsRequested, this, &LibraryWindow::OpenSettings);
   connect(sidebar, &Sidebar::SourceClicked, this, &LibraryWindow::OpenSource);
   connect(sidebar, &Sidebar::ManageSourcesRequested, this, [this] { OpenSourcesPage(false); });
@@ -908,7 +916,8 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
     CloseSource();
   });
   connect(sidebar, &Sidebar::StyleRequested, this, &LibraryWindow::OpenSidebarStyle);
-  connect(sidebar, &Sidebar::FetchArtRequested, this, &LibraryWindow::FetchMissingArtwork);
+  connect(sidebar, &Sidebar::TagsClicked, this,
+          [this] { TagsShown() ? ShowLibrary() : OpenTags(); });
   connect(sidebar, &Sidebar::PlayRequested, this, &LibraryWindow::RowClicked);
   connect(sidebar, &Sidebar::GameMenuRequested, this,
           [this](const std::string& id, const QPoint& pos) {
@@ -1263,6 +1272,9 @@ void LibraryWindow::Reload(bool force_scan) {
 void LibraryWindow::RefreshLibrary() {
   Reload(/*force_scan=*/true);
   owned_titles_->Refresh(/*fresh=*/true);  // the stores asked now, not their lists from earlier
+  // mirad fetches art on its own only for a game it just found, so one that failed stays bare
+  // until asked again.
+  FetchMissingArtwork();
 }
 
 void LibraryWindow::RefreshGames(std::function<void()> done) {
@@ -1678,6 +1690,7 @@ void LibraryWindow::OpenGameDialog(const std::string& id) {
     if (!LeaveOverlays()) return;  // a dirty card was kept open
     if (source_page_ != nullptr) CloseSource();
     CloseRunners();
+    CloseDownloadsPage();
     CloseTags();
     CloseSourcesPage();
     UpdateLibraryNavActive();
@@ -1795,7 +1808,8 @@ void LibraryWindow::SetGridControlsEnabled(bool enabled) {
   grid_page_->SetControlsEnabled(enabled);
   sidebar_->SetActionsEnabled(enabled);
   // Back from Settings onto a source page: the grid is still covered.
-  if (enabled && (source_page_ != nullptr || runners_page_ != nullptr || TagsShown())) {
+  if (enabled && (source_page_ != nullptr || runners_page_ != nullptr ||
+                  downloads_page_ != nullptr || TagsShown())) {
     SetSourceControlsEnabled(false);
   }
 }
@@ -1815,7 +1829,9 @@ void LibraryWindow::UpdateLibraryNavActive() {
   if (sidebar_ != nullptr) {
     sidebar_->SetActive(GridShown() && !GameEditOpen(),
                         runners_page_ != nullptr && content_stack_->currentWidget() == splitter_,
-                        TagsShown() && content_stack_->currentWidget() == splitter_, open_source);
+                        TagsShown() && content_stack_->currentWidget() == splitter_,
+                        downloads_page_ != nullptr && content_stack_->currentWidget() == splitter_,
+                        open_source);
   }
   // Every page switch ends here, so the slider follows the page too.
   SyncZoom();
@@ -2094,6 +2110,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   if (!LeaveOverlays()) return;
   if (!ConfirmLeaveSource([this, source] { OpenSource(source); })) return;
   CloseRunners();
+  CloseDownloadsPage();
   CloseTags();
   CloseSourcesPage();
   if (source_page_ != nullptr) {
@@ -2265,6 +2282,7 @@ void LibraryWindow::ShowGame(const std::string& id) {
   if (!LeaveOverlays()) return;
   if (source_page_ != nullptr && !CloseSource([this, id] { ShowGame(id); })) return;
   CloseRunners();
+  CloseDownloadsPage();
   CloseTags();
   CloseSourcesPage();
   if (!grid_page_->ShowGame(id)) OpenGameDialog(id);  // filtered out: its settings instead
@@ -2322,10 +2340,46 @@ void LibraryWindow::CloseSourcesPage() {
 
 // Over the content beside the sidebar, with the library showing around it.
 void LibraryWindow::SizeSourcesCard() {
-  if (sources_page_ == nullptr) return;
   const int content = width() - splitter_->widget(0)->width() - mira_gui::kResizeMargin;
-  sources_page_->setFixedSize(std::clamp(content - 120, 320, 960),
-                              std::clamp(height() - 120, 320, 720));
+  const QSize size(std::clamp(content - 120, 320, 960), std::clamp(height() - 120, 320, 720));
+  if (sources_page_ != nullptr) sources_page_->setFixedSize(size);
+}
+
+void LibraryWindow::OpenDownloadsPage() {
+  if (!LeaveOverlays()) return;
+  if (downloads_page_ != nullptr) {
+    UpdateLibraryNavActive();
+    return;
+  }
+  if (source_page_ != nullptr && !CloseSource([this] { OpenDownloadsPage(); })) return;
+  CloseRunners();
+  CloseTags();
+  CloseSourcesPage();
+  auto* page = new mira_gui::DownloadsPage(link_downloads_, downloads_, artwork_, this);
+  downloads_page_ = page;
+  connect(page, &mira_gui::DownloadsPage::CloseRequested, this, &LibraryWindow::CloseDownloadsPage);
+  connect(page, &mira_gui::DownloadsPage::SettingsRequested, this,
+          [this] { OpenSettings("downloads.speed_limit_mb"); });
+  connect(page, &mira_gui::DownloadsPage::ShowGameRequested, this,
+          [this](const QString& id) { ShowGame(id.toStdString()); });
+  connect(page, &mira_gui::DownloadsPage::LogRequested, this,
+          [this](const QString& channel, const QString& title) {
+            mira_gui::LogWindow::Open(this, channel, title);
+          });
+  main_stack_->addWidget(page);
+  main_stack_->setCurrentWidget(page);
+  SetSourceControlsEnabled(false);
+  UpdateLibraryNavActive();
+}
+
+void LibraryWindow::CloseDownloadsPage() {
+  if (downloads_page_ == nullptr) return;
+  main_stack_->setCurrentWidget(grid_page_);
+  main_stack_->removeWidget(downloads_page_);
+  downloads_page_->deleteLater();  // its own row may be what got us here
+  downloads_page_ = nullptr;
+  SetSourceControlsEnabled(true);
+  UpdateLibraryNavActive();
 }
 
 void LibraryWindow::RowClicked(const std::string& id) {
@@ -2347,6 +2401,8 @@ void LibraryWindow::ShowLibrary() {
     CloseSource();
   } else if (runners_page_ != nullptr) {
     CloseRunners();
+  } else if (downloads_page_ != nullptr) {
+    CloseDownloadsPage();
   } else if (TagsShown()) {
     CloseTags();
   } else {

@@ -19,17 +19,4 @@ std::vector<std::string> ParseLinks(const QString& text) {
   return links;
 }
 
-QString GuessName(const QString& file) {
-  static const QRegularExpression kVolume(R"((\.part\d+)?(\.[a-z0-9]{1,5})(\.\d{3})?$)",
-                                          QRegularExpression::CaseInsensitiveOption);
-  QString name = file;
-  name.remove(kVolume);
-  // Only when they stand for spaces: "Mr. Game" keeps its dot.
-  if (!name.contains(' ')) {
-    name.replace('_', ' ');
-    name.replace('.', ' ');
-  }
-  return name.trimmed();
-}
-
 }  // namespace mira_gui::downloads

@@ -95,13 +95,9 @@ void FetchMissingArtwork(QWidget* parent, std::function<void()> on_finished) {
   // mirad decides what's missing, and Activity shows it going.
   api::RefreshMissingArtworkAsync(parent, [parent, on_finished](MetadataBatchResult result) {
     on_finished();
-    if (!result.ok) {
-      notify::FailedRequest(parent, "Could not fetch missing cover art.", result.error);
-    } else if (result.refreshed + result.failed == 0) {
-      notify::Notice(parent, "Every game already has cover art.");
-    } else {
+    // Part of a refresh: said only when there was art to fetch.
+    if (result.ok && result.refreshed + result.failed > 0)
       notify::Notice(parent, BatchRefreshSummary(result));
-    }
   });
 }
 

@@ -107,21 +107,24 @@ void LinkDownloads::Failed(const QString& what, const ApiError& error) {
 
 void LinkDownloads::Act(const std::string& id, const std::string& action) {
   api::DownloadActionAsync(this, id, action, [this, action](StoreActionResult result) {
-    if (!result.ok)
-      Failed(QString("Could not %1 the download.").arg(QString::fromStdString(action)),
-             result.error);
+    if (!result.ok) {
+      const QString what = action == "front" ? "move the download ahead"
+                                             : QString::fromStdString(action) + " the download";
+      return Failed("Could not " + what, result.error);
+    }
+    if (action == "front") Load();  // the queue's new order, which has no event of its own
   });
 }
 
 void LinkDownloads::Remove(const std::string& id) {
   api::RemoveDownloadAsync(this, id, [this](StoreActionResult result) {
-    if (!result.ok) Failed("Could not remove the download.", result.error);
+    if (!result.ok) Failed("Could not remove the download", result.error);
   });
 }
 
 void LinkDownloads::SubmitPassword(const std::string& id, const std::string& password) {
   api::SubmitDownloadPasswordAsync(this, id, password, [this](StoreActionResult result) {
-    if (!result.ok) Failed("Could not try that password.", result.error);
+    if (!result.ok) Failed("Could not try that password", result.error);
   });
 }
 

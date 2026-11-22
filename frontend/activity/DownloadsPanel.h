@@ -5,7 +5,7 @@
 
 class QLabel;
 class QPushButton;
-class QVBoxLayout;
+class QScrollArea;
 
 namespace mira_gui {
 
@@ -35,16 +35,11 @@ class DownloadsPanel : public QWidget {
   void FinishedCleared();
 
  private:
-  void Rebuild();
-  QWidget* BuildRow(int index);
-  // Redraws the covers showing `id`.
-  void UpdateCover(const QString& id);
-  // Refreshes a still-running row in place; false when it needs a Rebuild.
-  bool UpdateRow(const QString& key);
+  void Fit();
 
   DownloadTracker* tracker_;
-  ArtworkStore* artwork_;
-  QVBoxLayout* rows_ = nullptr;
+  class DownloadList* list_ = nullptr;
+  QScrollArea* scroll_ = nullptr;
   QLabel* empty_ = nullptr;
   QPushButton* clear_ = nullptr;
 };
