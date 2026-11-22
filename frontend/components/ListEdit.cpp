@@ -11,6 +11,7 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "Format.h"
 #include "Text.h"
 
 namespace mira_gui {
@@ -64,9 +65,7 @@ ListEdit::ListEdit(Kind kind, const QString& add_text, QWidget* parent)
           QFileDialog::getExistingDirectory(this, "Choose a folder", QDir::homePath());
       if (folder.isEmpty()) return;
       // Shown and stored the way the defaults are written, relative to home.
-      const QString home = QDir::homePath();
-      AddRow(folder.startsWith(home + "/") ? "~" + folder.mid(home.size()) : folder,
-             /*edit=*/false);
+      AddRow(HomeRelative(folder), /*edit=*/false);
       emit Changed();
       return;
     }

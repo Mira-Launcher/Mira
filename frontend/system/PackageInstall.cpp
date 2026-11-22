@@ -11,8 +11,9 @@
 #include "../app/Notify.h"
 #include "../client/api/Config.h"
 #include "../components/CopyField.h"
-#include "../components/Labels.h"
+#include "../components/Format.h"
 #include "../components/PopupDialog.h"
+#include "../components/Text.h"
 
 namespace mira_gui::system {
 namespace {

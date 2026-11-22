@@ -26,6 +26,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/LaidOutButton.h"
 #include "../components/ProgressRail.h"

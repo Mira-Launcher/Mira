@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <algorithm>
 
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"

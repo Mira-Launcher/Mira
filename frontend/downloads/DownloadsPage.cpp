@@ -13,6 +13,7 @@
 #include "../app/Notify.h"
 #include "../client/api/Downloads.h"
 #include "../components/Card.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/ListEdit.h"
 #include "../components/PageHeader.h"

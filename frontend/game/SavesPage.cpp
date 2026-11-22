@@ -22,6 +22,7 @@
 #include "../client/JsonMapping.h"
 #include "../client/api/Games.h"
 #include "../components/Card.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/LaidOutButton.h"
 #include "../components/Metrics.h"
@@ -73,10 +74,6 @@ QWidget* TwoLines(QWidget* parent, const QString& top, const QString& bottom, bo
   return box;
 }
 
-QString Files(int files, std::int64_t bytes) {
-  return (files == 1 ? QString("1 file") : QString("%1 files").arg(files)) + " · " +
-         SizeText(bytes);
-}
 }  // namespace
 
 SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std::move(id)) {
@@ -283,9 +280,10 @@ void SavesPage::FillWhere() {
                             : location.problem == "unknown_placeholder"
                                 ? QString("Not backed up: this game doesn't have that folder")
                                 : QString();
-    QWidget* text = TwoLines(row, saves_text::Path(location.path, home),
-                             problem.isEmpty() ? Files(location.files, location.bytes) : problem,
-                             /*mono=*/true);
+    QWidget* text =
+        TwoLines(row, saves_text::Path(location.path, home),
+                 problem.isEmpty() ? saves_text::Files(location.files, location.bytes) : problem,
+                 /*mono=*/true);
     text->setToolTip(QString::fromStdString(location.path));
     line->addWidget(text, 1);
     if (location.extra) {
@@ -386,7 +384,7 @@ void SavesPage::FillCloud() {
   };
   choice("Keep this computer's",
          cloud.local_at > 0 ? "Saved " + saves_text::When(cloud.local_at, now, true) + " · " +
-                                  Files(cloud.files, cloud.bytes)
+                                  saves_text::Files(cloud.files, cloud.bytes)
                             : QString(),
          "Uploads them over the cloud's", "upload");
   choice("Use the cloud's",

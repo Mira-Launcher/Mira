@@ -155,7 +155,7 @@ File and folder pickers are the desktop's own, through xdg-desktop-portal: unles
 
 Widgets that paint by hand read tokens directly and repaint on `theme::Notifier::Changed`: `library/GameTileDelegate`, `library/CoverArt` and `game/HeroBackdrop`.
 
-Widgets don't set colors themselves. They set a style property (`setProperty("role", "muted")`) and `base.qss` styles it; `theme::SetStyleProperty` re-polishes after a change. `theme/Icons` draws icons as vector paths in the theme's text color.
+Widgets don't set colors themselves. They set a style property and `base.qss` styles it: a label's look is a `TextStyle` (`components/Text`: its role, size and tone as separate axes, with presets such as `text::kDetail` and `text::kError`) set through `SetTextStyle`, and other properties go through `theme::SetStyleProperty`; both re-polish after a change. Counts, sizes and paths are written by `components/Format` (`Counted(3, "game")`, `SizeText`, `HomeRelative`), so every label says them alike. `theme/Icons` draws icons as vector paths in the theme's text color.
 
 ## Layers
 

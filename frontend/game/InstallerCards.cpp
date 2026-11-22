@@ -13,6 +13,7 @@
 #include "../app/ErrorHelp.h"
 #include "../client/api/Games.h"
 #include "../components/FlatCombo.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/SettingRow.h"
 #include "../library/ArtworkStore.h"

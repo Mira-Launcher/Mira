@@ -5,7 +5,7 @@
 #include <QPainter>
 #include <algorithm>
 
-#include "../components/Labels.h"
+#include "../components/Format.h"
 #include "../theme/Theme.h"
 
 namespace mira_gui {

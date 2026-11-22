@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "../components/Format.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../theme/Theme.h"
@@ -223,8 +224,7 @@ void CollectionsPage::DrawCard(QPainter& painter, const QRectF& box, const Colle
   const int count = int(collection.items.size());
   painter.setFont(Font(u, 0.9));
   painter.setPen(tokens.text_muted);
-  painter.drawText(QPointF(text_x, collage.bottom() + u * 3.2),
-                   QString("%1 %2").arg(count).arg(count == 1 ? "game" : "games"));
+  painter.drawText(QPointF(text_x, collage.bottom() + u * 3.2), Counted(count, "game"));
   painter.restore();
 }
 

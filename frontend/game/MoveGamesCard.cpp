@@ -10,6 +10,7 @@
 #include <algorithm>
 
 #include "../app/ErrorHelp.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/SettingRow.h"
 #include "../components/WindowCards.h"

@@ -27,6 +27,9 @@ bool NeedsAttention(const SavesResult& saves);
 // prefix's user folder, "~/.config/Game" in the home folder, else the path itself.
 QString Path(const std::string& path, const QString& home);
 
+// A folder's contents in a line: "12 files · 3.4 MB".
+QString Files(int files, std::int64_t bytes);
+
 // What the game's status means when there's nothing to list: empty for "kept" and "ready".
 QString StatusNote(const SavesResult& saves);
 

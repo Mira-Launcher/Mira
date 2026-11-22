@@ -1,24 +1,9 @@
 #include "Labels.h"
 
-#include <QDir>
 #include <QLabel>
-#include <QLocale>
 #include <QPainter>
 
 namespace mira_gui {
-
-QString SizeText(qint64 bytes) {
-  return QLocale().formattedDataSize(bytes, 1, QLocale::DataSizeTraditionalFormat);
-}
-
-QString HomeRelative(const QString& path) {
-  const QString home = QDir::homePath();
-  return path == home || path.startsWith(home + "/") ? "~" + path.mid(home.size()) : path;
-}
-
-QString ExpandHome(const QString& path) {
-  return path == "~" || path.startsWith("~/") ? QDir::homePath() + path.mid(1) : path;
-}
 
 QLabel* MakeLabel(QWidget* parent, const QString& text, TextStyle style, bool wrap) {
   auto* label = new QLabel(text, parent);
@@ -32,24 +17,6 @@ QLabel* MakeTag(QWidget* parent, const QString& text, const char* tone) {
   tag->setObjectName("tag");
   if (tone != nullptr) tag->setProperty("tone", tone);
   return tag;
-}
-
-QString GamesCount(qsizetype count) {
-  return count == 1 ? QString("1 game") : QString("%1 games").arg(count);
-}
-
-QString ShownOf(qsizetype shown, qsizetype games, qsizetype apps) {
-  const qsizetype total = games + apps;
-  const QString noun = apps == 0    ? (total == 1 ? "game" : "games")
-                       : games == 0 ? (total == 1 ? "app" : "apps")
-                                    : "games and apps";
-  return QString("%1 of %2 %3").arg(shown).arg(total).arg(noun);
-}
-
-QString JoinAnd(QStringList items) {
-  if (items.size() < 2) return items.join(QString());
-  const QString last = items.takeLast();
-  return items.join(", ") + " and " + last;
 }
 
 QLabel* MakeGroupHeading(QWidget* parent, const QString& text) {

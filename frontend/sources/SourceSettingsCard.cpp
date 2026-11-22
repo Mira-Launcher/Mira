@@ -14,6 +14,7 @@
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
 #include "../components/FlatCombo.h"
+#include "../components/Format.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
 #include "../components/Text.h"
@@ -33,10 +34,6 @@ bool IsSourceKey(const SourceInfo& source, const std::string& key) {
     return true;
   // runner has its own row, collections their own dialog.
   return key.starts_with(id + ".") && key != id + ".runner" && key != "itch.collections";
-}
-
-QString Counted(int count, const QString& item) {
-  return QString("%1 %2%3").arg(count).arg(item).arg(count == 1 ? "" : "s");
 }
 
 }  // namespace

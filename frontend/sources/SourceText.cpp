@@ -4,6 +4,7 @@
 #include <QStyle>
 
 #include "../app/ErrorHelp.h"
+#include "../components/Format.h"
 #include "../components/Text.h"
 #include "Sources.h"
 
@@ -115,7 +116,7 @@ void ShowError(QLabel* label, const QString& what, const ApiError& error) {
 QString ImportOutcome(int added, int updated, const QString& item) {
   if (added == 0 && updated == 0) return QString("No new %1s found").arg(item);
   if (added == 0) return QString("No new %1s; %2 updated").arg(item).arg(updated);
-  return QString("Added %1 %2%3").arg(added).arg(item).arg(added == 1 ? "" : "s");
+  return "Added " + Counted(added, item);
 }
 
 QString CountedHeading(const QString& text, int count) {

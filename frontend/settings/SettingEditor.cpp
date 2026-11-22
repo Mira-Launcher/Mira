@@ -22,6 +22,7 @@
 #include "../client/api/Config.h"
 #include "../components/ChipToggles.h"
 #include "../components/FlatCombo.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/ListEdit.h"
 #include "../components/Metrics.h"

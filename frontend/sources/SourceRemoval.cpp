@@ -1,7 +1,6 @@
 #include "SourceRemoval.h"
 
 #include <QCheckBox>
-#include <QDir>
 #include <QPushButton>
 #include <QStringList>
 #include <QWidget>
@@ -9,6 +8,7 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Stores.h"
+#include "../components/Format.h"
 #include "../components/PopupDialog.h"
 #include "../system/PackageInstall.h"
 #include "SourceText.h"
@@ -27,20 +27,14 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
     QStringList lines;
     const auto uninstalled =
         std::ranges::count_if(plan.games, [](const auto& g) { return !g.deletes.empty(); });
-    if (uninstalled > 0)
-      lines << QString("Uninstalls %1 %2%3:")
-                   .arg(uninstalled)
-                   .arg(item)
-                   .arg(uninstalled == 1 ? "" : "s");
+    if (uninstalled > 0) lines << "Uninstalls " + Counted(uninstalled, item) + ":";
     for (const auto& game : plan.games) {
       if (!game.deletes.empty()) lines << "  • " + QString::fromStdString(game.name);
     }
     const auto dropped = static_cast<qsizetype>(plan.games.size()) - uninstalled;
     if (dropped > 0) {
-      lines << QString("Removes %1 %2%3 from Mira only (their files stay where they are).")
-                   .arg(dropped)
-                   .arg(item)
-                   .arg(dropped == 1 ? "" : "s");
+      lines << "Removes " + Counted(dropped, item) +
+                   " from Mira only (their files stay where they are).";
     }
     if (!plan.purged.empty()) {
       lines << "Takes the mods it deployed out of these games, puts back the game files it set "
@@ -71,10 +65,7 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
     if (!plan.data.empty()) {
       QStringList folders;
       for (const std::string& path : plan.data) {
-        const QString shown = QString::fromStdString(path);
-        folders << "  • " + (shown.startsWith(QDir::homePath())
-                                 ? "~" + shown.mid(QDir::homePath().size())
-                                 : shown);
+        folders << "  • " + HomeRelative(QString::fromStdString(path));
       }
       delete_data = new QCheckBox("Also delete " + name + "'s settings and saves", &dialog);
       dialog.AddWidget(delete_data);

@@ -36,6 +36,7 @@
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
 #include "../components/FlatCombo.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/ModalOverlay.h"
 #include "../components/PopupDialog.h"
@@ -1107,7 +1108,7 @@ void SourcePage::UpdateStatusLine() {
                                    : StatusDot(tokens.info) + "Installing…");
   }
   if (IsModManager()) {
-    parts << "On " + GamesCount(library_count_);
+    parts << "On " + Counted(library_count_, "game");
   } else if (id_ != "humble") {
     const QString item = CopyFor(id_).item;
     parts << (library_count_ == 1

@@ -16,6 +16,7 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../client/api/ModManagers.h"
+#include "../components/Format.h"
 #include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
 #include "../game/MoveGamesCard.h"
@@ -276,8 +277,7 @@ void MoveGames(QWidget* parent, const std::vector<std::string>& ids,
     } else {
       // Nothing on screen shows a path, so success gets a notice.
       if (result.moved > 0) {
-        notify::Notice(
-            parent, QString("Moved %1 game%2").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
+        notify::Notice(parent, "Moved " + Counted(result.moved, "game"));
       } else if (result.skipped > 0) {
         notify::Notice(parent,
                        result.skipped == 1

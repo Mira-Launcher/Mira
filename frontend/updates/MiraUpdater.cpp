@@ -16,7 +16,7 @@
 #include "../client/api/Config.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
-#include "../components/Labels.h"
+#include "../components/Format.h"
 #include "../library/GameLibraryModel.h"
 #include "../system/PackageInstall.h"
 

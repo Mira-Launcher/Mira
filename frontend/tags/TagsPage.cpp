@@ -29,6 +29,7 @@
 #include "../client/api/Tags.h"
 #include "../components/Card.h"
 #include "../components/ChangeBar.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
@@ -229,7 +230,7 @@ class CountPill : public QWidget {
   void Set(std::size_t games, std::size_t most) {
     games_ = games;
     most_ = most;
-    setToolTip(GamesCount(games));
+    setToolTip(Counted(games, "game"));
     updateGeometry();
     update();
   }
@@ -690,7 +691,7 @@ void TagsPage::SyncMine() {
     KeepSpaceWhenHidden(entry.icon, any_folder);
     entry.icon->setVisible(folder);
     entry.count->setText(QString::number(ShownCount(tag.ids)));
-    entry.count->setToolTip(GamesCount(ShownCount(tag.ids)));
+    entry.count->setToolTip(Counted(ShownCount(tag.ids), "game"));
     const QSignalBlocker block(entry.folder);
     entry.folder->setChecked(folder);
     mine_->MoveRow(entry.row, static_cast<int>(i) + 1);
@@ -882,7 +883,8 @@ void TagsPage::ShowMenu(const std::string& name, QWidget* anchor) {
         Refresh();
       });
     };
-    bar_->SetText(QString("Remove %1 from %2?").arg(label, GamesCount(count)), "Remove", "Cancel");
+    bar_->SetText(QString("Remove %1 from %2?").arg(label, Counted(count, "game")), "Remove",
+                  "Cancel");
   });
   menu.exec(anchor->mapToGlobal(QPoint(0, anchor->height())));
   if (rename) StartRename(name);

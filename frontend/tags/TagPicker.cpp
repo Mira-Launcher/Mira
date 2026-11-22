@@ -7,7 +7,7 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Tags.h"
-#include "../components/Labels.h"
+#include "../components/Format.h"
 #include "../components/Switch.h"
 
 namespace mira_gui {
@@ -115,10 +115,10 @@ void TagPicker::UpdateApply() {
     std::vector<std::string> had = had_;
     std::ranges::sort(now);
     std::ranges::sort(had);
-    ApplyButton()->setText(QString("Save, %1").arg(GamesCount(count)));
+    ApplyButton()->setText(QString("Save, %1").arg(Counted(count, "game")));
     ApplyButton()->setEnabled(now != had || folder_->isChecked() != folder_was_);
   } else {
-    ApplyButton()->setText(QString("Add to %1").arg(GamesCount(count)));
+    ApplyButton()->setText(QString("Add to %1").arg(Counted(count, "game")));
     ApplyButton()->setEnabled(count > 0 &&
                               (!name_.isEmpty() || !name_edit_->text().trimmed().isEmpty()));
   }

@@ -4,6 +4,8 @@
 #include <QRegularExpression>
 #include <QTimeZone>
 
+#include "../components/Format.h"
+
 namespace mira_gui::saves_text {
 
 QString When(std::int64_t at, const QDateTime& now, bool in_sentence) {
@@ -63,6 +65,10 @@ QString Path(const std::string& path, const QString& home) {
   if (!home.isEmpty() && (text == home || text.startsWith(home + '/')))
     return "~" + text.mid(home.size());
   return text;
+}
+
+QString Files(int files, std::int64_t bytes) {
+  return Counted(files, "file") + " · " + SizeText(bytes);
 }
 
 QString StatusNote(const SavesResult& saves) {

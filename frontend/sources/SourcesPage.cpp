@@ -19,6 +19,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/ModalOverlay.h"
 #include "../components/PopupDialog.h"
@@ -213,10 +214,7 @@ void SourcesPage::OfferExistingGames(QWidget* window, const QString& id, const Q
         if (!r.ok || (r.dirs.empty() && r.shortcuts.empty())) return;
         QStringList lines;
         for (const auto& [path, games] : r.dirs)
-          lines << QString("%1 (%2 game%3)")
-                       .arg(QString::fromStdString(path))
-                       .arg(games)
-                       .arg(games == 1 ? "" : "s");
+          lines << QString("%1 (%2)").arg(QString::fromStdString(path), Counted(games, "game"));
         for (const std::string& shortcut : r.shortcuts)
           lines << QString::fromStdString(shortcut) + " (desktop entry)";
         PopupDialog dialog(window, Tone::Info, "Games " + name + " already has");

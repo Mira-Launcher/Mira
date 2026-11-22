@@ -6,8 +6,8 @@
 #include <algorithm>
 
 #include "Card.h"
-#include "Labels.h"
 #include "Metrics.h"
+#include "Text.h"
 
 namespace mira_gui {
 

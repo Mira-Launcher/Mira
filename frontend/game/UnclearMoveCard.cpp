@@ -4,8 +4,9 @@
 #include <QLabel>
 #include <QPushButton>
 
-#include "../components/Labels.h"
+#include "../components/Format.h"
 #include "../components/SettingRow.h"
+#include "../components/Text.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 

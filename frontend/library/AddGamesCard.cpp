@@ -28,6 +28,7 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../components/FlatCombo.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/Segmented.h"
 #include "../components/SettingRow.h"
@@ -728,8 +729,8 @@ void AddGamesCard::ShowAppMenu() {
       if (entry.pick->isChecked()) ++(entry.app->isChecked() ? apps : games);
     }
     QStringList parts;
-    if (games > 0) parts << (games == 1 ? QString("1 game") : QString("%1 games").arg(games));
-    if (apps > 0) parts << (apps == 1 ? QString("1 app") : QString("%1 apps").arg(apps));
+    if (games > 0) parts << Counted(games, "game");
+    if (apps > 0) parts << Counted(apps, "app");
     count->setText(parts.join(", "));
     add->setText(games + apps > 0 ? QString("Add %1").arg(games + apps) : QString("Add"));
     add->setEnabled(games + apps > 0);

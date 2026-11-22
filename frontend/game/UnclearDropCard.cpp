@@ -5,8 +5,9 @@
 #include <QLabel>
 #include <QPushButton>
 
-#include "../components/Labels.h"
+#include "../components/Format.h"
 #include "../components/SettingRow.h"
+#include "../components/Text.h"
 
 namespace mira_gui {
 

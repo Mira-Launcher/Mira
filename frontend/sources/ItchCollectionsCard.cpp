@@ -8,6 +8,7 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Stores.h"
+#include "../components/Format.h"
 #include "../components/SettingRow.h"
 #include "../components/Text.h"
 #include "../theme/Theme.h"
@@ -63,10 +64,7 @@ void ItchCollectionsCard::ShowCollections(const ItchCollectionsResult& result) {
   SetStatus(result.collections.empty() ? "No collections yet" : QString());
   for (const ItchCollection& collection : result.collections) {
     auto* row = new SettingRow(QString::fromStdString(collection.title), QString(), this);
-    auto* count = new QLabel(QString("%1 game%2")
-                                 .arg(collection.games_count)
-                                 .arg(collection.games_count == 1 ? "" : "s"),
-                             row);
+    auto* count = new QLabel(Counted(collection.games_count, "game"), row);
     SetTextStyle(count, text::kDetail);
     row->AddControl(count);
     if (collection.own) {

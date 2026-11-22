@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <algorithm>
 
+#include "../components/Format.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/OwnedTitles.h"
@@ -322,9 +323,7 @@ void SearchPage::paintEvent(QPaintEvent*) {
                      query_.isEmpty() ? "No games here" : "No games match “" + query_ + "”");
     return;
   }
-  painter.drawText(
-      QPointF(right, results_top + u),
-      QString("%1 %2").arg(results_.size()).arg(results_.size() == 1 ? "game" : "games"));
+  painter.drawText(QPointF(right, results_top + u), Counted(results_.size(), "game"));
   const QRectF area(right, results_top + u * 2.4, width() - right - kMargin * u,
                     height() - results_top - u * (2.4 + 4.5));
   const CoverGrid grid(area, kResultColumns, u * 1.3,

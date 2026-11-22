@@ -11,6 +11,7 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/Switch.h"
 #include "../components/TileGridLayout.h"
@@ -31,10 +32,6 @@ QString Ago(std::int64_t unix_seconds) {
   if (seconds < 3600) return QString("%1 min ago").arg(seconds / 60);
   if (seconds < 86400) return QString("%1 h ago").arg(seconds / 3600);
   return QString("%1 days ago").arg(seconds / 86400);
-}
-
-QString Counted(int n, const QString& item) {
-  return QString("%1 %2%3").arg(n).arg(item).arg(n == 1 ? "" : "s");
 }
 
 QString Status(const SourceEntry& entry) {

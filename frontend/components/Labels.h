@@ -3,7 +3,6 @@
 #include <QColor>
 #include <QLabel>
 #include <QString>
-#include <QStringList>
 #include <Qt>
 
 #include "Text.h"
@@ -22,24 +21,6 @@ QLabel* MakeGroupHeading(QWidget* parent, const QString& text);
 // A small outlined pill beside a name: "Beta", "Not checked". `tone` colors it: "accent",
 // "warning", or muted.
 QLabel* MakeTag(QWidget* parent, const QString& text, const char* tone = nullptr);
-
-// "a, b and c".
-QString JoinAnd(QStringList items);
-
-// "1 game", "3 games".
-QString GamesCount(qsizetype count);
-// "43 of 45 games", "2 of 2 apps", "45 of 47 games and apps": `shown` out of a set of `games`
-// games and `apps` apps, named for what's in it.
-QString ShownOf(qsizetype shown, qsizetype games, qsizetype apps);
-
-// A size as every label shows one: "1.8 GB", "12.5 MB".
-QString SizeText(qint64 bytes);
-
-// A path as labels show it: "~/Mira/Games" for one in the home folder.
-QString HomeRelative(const QString& path);
-
-// A "~" or "~/..." path with the home folder written out; any other path as it is.
-QString ExpandHome(const QString& path);
 
 // A 1 px line in the theme's border color, following theme changes.
 // `length` fixes its long side; 0 lets the layout stretch it.

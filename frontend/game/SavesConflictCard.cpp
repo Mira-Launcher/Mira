@@ -8,6 +8,7 @@
 
 #include "../client/Types.h"
 #include "../client/api/Games.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/LaidOutButton.h"
 #include "../library/ArtworkStore.h"
@@ -116,10 +117,8 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
     const CloudSaves& cloud = *result.cloud;
     const QDateTime now = QDateTime::currentDateTime();
     if (cloud.local_at > 0) {
-      local_->setText(
-          "Saved " + saves_text::When(cloud.local_at, now, true) + " · " +
-          (cloud.files == 1 ? QString("1 file") : QString("%1 files").arg(cloud.files)) + " · " +
-          SizeText(cloud.bytes));
+      local_->setText("Saved " + saves_text::When(cloud.local_at, now, true) + " · " +
+                      saves_text::Files(cloud.files, cloud.bytes));
     }
     if (cloud.cloud_at > 0)
       cloud_->setText("Uploaded " + saves_text::When(cloud.cloud_at, now, true));
