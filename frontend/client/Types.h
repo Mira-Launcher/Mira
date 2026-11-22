@@ -230,6 +230,7 @@ struct LaunchResult {
   bool ok = false;
   ApiError error;
   bool tracked = true;
+  std::string warning;  // something to tell the player, e.g. anti-cheat that won't run
 };
 
 // `game.launched`, the event mirad publishes for a Steam launch, carrying
@@ -342,6 +343,9 @@ struct GameMetadata {
   int review_total = 0;
   int review_percent = -1;  // share of positive reviews, -1 without any
   std::string protondb_tier;
+  // AreWeAntiCheatYet's "Supported".."Denied" and the anti-cheat named, when it lists the game.
+  std::string anticheat_status;
+  std::string anticheat_names;
   std::vector<std::string> steam_tags;  // most voted first
   std::string website;
   // Which art slots are actually cached, so a panel knows whether asking for
@@ -585,6 +589,21 @@ struct GameDetail {
   std::string env_json;
   // What an empty runner_ref runs with ("proton:auto"), from GET /v1/games/{id} only.
   std::string default_runner;
+  // Which game it is (library::Identify), from GET /v1/games/{id} only; see docs/api.md.
+  struct Identity {
+    std::string store;
+    std::string store_id;
+    std::string steam_appid;
+    std::string steam_from;
+    std::string umu_id;
+    std::string title;
+  } identity;
+  // Whether its Proton build has its protonfix; when not, an installed one that does
+  // ("proton:...").
+  bool protonfix_known = false;
+  bool protonfix_applies = false;
+  std::string protonfix_fixed_in;
+  std::string proton_log;  // the newest Proton log, with launch.proton_log on
   std::vector<Candidate> candidates;
   std::vector<std::string> tags;
   std::string sort_root;  // as GameSummary's

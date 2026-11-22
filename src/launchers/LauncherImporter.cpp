@@ -6,7 +6,6 @@
 #include <json.hpp>
 #include <sstream>
 
-#include "core/Json.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"
 #include "core/Strings.h"
@@ -14,7 +13,6 @@
 #include "launchers/Office.h"
 #include "library/Detector.h"
 #include "library/WinePrefix.h"
-#include "runner/Exec.h"
 
 namespace mira::launchers {
 namespace {
@@ -180,27 +178,6 @@ std::vector<Found> FindAdobe(const fs::path& prefix) {
   return found;
 }
 
-// umu's id for a store game, so protonfixes find it. Best effort.
-std::string LookupUmuId(const std::string& store, const std::string& ref) {
-  const std::string codename = ref.substr(0, ref.find(','));
-  Command command;
-  command.argv = {"curl",
-                  "-sSf",
-                  "--max-time",
-                  "5",
-                  "--get",
-                  "--data-urlencode",
-                  "codename=" + codename,
-                  "--data-urlencode",
-                  "store=" + store,
-                  "https://umu.openwinecomponents.org/umu_api.php"};
-  const auto result = runner::RunAndWait(command);
-  if (!result || result->exit_code != 0) return "";
-  const nlohmann::json parsed = nlohmann::json::parse(result->output, nullptr, false);
-  if (!parsed.is_array() || parsed.empty() || !parsed[0].is_object()) return "";
-  return core::JsonString(parsed[0], "umu_id");
-}
-
 }  // namespace
 
 Result<library::ImportSummary> Import(config::Config& config, store::GameStore& games,
@@ -241,14 +218,7 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
     game.data_dir = host->data_dir;
     game.runner_ref = host->runner_ref;
     for (const auto& [key, value] : launcher.env) game.env.try_emplace(key, value);
-    if (!launcher.umu_store.empty()) {
-      game.runner_config["store"] = launcher.umu_store;
-      if (!existing && config.GetBool("launchers.umu_lookup")) {
-        if (const std::string umu_id = LookupUmuId(launcher.umu_store, item.ref); !umu_id.empty()) {
-          game.runner_config["gameid"] = umu_id;
-        }
-      }
-    }
+    if (!launcher.umu_store.empty()) game.runner_config["store"] = launcher.umu_store;
     if (!item.exe.empty()) game.exe_path = item.exe;
     // Launched through the launcher; the exe is only for art and menus.
     if (game.exe_path.empty()) {

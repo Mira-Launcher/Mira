@@ -7,6 +7,7 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/Paths.h"
+#include "gog/GameInfo.h"
 #include "gog/Gog.h"
 #include "library/ImportSummary.h"
 #include "library/PrefixNaming.h"
@@ -23,13 +24,7 @@ std::filesystem::path InstallRoot(const config::Config& config) {
 
 // GOG's product id, from the goggame-<id>.info every gogdl install carries.
 std::optional<std::string> GogIdIn(const fs::path& dir) {
-  for (const fs::path& entry : paths::ListDir(dir)) {
-    const std::string name = entry.filename().string();
-    if (!name.starts_with("goggame-") || !name.ends_with(".info")) continue;
-    const std::string id = name.substr(8, name.size() - 8 - 5);
-    if (!id.empty() && std::ranges::all_of(id, [](char c) { return c >= '0' && c <= '9'; }))
-      return id;
-  }
+  if (auto info = ReadGameInfo(dir)) return std::move(info->id);
   return std::nullopt;
 }
 

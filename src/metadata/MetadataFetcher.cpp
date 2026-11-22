@@ -17,6 +17,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <regex>
 #include <semaphore>
 #include <set>
 #include <span>
@@ -34,6 +35,7 @@
 #include "core/Strings.h"
 #include "emulators/Emulators.h"
 #include "epic/Legendary.h"
+#include "library/GameIdentity.h"
 #include "lutris/LutrisImporter.h"
 #include "metadata/ImageFit.h"
 #include "runner/Exec.h"
@@ -422,13 +424,26 @@ std::optional<std::int64_t> FindGriddbId(const std::string& auth_header, const s
   return data.empty() ? 0 : Value(data[0], "id", std::int64_t{0});
 }
 
+// SteamGridDB's game for a Steam appid, 0 when it has none or couldn't be asked.
+std::int64_t GriddbIdForSteamApp(const std::string& auth_header, const std::string& appid) {
+  if (appid.empty()) return 0;
+  const json found = GriddbJson(
+      auth_header, std::format("https://www.steamgriddb.com/api/v2/games/steam/{}", appid));
+  if (found.is_discarded() || !Value(found, "success", false)) return 0;
+  return Value(Value(found, "data", json::object()), "id", std::int64_t{0});
+}
+
+// `steam_appid`: the Steam game library::Identify says it is, which finds its SteamGridDB entry
+// before its name does.
 void FetchGriddbCandidates(const config::Config& config, const std::string& api_key,
                            const std::string& name, const std::string& game_id,
-                           std::int64_t chosen_id, json& info) {
+                           std::int64_t chosen_id, json& info,
+                           const std::string& steam_appid = "") {
   const std::string auth_header = std::format("Authorization: Bearer {}", api_key);
   // metadata.steamgriddb_id, when the top match was wrong
-  const std::int64_t griddb_id =
-      chosen_id != 0 ? chosen_id : FindGriddbId(auth_header, name).value_or(0);
+  std::int64_t griddb_id =
+      chosen_id != 0 ? chosen_id : GriddbIdForSteamApp(auth_header, steam_appid);
+  if (griddb_id == 0) griddb_id = FindGriddbId(auth_header, name).value_or(0);
   if (griddb_id == 0) return;
   info["steamgriddb_id"] = griddb_id;
   // SteamGridDB's top pick from an earlier fetch of the same match stays: its order changes as art
@@ -502,15 +517,9 @@ void FetchProtonDb(const std::string& appid, json& info) {
 // (FetchGriddbCandidates) -- a generic title can still match the wrong
 // game, which is the accepted tradeoff of matching by name at all.
 //
-// One search gives both answers: `best` is Steam's top app, for ProtonDB, and
-// `exact` the first whose name matches `name` ignoring case, spaces and
-// punctuation, for art, where a wrong match shows.
-struct SteamMatch {
-  std::string best;
-  std::string exact;
-};
-
-SteamMatch FindSteamAppIds(const std::string& name) {
+// The Steam game whose name matches `name` ignoring case, spaces and punctuation; empty when none
+// does. Only an exact match: a near one would be another game's art, ratings and fixes.
+std::string FindSteamAppId(const std::string& name) {
   const auto normalize = [](std::string_view text) {
     std::string out;
     for (const unsigned char c : text) {
@@ -535,41 +544,92 @@ SteamMatch FindSteamAppIds(const std::string& name) {
       {"curl", "-sSL",
        std::format("https://store.steampowered.com/api/storesearch/?term={}&l=english&cc=us",
                    UrlEncode(term))});
-  SteamMatch match;
-  if (search.is_discarded()) return match;
+  if (search.is_discarded()) return {};
   for (const auto& item : Value(search, "items", json::array())) {
     // "app" (games, DLC, demos), not "sub"/"bundle". It was checked against
     // "game", which Steam never sends, so this never matched anything.
     if (Value(item, "type", std::string()) != "app") continue;
     const std::int64_t id = Value(item, "id", std::int64_t{0});
-    if (id == 0) continue;
-    if (match.best.empty()) match.best = std::to_string(id);
-    if (normalize(Value(item, "name", std::string())) == normalize(name)) {
-      match.exact = std::to_string(id);
-      break;
-    }
+    if (id != 0 && normalize(Value(item, "name", std::string())) == normalize(name))
+      return std::to_string(id);
   }
-  return match;
+  return {};
 }
 
-// A game's Steam apps by name, searched at most once. metadata.steam_appid, when set, is both.
+// The disk space Steam's minimum requirements ask for, in bytes; 0 when they don't say.
+std::uintmax_t SteamStorageBytes(const std::string& appid) {
+  const json store = CurlJson(
+      {"curl", "-sSL",
+       std::format(
+           "https://store.steampowered.com/api/appdetails?appids={}&filters=pc_requirements",
+           appid)});
+  if (store.is_discarded() || !store.contains(appid)) return 0;
+  const json requirements =
+      Value(Value(store[appid], "data", json::object()), "pc_requirements", json::object());
+  const std::string text =
+      requirements.is_object() ? Value(requirements, "minimum", std::string()) : std::string();
+  // "<strong>Storage:</strong> 50 GB available space"
+  static const std::regex kStorage(
+      R"((storage|hard drive|hard disk|disk space|hdd)[^0-9]{0,40}(\d+(?:[.,]\d+)?)\s*(tb|gb|mb))",
+      std::regex::icase);
+  std::smatch match;
+  if (!std::regex_search(text, match, kStorage)) return 0;
+  std::string number = match[2];
+  std::ranges::replace(number, ',', '.');
+  const std::string unit = strings::ToLower(match[3].str());
+  const double scale = unit == "tb" ? 1e12 : unit == "gb" ? 1e9 : 1e6;
+  return static_cast<std::uintmax_t>(std::strtod(number.c_str(), nullptr) * scale);
+}
+
+// Whether an installed game is far too small to be the Steam game `appid` (a demo or another
+// game of the same name): under a quarter of the space Steam asks for, and at least 2 GB short.
+bool TooSmallFor(const model::Game& game, const std::string& appid) {
+  if (game.install_path.empty() || game.status == model::GameStatus::NeedsInstall ||
+      game.status == model::GameStatus::Missing)
+    return false;
+  const std::uintmax_t needed = SteamStorageBytes(appid);
+  if (needed < 2'000'000'000) return false;
+  const std::uintmax_t has = paths::TreeBytes(game.install_path);
+  return has > 0 && has < needed / 4 && needed - has >= 2'000'000'000;
+}
+
+// A game's Steam game: library::Identify's, or else the one of its exact name (or GOG's or its
+// exe's name for it), searched at most once, unless it's far too small to be that game. What a
+// search finds is kept as the metadata's "steam_match", where Identify finds it next.
 class SteamMatcher {
  public:
-  SteamMatcher(const config::Config& config, const model::Game& game)
-      : name_(game.name),
-        fixed_(config::Resolver(config, game.overrides).GetInt("metadata.steam_appid")) {}
-  const SteamMatch& operator()() {
-    if (!match_) {
-      match_ = fixed_ != 0 ? SteamMatch{std::to_string(fixed_), std::to_string(fixed_)}
-                           : FindSteamAppIds(name_);
+  SteamMatcher(const config::Config& config, const model::Game& game) : game_(game) {
+    const library::GameIdentity identity = library::Identify(config, game);
+    // Known from something surer than its name: no search.
+    if (identity.steam_from != "name") known_ = identity.steam_appid;
+    for (const std::string& name : {game.name, identity.title, identity.exe_title}) {
+      if (!name.empty() && !std::ranges::contains(names_, name)) names_.push_back(name);
     }
-    return *match_;
+  }
+  const std::string& operator()() {
+    if (found_) return *found_;
+    found_ = known_;
+    for (auto name = names_.begin(); found_->empty() && name != names_.end(); ++name)
+      found_ = FindSteamAppId(*name);
+    if (known_.empty() && !found_->empty() && TooSmallFor(game_, *found_)) {
+      log::Info("{} is too small to be Steam app {}; not matching it", game_.name, *found_);
+      found_->clear();
+    }
+    return *found_;
+  }
+  bool Known() const { return !known_.empty(); }
+  // The Steam game, without searching for it: empty when it isn't known and wasn't searched.
+  std::string Found() const { return found_ ? *found_ : known_; }
+  // Keeps what a search found, or that it found nothing.
+  void Record(json& info) const {
+    if (found_ && known_.empty()) info["steam_match"] = *found_;
   }
 
  private:
-  std::string name_;
-  std::int64_t fixed_;
-  std::optional<SteamMatch> match_;
+  const model::Game& game_;
+  std::vector<std::string> names_;
+  std::string known_;
+  std::optional<std::string> found_;
 };
 
 // One of Epic's keyImages from Legendary's cached metadata. Epic names the
@@ -771,6 +831,18 @@ std::string_view GamesDbPlatform(const std::string& source) {
   return {};
 }
 
+// The gamesdb platform and id for a game's store art: its store's, or for a game installed some
+// other way the GOG id library::Identify found (an offline installer's). Empty when it has none.
+std::pair<std::string, std::string> GamesDbRef(const config::Config& config,
+                                               const model::Game& game) {
+  if (const std::string_view platform = GamesDbPlatform(game.source); !platform.empty())
+    return {std::string(platform), game.source_ref};
+  if (const library::GameIdentity identity = library::Identify(config, game);
+      identity.store == "gog")
+    return {"gog", identity.store_id};
+  return {};
+}
+
 // nile's cached library entry art for an Amazon product: square-ish, but
 // better than nothing when gamesdb doesn't know the game.
 std::string AmazonImageUrl(const std::string& product_id) {
@@ -822,9 +894,8 @@ bool FetchStoreCover(const config::Config& config, const model::Game& game, json
       return true;
     }
   }
-  if (const std::string_view platform = GamesDbPlatform(game.source);
-      !platform.empty() && !game.source_ref.empty()) {
-    if (const std::string url = GamesDbImageUrl(platform, game.source_ref, "vertical_cover");
+  if (const auto [platform, ref] = GamesDbRef(config, game); !platform.empty() && !ref.empty()) {
+    if (const std::string url = GamesDbImageUrl(platform, ref, "vertical_cover");
         !url.empty() && FetchArtworkInto(config, url, game.id, "gog_gamesdb", "cover", info)) {
       return true;
     }
@@ -964,7 +1035,7 @@ void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache,
   // already seeded above, so Steam's own image stays first. Never fails the
   // fetch -- a Steam-owned game already has its cover either way.
   if (const std::string api_key = config.GetString("steamgriddb.api_key"); !api_key.empty()) {
-    FetchGriddbCandidates(config, api_key, name, game_id, griddb_id, info);
+    FetchGriddbCandidates(config, api_key, name, game_id, griddb_id, info, appid);
   }
   details_thread.join();
   info.update(details);
@@ -979,7 +1050,7 @@ void FetchSteamOwned(const config::Config& config, store::MetadataStore& cache,
 // any other non-Steam game.
 void FetchEpicOwned(const config::Config& config, const std::string& app_name,
                     const std::string& name, const std::string& game_id, std::int64_t griddb_id,
-                    json& info) {
+                    json& info, const std::string& steam_appid) {
   if (const json meta = LegendaryMeta(app_name); !meta.is_null()) {
     AddEpicDetails(app_name, meta, info);
 
@@ -1009,7 +1080,7 @@ void FetchEpicOwned(const config::Config& config, const std::string& app_name,
   // alternates, same trailing call FetchSteamOwned makes. Never fails the
   // fetch either way: Epic-owned art is there regardless of a key.
   if (const std::string api_key = config.GetString("steamgriddb.api_key"); !api_key.empty()) {
-    FetchGriddbCandidates(config, api_key, name, game_id, griddb_id, info);
+    FetchGriddbCandidates(config, api_key, name, game_id, griddb_id, info, steam_appid);
   }
 }
 
@@ -1053,17 +1124,18 @@ bool FetchLutrisOwned(const config::Config& config, const std::string& slug,
   return found;
 }
 
-// With metadata.steam_by_name, a non-Steam game's ProtonDB tier from its closest Steam match, and
-// the reviews and tags of a Steam game of exactly its name, since a wrong game's would mislead. A
-// store's launcher isn't a game, nor is an emulator's game a Steam one, so neither gets any.
-// Returns whether a match was found for the tier.
+// A non-Steam game's ProtonDB tier, reviews and tags from the Steam game it is: the one
+// library::Identify knows, or with metadata.steam_by_name the one of exactly its name. A store's
+// launcher isn't a game, nor is an emulator's game a Steam one, so neither gets any. Returns
+// whether there was one.
 bool AddSteamByName(const config::Config& config, store::MetadataStore& cache,
                     const model::Game& game, SteamMatcher& steam_match, json& info,
                     bool store_details) {
-  if (!config.GetBool("metadata.steam_by_name") || game.source == "launcher" ||
-      emulators::ForGame(game))
+  if (game.source == "launcher" || emulators::ForGame(game) ||
+      (!steam_match.Known() && !config.GetBool("metadata.steam_by_name")))
     return false;
-  const std::string& exact = steam_match().exact;
+  const std::string& exact = steam_match();
+  steam_match.Record(info);
   // A library game sold on Steam under its exact name gets the store page too: description,
   // screenshots and trailers. Not store titles, which would be one appdetails call each.
   if (store_details && !exact.empty()) {
@@ -1073,12 +1145,11 @@ bool AddSteamByName(const config::Config& config, store::MetadataStore& cache,
   json item;
   std::jthread lookup;
   if (!exact.empty()) lookup = Spawn([&] { item = SteamStoreItem(exact); });
-  const std::string& best = steam_match().best;
-  if (!best.empty()) FetchProtonDb(best, info);
+  if (!exact.empty()) FetchProtonDb(exact, info);
   if (lookup.joinable()) lookup.join();
   AddStoreItemReviews(item, info);
   if (config.GetBool("tags.steam")) AddStoreItemTags(cache, exact, item, info);
-  return !best.empty();
+  return !exact.empty();
 }
 
 // The store info, reviews, tags and ProtonDB tier, without art. Sets details_fetched unless
@@ -1115,12 +1186,13 @@ Result<void> FetchNonSteam(const config::Config& config, store::MetadataStore& c
       AddSteamByName(config, cache, game, steam_match, info, /*store_details=*/true);
 
   const std::string api_key = config.GetString("steamgriddb.api_key");
-  if (!api_key.empty()) FetchGriddbCandidates(config, api_key, name, game_id, griddb_id, info);
+  if (!api_key.empty())
+    FetchGriddbCandidates(config, api_key, name, game_id, griddb_id, info, steam_match.Found());
 
-  // No key, or SteamGridDB had nothing: Steam's own art, if Steam sells a
-  // game of exactly this name.
-  if (!info.contains("artwork") && config.GetBool("metadata.steam_art_by_name")) {
-    if (const std::string appid = steam_match().exact; !appid.empty()) {
+  // No key, or SteamGridDB had nothing: Steam's own art, for the Steam game it is.
+  if (!info.contains("artwork") &&
+      (steam_match.Known() || config.GetBool("metadata.steam_art_by_name"))) {
+    if (const std::string appid = steam_match(); !appid.empty()) {
       FetchArtworkInto(config, SteamCoverUrl(appid), game_id, "steam_cdn", "cover", info);
       if (!info.contains("hero")) {
         FetchArtworkInto(
@@ -1129,6 +1201,7 @@ Result<void> FetchNonSteam(const config::Config& config, store::MetadataStore& c
             game_id, "steam_cdn", "hero", info);
       }
     }
+    steam_match.Record(info);
   }
 
   // An error rather than a silent skip when there's nothing to show and no
@@ -1174,9 +1247,9 @@ std::optional<std::int64_t> KnownAppGriddbId(const model::Game& game) {
 }  // namespace
 
 std::optional<bool> SteamSaysSoftware(const std::string& name) {
-  const SteamMatch match = FindSteamAppIds(name);
-  if (match.exact.empty()) return std::nullopt;
-  const json items = SteamStoreItems({match.exact}, false);
+  const std::string appid = FindSteamAppId(name);
+  if (appid.empty()) return std::nullopt;
+  const json items = SteamStoreItems({appid}, false);
   if (items.empty()) return std::nullopt;
   switch (Value(items[0], "type", -1)) {
     case 0:
@@ -1286,7 +1359,8 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache,
   // a Lutris or scanned Windows game by runner_ref alone.
   if (game.source == "epic") {
     info["source"] = "epic";
-    FetchEpicOwned(config, game.source_ref, game.name, game.id, griddb_id, info);
+    FetchEpicOwned(config, game.source_ref, game.name, game.id, griddb_id, info,
+                   library::Identify(config, game).steam_appid);
   } else if (game.source == "lutris") {
     // Lutris's cached art first; the generic fetch still adds ProtonDB and
     // SteamGridDB alternates, and covers games with no Lutris art.
@@ -1312,11 +1386,11 @@ Result<void> Fetch(const config::Config& config, store::MetadataStore& cache,
     // GOG, itch and Amazon games have their store's own art in gamesdb;
     // SteamGridDB then only adds alternates, so it may fail.
     const bool found = FetchStoreCover(config, game, info);
-    info["source"] = found ? game.source : "steamgriddb";
+    const auto [platform, ref] = GamesDbRef(config, game);
+    info["source"] = !found ? "steamgriddb" : platform.empty() ? game.source : platform;
     if (found) {
-      if (const std::string_view platform = GamesDbPlatform(game.source); !platform.empty()) {
-        if (const std::string hero =
-                GamesDbImageUrl(platform, game.source_ref, "horizontal_artwork");
+      if (!platform.empty() && !ref.empty()) {
+        if (const std::string hero = GamesDbImageUrl(platform, ref, "horizontal_artwork");
             !hero.empty()) {
           FetchArtworkInto(config, hero, game.id, "gog_gamesdb", "hero", info);
         }
@@ -1378,10 +1452,11 @@ Result<void> FetchTitleWith(const config::Config& config, store::MetadataStore& 
     }
     // Same last resort as a tracked game's: Steam's art for the same name.
     if (!info.contains("artwork") && game.source != "steam" &&
-        config.GetBool("metadata.steam_art_by_name")) {
-      if (const std::string& appid = steam_match().exact; !appid.empty()) {
+        (steam_match.Known() || config.GetBool("metadata.steam_art_by_name"))) {
+      if (const std::string& appid = steam_match(); !appid.empty()) {
         FetchArtworkInto(config, SteamCoverUrl(appid), game.id, "steam_cdn", "cover", info);
       }
+      steam_match.Record(info);
     }
     if (info.contains("artwork"))
       RefitSlot(ArtworkDir(config, game.id), info["artwork"], ArtBox(config, "cover", true));
@@ -1939,19 +2014,21 @@ std::unordered_map<std::string, std::optional<std::vector<std::string>>> StoredS
 
 bool WantsSteamTags(const config::Config& config, const model::Game& game) {
   if (!config.GetBool("tags.steam") || game.source == "launcher") return false;
-  return game.runner_ref.starts_with("steam:") || config.GetBool("metadata.steam_by_name");
+  return game.runner_ref.starts_with("steam:") || config.GetBool("metadata.steam_by_name") ||
+         !library::Identify(config, game).steam_appid.empty();
 }
 
 int FetchSteamTags(const config::Config& config, store::MetadataStore& cache,
                    std::span<const model::Game> games) {
-  // Each game's appid: Steam's own, else its Steam match by exact name (empty when none).
+  // Each game's appid (empty when none), and the name matches searched for here, to keep.
   std::map<std::string, std::string> appid_of;
+  std::map<std::string, json> matched;
   for (const model::Game& game : games) {
     if (!WantsSteamTags(config, game) || !cache.Has(game.id))
       continue;  // its own fetch brings them
-    appid_of[game.id] = game.runner_ref.starts_with("steam:")
-                            ? game.runner_ref.substr(std::string_view("steam:").size())
-                            : SteamMatcher(config, game)().exact;
+    SteamMatcher steam_match(config, game);
+    appid_of[game.id] = steam_match();
+    steam_match.Record(matched[game.id]);
   }
   std::vector<std::string> appids;
   for (const auto& [id, appid] : appid_of) {
@@ -1966,18 +2043,15 @@ int FetchSteamTags(const config::Config& config, store::MetadataStore& cache,
       items[std::to_string(Value(item, "appid", std::int64_t{0}))] = item;
     }
   }
-  std::map<std::string, json> found;
-  for (const auto& [id, appid] : appid_of) {
-    json info;
-    AddStoreItemTags(cache, appid, items[appid], info);
-    if (info.contains("steam_tags")) found[id] = std::move(info["steam_tags"]);
-  }
+  for (const auto& [id, appid] : appid_of)
+    AddStoreItemTags(cache, appid, items[appid], matched[id]);
   int fetched = 0;
   const std::lock_guard lock(MetadataFileMutex());
-  for (auto& [id, tags] : found) {
+  for (auto& [id, update] : matched) {
+    if (update.empty()) continue;
     json info = cache.Read(id);
-    info["steam_tags"] = std::move(tags);
-    if (cache.Write(id, info)) ++fetched;
+    info.update(update);
+    if (cache.Write(id, info) && update.contains("steam_tags")) ++fetched;
   }
   return fetched;
 }

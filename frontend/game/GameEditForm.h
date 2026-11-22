@@ -150,6 +150,17 @@ class GameEditForm : public QWidget {
   std::map<std::string, std::vector<mira_gui::RunnerOption>> runner_schemas_;  // by kind
   std::string options_kind_;
   std::string default_runner_;  // what "Default runner" resolves to, from the game record
+  std::map<std::string, std::string> runner_defaults_;  // runner option -> what applies unset
+  SettingRow* identity_row_ = nullptr;                  // which game it is (library::Identify)
+  QLabel* identity_text_ = nullptr;
+  // Whether the runner has the game's protonfix, and a build that does when it doesn't.
+  SettingRow* fix_row_ = nullptr;
+  QLabel* fix_text_ = nullptr;
+  QPushButton* fix_use_ = nullptr;
+  bool fix_known_ = false;
+  bool fix_applies_ = false;
+  std::string fix_build_;
+  void ShowFixStatus();
   nlohmann::json runner_config_ = nlohmann::json::object();
 
   SettingRow* name_row_ = nullptr;

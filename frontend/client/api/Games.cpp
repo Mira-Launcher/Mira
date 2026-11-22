@@ -30,15 +30,17 @@ LaunchResult LaunchGameSync(const std::string& id, const std::string& option,
   // `tracked` (docs/api.md): whether game.state events are coming for this
   // launch. An older mirad only says `status`; with neither, assume so.
   bool tracked = true;
+  std::string warning;
   if (reply.body.is_object()) {
     const json& body = reply.body;
+    warning = body.value("warning", std::string());
     if (body.contains("tracked") && body["tracked"].is_boolean()) {
       tracked = body["tracked"].get<bool>();
     } else if (body.contains("status") && body["status"].is_string()) {
       tracked = body["status"].get<std::string>() != "launched_via_steam";
     }
   }
-  return {reply.ok, reply.error, tracked};
+  return {reply.ok, reply.error, tracked, warning};
 }
 
 StopResult StopGameSync(const std::string& id) {

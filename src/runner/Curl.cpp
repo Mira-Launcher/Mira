@@ -72,4 +72,19 @@ Result<nlohmann::json> CurlJson(const std::string& url, int max_time_s) {
   return parsed;
 }
 
+Result<void> RefreshDownload(const std::string& url, const std::filesystem::path& dest,
+                             std::chrono::hours max_age, std::uintmax_t max_bytes) {
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  const auto modified = fs::last_write_time(dest, ec);
+  if (!ec && fs::file_time_type::clock::now() - modified < max_age) return {};
+  fs::create_directories(dest.parent_path(), ec);
+  const fs::path partial = dest.string() + ".part";
+  if (auto got = CurlDownload(url, partial, max_bytes); !got) return got;
+  fs::rename(partial, dest, ec);
+  if (ec)
+    return Err("save_failed", std::format("couldn't save {}: {}", dest.string(), ec.message()));
+  return {};
+}
+
 }  // namespace mira::runner

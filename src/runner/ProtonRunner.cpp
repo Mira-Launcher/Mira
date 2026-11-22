@@ -1,7 +1,6 @@
 #include "runner/ProtonRunner.h"
 
 #include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -11,30 +10,17 @@
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "runner/Exec.h"
+#include "runner/UmuDatabase.h"
 #include "steam/SteamDetector.h"
 
 namespace mira::runner {
 namespace {
 namespace fs = std::filesystem;
 
-// Without a GAMEID every game runs as umu-default, so Proton gives all of
-// their windows the same class (steam_app_default) and desktops group them
-// as one app. umu only accepts letters, digits and underscores after "umu-".
-void ApplyGameId(Command& command, const model::Game& game) {
-  if (auto it = game.runner_config.find("gameid");
-      it != game.runner_config.end() && it->is_string()) {
-    command.env["GAMEID"] = it->get<std::string>();
-  } else {
-    std::string id = "umu-mira_";
-    for (const char ch : game.id) {
-      if (std::isalnum(static_cast<unsigned char>(ch))) id.push_back(ch);
-    }
-    command.env["GAMEID"] = id;
-  }
-  if (auto it = game.runner_config.find("store");
-      it != game.runner_config.end() && it->is_string()) {
-    command.env["STORE"] = it->get<std::string>();
-  }
+void ApplyGameId(Command& command, const config::Config& config, const model::Game& game) {
+  const UmuMatch identity = UmuIdentity(config, game);
+  command.env["GAMEID"] = identity.gameid;
+  if (!identity.store.empty()) command.env["STORE"] = identity.store;
 }
 
 // Scanned on top of runner_search_paths (unless runner_scan_common_dirs is
@@ -133,7 +119,7 @@ Result<void> ProtonRunner::Provision(const model::Game& game,
   command.argv = {UmuRunPath(), ""};
   command.env["WINEPREFIX"] = game.data_dir;
   command.env["PROTONPATH"] = build->path;
-  ApplyGameId(command, game);
+  ApplyGameId(command, config_, game);
 
   auto result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());
@@ -165,7 +151,7 @@ Result<Command> ProtonRunner::BuildCommand(const model::Game& game,
 
   command.env["WINEPREFIX"] = game.data_dir;
   command.env["PROTONPATH"] = build->path;
-  ApplyGameId(command, game);
+  ApplyGameId(command, config_, game);
   ApplyGameLaunch(command, game, exe);
   return command;
 }
@@ -173,18 +159,17 @@ Result<Command> ProtonRunner::BuildCommand(const model::Game& game,
 nlohmann::json ProtonRunner::SettingsSchema() const {
   return nlohmann::json::array({
       {{"key", "gameid"},
-       {"label", "Steam game ID"},
+       {"label", "umu game ID"},
        {"type", "string"},
        {"doc",
-        "Steam AppID umu reports through the GAMEID environment variable. It decides which "
-        "protonfixes entry Proton applies. Optional: without it umu uses a generic "
-        "default (\"umu-default\")."}},
+        "The GAMEID protonfixes looks this game's fixes up by, e.g. \"umu-397540\". Found in "
+        "the umu database when not set; \"none\" turns that off."}},
       {{"key", "store"},
        {"label", "Store"},
        {"type", "string"},
        {"doc",
-        "Store umu should report via the STORE env var (e.g. \"ubisoft\", \"battlenet\", \"ea\"), "
-        "so store-specific protonfixes apply. Set automatically for store launcher games."}},
+        "The STORE protonfixes looks this game's fixes up in, e.g. \"gog\", \"egs\" or "
+        "\"ubisoft\". Set from the game's store when not set."}},
   });
 }
 

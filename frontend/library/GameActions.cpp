@@ -93,6 +93,8 @@ void Launch(QWidget* parent, const std::string& id, const std::string& option,
           notify::FailedRequest(parent, "Could not launch the game", result.error);
           return;
         }
+        if (!result.warning.empty())
+          notify::Notice(parent, QString::fromStdString(result.warning), notify::Level::Warning);
         if (on_launched) on_launched(result.tracked);
       });
 }

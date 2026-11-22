@@ -18,7 +18,10 @@ std::vector<std::filesystem::path> RunnerRoots(const config::Config& config,
 }
 
 Result<RunnerFamily> FamilyFor(const config::Config& config, const std::string& kind,
-                               const std::string& source) {
+                               const std::string& source, const std::string& tag) {
+  if (source.empty() && !tag.empty()) {
+    if (auto family = FamilyOfBuild(config, kind, tag, tag)) return *family;
+  }
   if (source.empty()) {
     const auto families = Families(config, kind);
     if (families.empty())

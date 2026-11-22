@@ -476,15 +476,16 @@ Schema::Schema() {
          .unit = "days"});
 
   s.Add({.key = "metadata.steam_appid",
-         .label = "Steam app ID for ratings",
+         .label = "Which game this is",
          .type = Type::Int,
          .default_value = 0,
          .scope = Scope::GameOnly,
-         .doc = "The Steam game this game's ProtonDB rating and reviews come from, for a game not "
-                "from Steam. 0 matches it by name. Enter the number from the game's "
-                "store.steampowered.com/app/ address when the match is wrong.",
+         .doc = "The Steam game this is, by the number in its store.steampowered.com/app/ "
+                "address. Its art, ProtonDB rating, reviews, saves, Proton fixes and anti-cheat "
+                "status all follow it. 0 lets Mira work it out from the store, its files, the umu "
+                "database or its name.",
          .constraint = Range(0, 1e12),
-         .keywords = "protondb reviews match wrong",
+         .keywords = "steam app id appid protondb reviews match wrong identify",
          .applies = {.except_sources = {"steam"}}});
 
   s.Add({.key = "metadata.steam_art_by_name",
@@ -500,11 +501,10 @@ Schema::Schema() {
          .type = Type::Bool,
          .default_value = true,
          .doc =
-             "Show a ProtonDB rating, Steam's user reviews and Steam tags for games that are not "
-             "from Steam, from the Steam game of their name. Reviews and tags need the exact name "
-             "(case and punctuation are ignored); a game's Steam app ID setting replaces the "
-             "match. The match can be wrong, and each lookup sends the game's name to Steam's "
-             "public search. It does not change how the game launches or its cover art."});
+             "For a game Mira can't otherwise place, take it for the Steam game of exactly its "
+             "name (case and punctuation are ignored): its ProtonDB rating, reviews, tags, Proton "
+             "fixes and anti-cheat status. Which game this is, in a game's settings, replaces "
+             "the match. Each lookup sends the game's name to Steam's public search."});
 
   s.Add({.key = "achievements.enabled",
          .label = "Show achievements",
@@ -845,6 +845,30 @@ Schema::Schema() {
          .doc = "The first time a Windows game with no runner launches, remember which Proton or "
                 "Wine build was chosen and keep using it."});
 
+  s.Add({.key = "runners.pick_per_game",
+         .label = "Pick Proton per game",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "For a game with no runner chosen, prefer a Proton build that has a fix for it, "
+                "else the Proton Steam uses for it. A runner you choose is always kept."});
+
+  s.Group("Compatibility");
+
+  s.Add({.key = "umu.match",
+         .label = "Find games in the umu database",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Match Windows games to the umu database by their store id, or else their exact "
+                "title, so Proton applies their protonfixes. The database is downloaded weekly; "
+                "nothing about your games is sent."});
+
+  s.Add({.key = "anticheat.check",
+         .label = "Warn about anti-cheat",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Show whether a game's anti-cheat works on Linux, from AreWeAntiCheatYet, and warn "
+                "when one that doesn't is launched. The list is downloaded weekly."});
+
   s.Group("Per store");
 
   for (const auto& [id, name] :
@@ -868,7 +892,7 @@ Schema::Schema() {
          .label = "Download a runner when none is installed",
          .type = Type::Bool,
          .default_value = true,
-         .doc = "When Mira starts with no Wine or Proton runner, download the newest GE-Proton."});
+         .doc = "When Mira starts with no Wine or Proton runner, download the newest UMU-Proton."});
 
   s.Add({.key = "runner_scan_common_dirs",
          .label = "Scan common runner folders",
@@ -1009,6 +1033,22 @@ Schema::Schema() {
          .default_value = std::string(runner_sources::kNileAssetPattern),
          .doc = "A glob pattern that picks which file of a release to download."});
 
+  s.Item("umu", "umu database");
+  s.Add({.key = "umu.database_url",
+         .label = "Download from",
+         .type = Type::String,
+         .default_value = "https://raw.githubusercontent.com/Open-Wine-Components/umu-database/"
+                          "main/umu-database.csv",
+         .doc = "Where the umu database is downloaded from."});
+
+  s.Item("anticheat", "Anti-cheat list");
+  s.Add({.key = "anticheat.database_url",
+         .label = "Download from",
+         .type = Type::String,
+         .default_value = "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/"
+                          "master/games.json",
+         .doc = "Where the AreWeAntiCheatYet list is downloaded from."});
+
   // --- Launching -------------------------------------------------------------
   s.Section("Launching", "General");
   s.ResetTogether();
@@ -1032,6 +1072,15 @@ Schema::Schema() {
                 "this much disk.",
          .constraint = Range(1, 1024),
          .unit = "MB"});
+
+  s.Add({.key = "launch.proton_log",
+         .label = "Write a Proton log",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "Have Proton write a detailed log of each run (PROTON_LOG), for working out why a "
+                "game won't start. The game menu opens the newest one. Logs get large.",
+         .applies = {.platforms = {"windows"}}});
 
   s.Add({.key = "command_wrappers",
          .label = "Command wrappers",
@@ -1420,13 +1469,6 @@ Schema::Schema() {
                 "login, before Mira stops tracking it.",
          .constraint = Range(10, 3600),
          .unit = "s"});
-
-  s.Add({.key = "launchers.umu_lookup",
-         .label = "Look up umu game IDs",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Look up each newly imported launcher game at umu.openwinecomponents.org so its "
-                "protonfixes apply. Only the store name and the game's store id are sent."});
 
   s.Group("Launcher fixes");
 

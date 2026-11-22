@@ -17,6 +17,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <filesystem>
+#include <map>
 
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
@@ -38,6 +39,7 @@
 #include "../components/Scrolling.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../settings/SettingEditor.h"
 #include "../sources/Sources.h"
 #include "HeroBackdrop.h"
@@ -47,6 +49,32 @@
 
 namespace mira_gui {
 namespace {
+
+// "Age of Wonders · GOG 1207658883 · Steam 61500, from the umu database".
+QString IdentityText(const mira_gui::GameDetail& game) {
+  const auto& identity = game.identity;
+  static const std::map<std::string, QString> kStores = {
+      {"steam", "Steam"},     {"gog", "GOG"},       {"egs", "Epic"},
+      {"amazon", "Amazon"},   {"humble", "Humble"}, {"itchio", "itch.io"},
+      {"ubisoft", "Ubisoft"}, {"ea", "EA"},         {"battlenet", "Battle.net"}};
+  static const std::map<std::string, QString> kFrom = {{"override", "set below"},
+                                                       {"file", "from its steam_appid.txt"},
+                                                       {"umu", "from the umu database"},
+                                                       {"name", "by its name"}};
+  QStringList parts;
+  if (!identity.title.empty()) parts << QString::fromStdString(identity.title);
+  if (const auto store = kStores.find(identity.store);
+      store != kStores.end() && identity.store != "steam" && !identity.store_id.empty())
+    parts << store->second + " " + QString::fromStdString(identity.store_id);
+  if (!identity.steam_appid.empty()) {
+    QString steam = "Steam " + QString::fromStdString(identity.steam_appid);
+    if (const auto from = kFrom.find(identity.steam_from); from != kFrom.end())
+      steam += ", " + from->second;
+    parts << steam;
+  }
+  return parts.isEmpty() ? QString("Not known yet. Its art and details may still match by name.")
+                         : parts.join(" · ");
+}
 
 // The settings a store's card holds for its games, in this order, rather than Overrides.
 std::vector<std::string> StoreKeys(const std::string& source) {
@@ -158,6 +186,26 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   runner_row_->AddControl(runner_combo_);
   runner_options_ = new ExpanderRow(QString(), this);  // titled and filled per runner kind
   runner_options_->hide();
+  identity_row_ = new SettingRow(
+      "Identified as",
+      "The game Mira takes this for. Its art, ratings, saves and Proton fixes all follow it; set "
+      "the Steam game below when it's wrong.",
+      this);
+  identity_text_ = new QLabel(identity_row_);
+  SetTextStyle(identity_text_, text::kSubtle);
+  identity_text_->setWordWrap(true);
+  identity_row_->AddControl(identity_text_, 1);
+  identity_row_->hide();
+  fix_row_ = new SettingRow("Game fix",
+                            "Proton's protonfixes for this game, found by its umu game ID", this);
+  fix_text_ = new QLabel(fix_row_);
+  SetTextStyle(fix_text_, text::kSubtle);
+  fix_row_->AddControl(fix_text_);
+  fix_use_ = new QPushButton(fix_row_);
+  fix_row_->AddControl(fix_use_);
+  connect(fix_use_, &QPushButton::clicked, this,
+          [this] { SelectOrKeep(runner_combo_, QString::fromStdString(fix_build_)); });
+  fix_row_->hide();
 
   emulator_row_ = new SettingRow(
       "Emulator", "Picking another moves its files to that emulator's games folder.", this);
@@ -375,7 +423,13 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
     overrides_->HideWhenEmpty(scripts);
   };
 
-  add_card("Details", {name_row_, tags_row_});
+  Card* details = add_card("Details", {name_row_, tags_row_});
+  // A Steam game is its own; an emulator's isn't a Steam or store game.
+  if (game.source != "steam" && !emulated) {
+    details->AddRow(identity_row_);
+    identity_row_->show();
+    overrides_->PlaceRow("metadata.steam_appid", details);
+  }
   if (game.source == "steam") {
     // Steam starts the game from its own record, so there is no executable or runner to pick.
     Card* steam = add_card("Steam", {launch_options_row_, play_starts_row_, only_choice_row_});
@@ -392,8 +446,9 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
   } else {
     add_card("Launch", {exe_row_, args_row_, working_dir_row_, launch_options_row_,
                         play_starts_row_, only_choice_row_});
-    Card* runner = add_card("Runner", {runner_row_, runner_options_});
+    Card* runner = add_card("Runner", {runner_row_, fix_row_, runner_options_});
     runner_options_->hide();  // until the runner kind has options
+    ShowFixStatus();
     overrides_->PlaceRow("launch.env", runner);
     if (!store_keys.empty()) {
       const SourceInfo* store = FindSourceInfo(QString::fromStdString(game.source));
@@ -486,6 +541,14 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   patch.runner_config_json = game.runner_config_json;
   patch.launch = game.launch;
   default_runner_ = game.default_runner;
+  fix_known_ = game.protonfix_known;
+  fix_applies_ = game.protonfix_applies;
+  fix_build_ = game.protonfix_fixed_in;
+  ShowFixStatus();
+  runner_defaults_.clear();
+  runner_defaults_["gameid"] = game.identity.umu_id;
+  runner_defaults_["store"] = game.identity.store;
+  identity_text_->setText(IdentityText(game));
   tags_edit_->SetFolderTags(game.folder_tags);
   original_pick_ = game.folder_tag;
   ShowPatch(patch);
@@ -619,6 +682,14 @@ void GameEditForm::BuildRunnerFields(const std::vector<RunnerOption>& options) {
   UpdateModified();
 }
 
+void GameEditForm::ShowFixStatus() {
+  fix_row_->setVisible(fix_known_ && arranged_ && fix_row_->parentWidget() != this);
+  fix_text_->setText(fix_applies_ ? "Applied by its Proton" : "Not in its Proton");
+  // "proton:GE-Proton9-1" reads "Use GE-Proton9-1".
+  fix_use_->setText("Use " + QString::fromStdString(fix_build_).section(':', 1));
+  fix_use_->setVisible(!fix_applies_ && !fix_build_.empty());
+}
+
 void GameEditForm::ShowRunnerFieldValues() {
   int set = 0;
   for (const RunnerField& field : runner_fields_) {
@@ -627,6 +698,10 @@ void GameEditForm::ShowRunnerFieldValues() {
                         : it->is_string()          ? QString::fromStdString(it->get<std::string>())
                                                    : QString::fromStdString(it->dump()));
     field.edit->setCursorPosition(0);
+    const auto shown = runner_defaults_.find(field.key);
+    field.edit->setPlaceholderText(shown != runner_defaults_.end() && !shown->second.empty()
+                                       ? QString::fromStdString(shown->second)
+                                       : QString("Not set"));
     set += it != runner_config_.end();
   }
   runner_options_->SetSummary(set == 0 ? QString("Not set") : QString("%1 set").arg(set));

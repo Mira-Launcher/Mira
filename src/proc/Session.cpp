@@ -15,6 +15,11 @@ std::filesystem::path GameLogPath(const std::filesystem::path& state_dir,
   return state_dir / "logs" / std::format("{}.log", game_id);
 }
 
+std::filesystem::path ProtonLogDir(const std::filesystem::path& state_dir,
+                                   const std::string& game_id) {
+  return state_dir / "logs" / std::format("{}-proton", game_id);
+}
+
 namespace {
 constexpr std::string_view kColumns =
     "game_id, wrapper_pid, game_pid, started_at, finished, ended_at, duration_seconds, exit_code, "

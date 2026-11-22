@@ -193,6 +193,15 @@ void MetadataStore::Load() {
   for (auto row = tiers->Step(); row && *row; row = tiers->Step())
     tiers_[tiers->Text(0)] = tiers->Text(1);
 
+  matches_.clear();
+  if (auto matches = db_.Prepare(
+          "SELECT id, info->>'$.steam_match' FROM metadata WHERE info->>'$.steam_match' != ''")) {
+    for (auto row = matches->Step(); row && *row; row = matches->Step())
+      matches_[matches->Text(0)] = matches->Text(1);
+  } else {
+    log::Error("could not read the Steam matches: {}", matches.error().message);
+  }
+
   save_generation_ = 0;
   save_count_ = 0;
   if (auto index = db_.Prepare("SELECT value FROM lists WHERE name = ?")) {
@@ -634,6 +643,11 @@ Result<void> MetadataStore::Write(const std::string& id, const json& info) {
     tiers_.erase(id);
   else
     tiers_[id] = tier;
+  if (const auto match = info.find("steam_match");
+      match != info.end() && match->is_string() && !match->get<std::string>().empty())
+    matches_[id] = match->get<std::string>();
+  else
+    matches_.erase(id);
   return {};
 }
 
@@ -642,6 +656,7 @@ void MetadataStore::Remove(const std::string& id) {
     std::lock_guard lock(mutex_);
     versions_.erase(id);
     tiers_.erase(id);
+    matches_.erase(id);
     DropGameRowsLocked(id);
     if (db_.IsOpen()) {
       if (auto remove = db_.Prepare("DELETE FROM metadata WHERE id = ?")) {
@@ -701,6 +716,12 @@ json MetadataStore::ArtVersions(const std::string& id) const {
   std::lock_guard lock(mutex_);
   const auto found = versions_.find(id);
   return found == versions_.end() ? json::object() : found->second;
+}
+
+std::string MetadataStore::SteamMatch(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  const auto found = matches_.find(id);
+  return found == matches_.end() ? std::string() : found->second;
 }
 
 std::string MetadataStore::ProtonDbTier(const std::string& id) const {

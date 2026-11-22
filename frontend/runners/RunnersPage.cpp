@@ -5,6 +5,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QPointer>
 #include <QPushButton>
@@ -28,6 +29,7 @@
 #include "../components/PageHeader.h"
 #include "../components/ProgressRail.h"
 #include "../components/Scrolling.h"
+#include "../components/SearchField.h"
 #include "../components/Segmented.h"
 #include "../components/SettingRow.h"
 #include "../components/Text.h"
@@ -167,6 +169,10 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   source_->setToolTip("Where builds are downloaded from");
   connect(source_, &QComboBox::activated, this, [this] { RefreshCatalog(); });
   catalog_->AddHeaderWidget(source_);
+  search_ = new SearchField("Search versions", catalog_);
+  search_->setFixedWidth(theme::TextPx(190));
+  connect(search_, &QLineEdit::textChanged, this, &RunnersPage::RebuildCatalog);
+  catalog_->AddHeaderWidget(search_);
   auto* refresh =
       new IconButton(icons::Glyph::Refresh, "Check again", catalog_, &theme::Tokens::text_muted);
   connect(refresh, &QToolButton::clicked, this, &RunnersPage::Refresh);
@@ -398,7 +404,17 @@ void RunnersPage::RebuildCatalog() {
   if (!catalog_loaded_) return;
   const std::string kind = CurrentKind();
   const theme::Tokens& tokens = theme::Current();
+  // The newest few, or every match of the search.
+  const QString query = search_->text().trimmed();
+  constexpr int kNewest = 10;
+  int shown = 0;
   for (const RunnerRelease& release : releases_) {
+    if (query.isEmpty()
+            ? shown == kNewest
+            : !QString::fromStdString(release.label).contains(query, Qt::CaseInsensitive) &&
+                  !QString::fromStdString(release.tag).contains(query, Qt::CaseInsensitive))
+      continue;
+    ++shown;
     auto* row = new SettingRow(QString::fromStdString(release.label), {});
     QStringList facts;
     if (const QString date = FormatDate(release.published_at); !date.isEmpty()) facts << date;
@@ -434,7 +450,14 @@ void RunnersPage::RebuildCatalog() {
     }
     catalog_->AddRow(row);
   }
-  if (releases_.empty()) catalog_->AddRow(NoteRow("No builds found"));
+  if (releases_.empty()) {
+    catalog_->AddRow(NoteRow("No builds found"));
+  } else if (shown == 0) {
+    catalog_->AddRow(NoteRow("No version matches"));
+  } else if (query.isEmpty() && std::ssize(releases_) > kNewest) {
+    catalog_->AddRow(NoteRow(Counted(std::ssize(releases_) - kNewest, "older version") +
+                             ". Search to find one"));
+  }
 }
 
 void RunnersPage::RebuildTools() {

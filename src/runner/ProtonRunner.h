@@ -20,6 +20,7 @@ std::filesystem::path BundledUmuRun();
 
 class ProtonRunner final : public IRunner {
  public:
+  explicit ProtonRunner(const config::Config& config) : config_(config) {}
   std::string kind() const override { return "proton"; }
   std::vector<model::RunnerBuild> Discover(const config::Config& config) const override;
   Result<void> Provision(const model::Game& game,
@@ -27,6 +28,9 @@ class ProtonRunner final : public IRunner {
   Result<Command> BuildCommand(const model::Game& game,
                                const std::optional<model::RunnerBuild>& build) const override;
   nlohmann::json SettingsSchema() const override;
+
+ private:
+  const config::Config& config_;
 };
 
 }  // namespace mira::runner

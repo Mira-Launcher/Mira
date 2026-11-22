@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "config/Resolver.h"
+#include "library/GameIdentity.h"
 #include "library/Relocate.h"
 #include "saves/Manifest.h"
 
@@ -41,15 +42,11 @@ std::optional<Match> FindEntry(const config::Config& config, const store::Metada
   // The user's pick; one the manifest no longer has falls through to the rules below.
   if (auto match = found(settings.GetString("saves.manifest_name"), "setting")) return match;
 
-  std::string steam_appid;
-  if (game.runner_ref.starts_with("steam:"))
-    steam_appid = game.runner_ref.substr(std::string_view("steam:").size());
-  else if (const auto set = settings.GetInt("metadata.steam_appid"); set > 0)
-    steam_appid = std::to_string(set);
-  if (auto match = found(cache.SaveEntryWithId("steam", steam_appid), "steam")) return match;
-
-  if (game.source == "gog" && !game.source_ref.empty()) {
-    if (auto match = found(cache.SaveEntryWithId("gog", game.source_ref), "gog")) return match;
+  const library::GameIdentity identity = library::Identify(config, game);
+  if (auto match = found(cache.SaveEntryWithId("steam", identity.steam_appid), "steam"))
+    return match;
+  if (identity.store == "gog" && !identity.store_id.empty()) {
+    if (auto match = found(cache.SaveEntryWithId("gog", identity.store_id), "gog")) return match;
   }
 
   if (const std::string slug = LutrisSlug(game); !slug.empty()) {
@@ -57,6 +54,10 @@ std::optional<Match> FindEntry(const config::Config& config, const store::Metada
     if (auto match = found(cache.SaveEntryWithNorm(Normalize(slug)), "lutris")) return match;
   }
 
+  if (!identity.title.empty()) {
+    if (auto match = found(cache.SaveEntryWithNorm(Normalize(identity.title)), "name"))
+      return match;
+  }
   return found(cache.SaveEntryWithNorm(Normalize(game.name)), "name");
 }
 

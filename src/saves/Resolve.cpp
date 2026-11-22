@@ -7,6 +7,7 @@
 
 #include "core/Strings.h"
 #include "epic/Legendary.h"
+#include "library/GameIdentity.h"
 #include "library/WinePrefix.h"
 #include "steam/SteamDetector.h"
 
@@ -276,6 +277,14 @@ Roots RootsFor(const config::Config& config, const model::Game& game) {
   if (game.source == "steam" || game.source == "gog" || game.source == "epic") {
     roots.store = game.source;
     roots.store_game_id = game.source_ref;
+  }
+  // An offline GOG installer's game, by the id GOG's file in its folder gives.
+  if (roots.store.empty()) {
+    if (const library::GameIdentity identity = library::Identify(config, game);
+        identity.store == "gog") {
+      roots.store = "gog";
+      roots.store_game_id = identity.store_id;
+    }
   }
   if (game.source == "epic") roots.store_user_id = epic::AccountId();
   if (game.runner_ref.starts_with("steam:")) {

@@ -12,11 +12,16 @@
 
 #include "config/Config.h"
 #include "config/Schema.h"
+#include "library/GameIdentity.h"
+#include "library/GamePatch.h"
+#include "runner/AntiCheat.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "runner/NativeRunner.h"
+#include "runner/ProtonRunner.h"
 #include "runner/RefMigration.h"
 #include "runner/RunnerRegistry.h"
+#include "runner/UmuDatabase.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -434,4 +439,181 @@ TEST_CASE(
   REQUIRE(pid.has_value());
   CHECK(WIFEXITED(status));
   CHECK(WEXITSTATUS(status) == 0);
+}
+
+namespace {
+
+void WriteUmuDatabase(const fs::path& cache) {
+  fs::create_directories(cache / "mira");
+  std::ofstream(cache / "mira" / "umu-database.csv")
+      << "TITLE,STORE,CODENAME,UMU_ID,COMMON ACRONYM (Optional),NOTE (Optional)\n"
+         "Age of Wonders,gog,1207658883,umu-61500,aow,\"a note, with a comma\"\n"
+         "Age of Wonders,humble,ageofwonders,umu-61500,aow,\n"
+         "Twin,none,none,umu-1,,\n"
+         "Twin,none,none,umu-2,,\n";
+}
+
+// A Proton build Discover finds, with a protonfixes fix at `fixes` when set.
+void FakeProton(const fs::path& dir, const std::string& name, int timestamp,
+                const std::string& fixes = "") {
+  fs::create_directories(dir / name);
+  std::ofstream(dir / name / "proton").close();
+  std::ofstream(dir / name / "toolmanifest.vdf").close();
+  std::ofstream(dir / name / "version") << timestamp << " " << name;
+  if (!fixes.empty()) {
+    const fs::path fix = dir / name / "protonfixes" / fixes;
+    fs::create_directories(fix.parent_path());
+    std::ofstream(fix).close();
+  }
+}
+
+}  // namespace
+
+TEST_CASE("a game's umu GAMEID: its own setting, else the umu database, else its own id") {
+  test::TestEnv env("umu-identity");
+  REQUIRE(env.config.Set("umu.match", true));
+  WriteUmuDatabase(env.dir / "cache");
+
+  model::Game gog;
+  gog.id = "gog-aow";
+  gog.name = "AoW";
+  gog.source = "gog";
+  gog.source_ref = "1207658883";
+  gog.platform = model::Platform::Windows;
+  runner::UmuMatch id = runner::UmuIdentity(env.config, gog);
+  CHECK(id.gameid == "umu-61500");
+  CHECK(id.store == "gog");
+
+  // A folder game by its exact title; an ambiguous title matches nothing.
+  model::Game scanned;
+  scanned.id = "aow";
+  scanned.name = "Age of Wonders";
+  scanned.platform = model::Platform::Windows;
+  id = runner::UmuIdentity(env.config, scanned);
+  CHECK(id.gameid == "umu-61500");
+  CHECK(id.store.empty());
+  scanned.name = "Twin";
+  CHECK(runner::UmuIdentity(env.config, scanned).gameid == "umu-mira_aow");
+
+  gog.runner_config["gameid"] = "umu-7";
+  CHECK(runner::UmuIdentity(env.config, gog).gameid == "umu-7");
+  gog.runner_config["gameid"] = "none";
+  id = runner::UmuIdentity(env.config, gog);
+  CHECK(id.gameid == "umu-mira_gogaow");
+  CHECK(id.store == "gog");
+}
+
+TEST_CASE("which game it is: an offline GOG install's file, a chosen Steam game, its name") {
+  test::TestEnv env("game-identity");
+  REQUIRE(env.config.Set("umu.match", true));
+  WriteUmuDatabase(env.dir / "cache");
+
+  model::Game game;
+  game.id = "aow";
+  game.name = "aow-setup";
+  game.source = "scan";
+  game.platform = model::Platform::Windows;
+  game.install_path = (env.dir / "aow").string();
+  fs::create_directories(game.install_path);
+  std::ofstream(env.dir / "aow" / "goggame-1207658883.info")
+      << R"({"name": "Age of Wonders", "rootGameId": "1207658883"})";
+  library::GameIdentity id = library::Identify(env.config, game);
+  CHECK(id.store == "gog");
+  CHECK(id.store_id == "1207658883");
+  CHECK(id.umu_id == "umu-61500");
+  CHECK(id.steam_appid == "61500");
+  CHECK(id.steam_from == "umu");
+  CHECK(runner::UmuIdentity(env.config, game).store == "gog");
+
+  game.overrides["metadata.steam_appid"] = 1000;
+  id = library::Identify(env.config, game);
+  CHECK(id.steam_appid == "1000");
+  CHECK(id.steam_from == "override");
+  CHECK(id.umu_id == "umu-1000");
+
+  // Nothing else places it: a steam_appid.txt, else the Steam game of its name.
+  model::Game loose;
+  loose.id = "loose";
+  loose.name = "Loose";
+  loose.platform = model::Platform::Windows;
+  loose.steam_match = "4242";
+  REQUIRE(env.config.Set("metadata.steam_by_name", true));
+  id = library::Identify(env.config, loose);
+  CHECK(id.steam_appid == "4242");
+  CHECK(id.steam_from == "name");
+  CHECK(id.umu_id == "umu-4242");
+  loose.install_path = (env.dir / "loose").string();
+  fs::create_directories(loose.install_path);
+  std::ofstream(env.dir / "loose" / "steam_appid.txt") << "77\n";
+  CHECK(library::Identify(env.config, loose).steam_from == "file");
+}
+
+TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked game to it") {
+  test::TestEnv env("umu-auto-pick");
+  REQUIRE(env.config.Set("umu.match", true));
+  WriteUmuDatabase(env.dir / "cache");
+  fs::create_directories(runner::BundledUmuRun().parent_path());
+  std::ofstream(runner::BundledUmuRun()).close();
+  const fs::path dir = env.dir / "proton";
+  REQUIRE(env.config.Set("runner_search_paths", nlohmann::json::array({dir.string()})));
+  FakeProton(dir, "UMU-Proton-10.0", 1800000000);
+
+  model::Game game;
+  game.id = "gog-aow";
+  game.name = "AoW";
+  game.source = "gog";
+  game.source_ref = "1207658883";
+  game.platform = model::Platform::Windows;
+  game.data_dir = (env.dir / "prefix").string();
+  game.runner_ref = "proton:UMU-Proton-10.0";
+  game.runner_config[runner::kAutoPicked] = true;
+  CHECK_FALSE(runner::RunnerRegistry(env.config).BetterAutoPick(game));
+
+  FakeProton(dir, "GE-Proton9-1", 1700000000, "gamefixes-gog/umu-61500.py");
+  const runner::RunnerRegistry registry(env.config);
+  const auto resolved = registry.Resolve("proton:auto", &game);
+  REQUIRE(resolved);
+  CHECK(resolved->build->name == "GE-Proton9-1");
+  CHECK(registry.Resolve("proton:auto")->build->name == "UMU-Proton-10.0");
+  const auto better = registry.BetterAutoPick(game);
+  REQUIRE(better);
+  CHECK(better->name == "GE-Proton9-1");
+
+  // Chosen by hand: kept.
+  game.runner_ref = "proton:GE-Proton9-1";
+  const model::Game picked =
+      library::ParseGamePatch(game, {{"runner_ref", "proton:UMU-Proton-10.0"}});
+  CHECK_FALSE(picked.runner_config.contains(runner::kAutoPicked));
+  CHECK_FALSE(registry.BetterAutoPick(picked));
+}
+
+TEST_CASE("a game's anti-cheat status comes by its Steam appid, else its title") {
+  test::TestEnv env("anticheat");
+  REQUIRE(env.config.Set("anticheat.check", true));
+  REQUIRE(env.config.Set("umu.match", true));
+  WriteUmuDatabase(env.dir / "cache");
+  std::ofstream(env.dir / "cache" / "mira" / "anticheat.json") << R"([
+    {"name": "Other Name", "status": "Denied", "anticheats": ["BattlEye"],
+     "storeIds": {"steam": "61500"}},
+    {"name": "Fine Game", "status": "Supported", "anticheats": ["Easy Anti-Cheat"]}])";
+
+  model::Game gog;
+  gog.id = "gog-aow";
+  gog.source = "gog";
+  gog.source_ref = "1207658883";  // umu-61500
+  gog.platform = model::Platform::Windows;
+  const auto denied = runner::FindAntiCheat(env.config, gog);
+  REQUIRE(denied);
+  CHECK(denied->Blocks());
+  CHECK(denied->anticheats == std::vector<std::string>{"BattlEye"});
+
+  model::Game scanned;
+  scanned.id = "fine";
+  scanned.name = "Fine Game";
+  scanned.platform = model::Platform::Windows;
+  const auto fine = runner::FindAntiCheat(env.config, scanned);
+  REQUIRE(fine);
+  CHECK_FALSE(fine->Blocks());
+  scanned.platform = model::Platform::Native;
+  CHECK_FALSE(runner::FindAntiCheat(env.config, scanned));
 }

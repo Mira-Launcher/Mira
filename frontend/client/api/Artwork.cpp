@@ -115,6 +115,12 @@ void FillMetadata(GameMetadataResult& result, const json& body) {
   if (body.contains("protondb") && body["protondb"].is_object()) {
     out.protondb_tier = body["protondb"].value("tier", std::string());
   }
+  if (body.contains("anticheat") && body["anticheat"].is_object()) {
+    const json& anticheat = body["anticheat"];
+    out.anticheat_status = anticheat.value("status", std::string());
+    for (const std::string& name : strings(anticheat.value("anticheats", json::array())))
+      out.anticheat_names += (out.anticheat_names.empty() ? "" : ", ") + name;
+  }
   if (body.contains("steam_tags") && body["steam_tags"].is_object()) {
     out.steam_tags = strings(body["steam_tags"].value("tags", json::array()));
   }

@@ -166,24 +166,32 @@ std::optional<ReleaseAsset> AssetOf(const json& release, const std::string& patt
   return std::nullopt;
 }
 
-// Lists `repo`'s releases, keeping the first asset per release that matches.
+// Lists `repo`'s releases, keeping the first asset per release that matches: the newest 10, or with
+// `every` up to the newest 500.
 Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo, const std::string& pattern,
-                                                const std::vector<std::string>& exclude) {
-  const Result<json> listed =
-      CurlJson(std::format("https://api.github.com/repos/{}/releases?per_page=10", repo));
-  if (!listed)
-    return Err("github_api_error",
-               std::format("couldn't list releases for {}: {}", repo, listed.error().message),
-               kGitHubHint);
-  const json& parsed = *listed;
-  if (!parsed.is_array()) {
-    return Err("github_api_error",
-               std::format("couldn't list releases for {}: {}", repo, parsed.dump()), kGitHubHint);
-  }
-
+                                                const std::vector<std::string>& exclude,
+                                                bool every = false) {
+  const int per_page = every ? 100 : 10;
   std::vector<ReleaseAsset> releases;
-  for (const auto& release : parsed) {
-    if (auto entry = AssetOf(release, pattern, exclude)) releases.push_back(std::move(*entry));
+  for (int page = 1; page <= (every ? 5 : 1); ++page) {
+    const Result<json> listed = CurlJson(std::format(
+        "https://api.github.com/repos/{}/releases?per_page={}&page={}", repo, per_page, page));
+    // Older pages are extra: the newer ones still count without them.
+    if (!listed && page > 1) break;
+    if (!listed)
+      return Err("github_api_error",
+                 std::format("couldn't list releases for {}: {}", repo, listed.error().message),
+                 kGitHubHint);
+    const json& parsed = *listed;
+    if (!parsed.is_array()) {
+      return Err("github_api_error",
+                 std::format("couldn't list releases for {}: {}", repo, parsed.dump()),
+                 kGitHubHint);
+    }
+    for (const auto& release : parsed) {
+      if (auto entry = AssetOf(release, pattern, exclude)) releases.push_back(std::move(*entry));
+    }
+    if (std::ssize(parsed) < per_page) break;
   }
   return releases;
 }
@@ -311,6 +319,13 @@ Result<std::vector<ReleaseAsset>> ListReleases(const config::Config& config,
 std::vector<RunnerFamily> Families(const config::Config& config, const std::string& kind) {
   namespace rs = config::runner_sources;
   std::vector<RunnerFamily> all = {
+      {.id = "proton_umu",
+       .kind = "proton",
+       .label = "UMU-Proton",
+       .repo = std::string(rs::kUmuProtonRepo),
+       .asset_pattern = "UMU-Proton-*.tar.gz",
+       .build_pattern = "UMU-Proton-*",
+       .exclude = {}},
       {.id = "proton_ge",
        .kind = "proton",
        .label = "GE-Proton",
@@ -324,13 +339,6 @@ std::vector<RunnerFamily> Families(const config::Config& config, const std::stri
        .repo = std::string(rs::kProtonCachyOSRepo),
        .asset_pattern = std::string(rs::kProtonCachyOSAssetPattern),
        .build_pattern = "cachyos-*-slr",
-       .exclude = {}},
-      {.id = "proton_umu",
-       .kind = "proton",
-       .label = "UMU-Proton",
-       .repo = std::string(rs::kUmuProtonRepo),
-       .asset_pattern = "UMU-Proton-*.tar.gz",
-       .build_pattern = "UMU-Proton-*",
        .exclude = {}},
       {.id = "proton_em",
        .kind = "proton",
@@ -445,8 +453,8 @@ std::mutex release_cache_mutex;
 std::map<std::string, CachedReleases> release_cache;
 }  // namespace
 
-Result<std::vector<ReleaseAsset>> ListFamilyReleases(const RunnerFamily& family) {
-  const std::string key = family.repo + "|" + family.asset_pattern;
+Result<std::vector<ReleaseAsset>> ListFamilyReleases(const RunnerFamily& family, bool every) {
+  const std::string key = family.repo + "|" + family.asset_pattern + (every ? "|every" : "");
   {
     std::lock_guard lock(release_cache_mutex);
     if (auto it = release_cache.find(key);
@@ -454,7 +462,7 @@ Result<std::vector<ReleaseAsset>> ListFamilyReleases(const RunnerFamily& family)
       return it->second.releases;
     }
   }
-  auto releases = FetchReleases(family.repo, family.asset_pattern, family.exclude);
+  auto releases = FetchReleases(family.repo, family.asset_pattern, family.exclude, every);
   if (!releases) return releases;
   std::lock_guard lock(release_cache_mutex);
   release_cache[key] = {Clock::now(), *releases};

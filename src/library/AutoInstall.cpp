@@ -17,6 +17,7 @@
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "desktop/DesktopEntries.h"
+#include "gog/GameInfo.h"
 #include "library/Detector.h"
 #include "library/InstallSize.h"
 #include "library/PeVersion.h"
@@ -616,15 +617,8 @@ bool ProgramFolder(const fs::path& prefix, const fs::path& folder) {
 
 // GOG's goggame-<id>.info beside the game holds its name.
 std::string GogName(const fs::path& dir) {
-  std::error_code ec;
-  for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec)) {
-    const std::string file = entry.path().filename().string();
-    if (!file.starts_with("goggame-") || !file.ends_with(".info")) continue;
-    const nlohmann::json info = nlohmann::json::parse(std::ifstream(entry.path()), nullptr, false);
-    if (info.is_object() && info.contains("name") && info["name"].is_string())
-      return info["name"].get<std::string>();
-  }
-  return {};
+  const auto info = gog::ReadGameInfo(dir);
+  return info ? info->name : std::string();
 }
 
 }  // namespace

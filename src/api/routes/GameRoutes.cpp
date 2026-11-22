@@ -18,12 +18,14 @@
 #include "core/Strings.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
+#include "library/GameIdentity.h"
 #include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
 #include "library/Relocate.h"
 #include "library/SourceRemoval.h"
 #include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
+#include "runner/UmuDatabase.h"
 #include "saves/Backups.h"
 #include "saves/Resolve.h"
 
@@ -39,6 +41,43 @@ json SavesFolder(const config::Config& config, const std::string& id) {
   std::error_code ec;
   return !dir.empty() && std::filesystem::is_directory(dir, ec) ? json(dir.string())
                                                                 : json(nullptr);
+}
+
+// Whether the game's Proton build has its protonfix, and an installed build that does when it
+// doesn't. Nothing for a game no installed build has a fix for.
+std::optional<json> ProtonFixStatus(config::Config& config, const model::Game& game) {
+  const runner::RunnerRegistry registry(config);
+  const std::string ref = registry.ResolveRef(game);
+  if (!ref.starts_with("proton:")) return std::nullopt;
+  const runner::UmuMatch identity = runner::UmuIdentity(config, game);
+  const auto resolved = registry.Resolve(ref, &game);
+  if (resolved && resolved->build && runner::HasProtonFix(resolved->build->path, identity)) {
+    return json{{"gameid", identity.gameid}, {"applies", true}, {"build", resolved->build->name}};
+  }
+  // Proton's alone: discovering Wine runs every build's `wine --version`.
+  for (const model::RunnerBuild& build : registry.FindByKind("proton")->Discover(config)) {
+    if (runner::HasProtonFix(build.path, identity)) {
+      return json{{"gameid", identity.gameid}, {"applies", false}, {"fixed_in", build.Reference()}};
+    }
+  }
+  return std::nullopt;
+}
+
+// The most recently written file in `dir`, or empty.
+std::filesystem::path NewestFile(const std::filesystem::path& dir) {
+  std::filesystem::path newest;
+  std::filesystem::file_time_type newest_at{};
+  std::error_code ec;
+  for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+    std::error_code file_ec;
+    if (!it->is_regular_file(file_ec)) continue;
+    const auto at = it->last_write_time(file_ec);
+    if (!file_ec && (newest.empty() || at > newest_at)) {
+      newest = it->path();
+      newest_at = at;
+    }
+  }
+  return newest;
 }
 
 }  // namespace
@@ -90,6 +129,10 @@ void RegisterGameRoutes(Router& http, Services& s) {
     model::Game unpinned = *game;
     unpinned.runner_ref.clear();
     body["default_runner"] = runner::RunnerRegistry(s.config).ResolveRef(unpinned);
+    body["identity"] = library::ToJson(library::Identify(s.config, *game));
+    if (const auto fix = ProtonFixStatus(s.config, *game)) body["protonfix"] = *fix;
+    if (const auto log = NewestFile(proc::ProtonLogDir(s.games.Dir(), game->id)); !log.empty())
+      body["proton_log"] = log.string();
     SendJson(res, body);
   });
 

@@ -63,9 +63,10 @@ std::string ReleaseName(const std::string& kind, const ReleaseAsset& asset);
 // reads "Wine-GE 8-26". Proton names pass through.
 std::string BuildLabel(const std::string& kind, const std::string& name);
 
-// A family's releases, newest first. Cached for a few minutes, since GitHub
-// allows 60 unauthenticated requests an hour.
-Result<std::vector<ReleaseAsset>> ListFamilyReleases(const RunnerFamily& family);
+// A family's releases, newest first: the newest 10, or with `every` its older ones too. Cached for
+// a few minutes, since GitHub allows 60 unauthenticated requests an hour.
+Result<std::vector<ReleaseAsset>> ListFamilyReleases(const RunnerFamily& family,
+                                                     bool every = false);
 
 // Lists releases of `kind` ("proton", "wine", or a tool such as "legendary",
 // "gog" or "umu") from its GitHub source, newest first. Shells out to curl for the GitHub API

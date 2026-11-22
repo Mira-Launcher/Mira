@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <json.hpp>
@@ -20,6 +21,11 @@ Command CurlDownloadCommand(const std::string& url, const std::filesystem::path&
 // network that drops and comes back is waited out. A file over `max_bytes` (0 = no cap) fails.
 Result<void> CurlDownload(const std::string& url, const std::filesystem::path& dest,
                           std::uintmax_t max_bytes = 0);
+
+// Downloads `url` over `dest` when `dest` is missing or older than `max_age`, through a partial
+// file so a failed download keeps the old copy.
+Result<void> RefreshDownload(const std::string& url, const std::filesystem::path& dest,
+                             std::chrono::hours max_age, std::uintmax_t max_bytes = 0);
 
 // Fetches `url` and parses it as JSON, giving up after `max_time_s`. Err("fetch_failed") with what
 // came back when it isn't JSON.
