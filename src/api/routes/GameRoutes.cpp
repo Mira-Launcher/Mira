@@ -572,7 +572,10 @@ void RegisterGameRoutes(Router& http, Services& s) {
         existing = known;
         break;
       }
-      if (!appimage && !is_appimage(known.exe_path) && !folder_game) folder_game = known;
+      // A loose installer's folder (Downloads) is nobody's game folder.
+      const bool loose_installer = is_installer || known.status == model::GameStatus::NeedsInstall;
+      if (!appimage && !is_appimage(known.exe_path) && !folder_game && !loose_installer)
+        folder_game = known;
     }
     if (!existing) existing = folder_game;
     model::Game game;
@@ -592,14 +595,6 @@ void RegisterGameRoutes(Router& http, Services& s) {
       game.tags.push_back("app");
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
-    // An installer needs the prefix too: it installs the game into it. A web game keeps its browser
-    // profile there.
-    if (!model::NeedsRunnerSetup(platform)) {
-      game.data_dir.clear();
-    } else if (game.data_dir.empty()) {
-      game.data_dir = library::PrefixDir(s.config, s.games, game).string();
-    }
-
     if (is_installer) {
       // An installer isn't the game, so it isn't provisioned or launchable yet.
       game.status = model::GameStatus::NeedsInstall;
@@ -611,14 +606,23 @@ void RegisterGameRoutes(Router& http, Services& s) {
                                                       : model::GameStatus::Ready;
       game.last_error.clear();
     }
+    // An installer needs the prefix too: it installs the game into it. A web game keeps its browser
+    // profile there.
+    if (!model::NeedsRunnerSetup(platform)) {
+      game.data_dir.clear();
+    } else if (game.data_dir.empty()) {
+      game.data_dir = library::PrefixDir(s.config, s.games, game).string();
+    }
 
     auto result = s.games.Upsert(game);
     if (!result) return SendError(res, 500, result.error());
 
     s.SyncDesktopEntry(game.id);
     if (!existing) s.fetches.EnqueueNew(s.config, s.events, game);
-    SendJson(res,
-             s.events.Publish(existing ? "game.updated" : "game.added", s.Record(game)).payload);
+    json record = s.Record(game);
+    // The client adding an installer already asked whether to run it.
+    if (is_installer) record["auto_install"] = true;
+    SendJson(res, s.events.Publish(existing ? "game.updated" : "game.added", record).payload);
     if (game.status == model::GameStatus::SettingUp) s.ProvisionLater(game);
   });
 }

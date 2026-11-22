@@ -729,7 +729,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
     if (std::error_code ec;
         game->platform == model::Platform::Windows && !game->data_dir.empty() &&
         std::filesystem::exists(std::filesystem::path(game->data_dir) / "drive_c", ec)) {
-      s.WatchForInstall(game->id, library::InstallFolders(s.config, game->data_dir));
+      s.WatchForInstall(game->id, library::ProgramFolders(s.config, game->data_dir));
     }
 
     LaunchUnderWrapper(s, res, *game, *command, pre_script, post_script, extras);

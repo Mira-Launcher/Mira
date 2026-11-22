@@ -8,7 +8,9 @@
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <regex>
 #include <set>
+#include <thread>
 
 #include "api/EventBus.h"
 #include "core/Log.h"
@@ -17,7 +19,9 @@
 #include "desktop/DesktopEntries.h"
 #include "library/Detector.h"
 #include "library/InstallSize.h"
+#include "library/PeVersion.h"
 #include "library/PrefixNaming.h"
+#include "library/Relocate.h"
 #include "library/SourceRemoval.h"
 #include "metadata/FetchQueue.h"
 #include "proc/ProcessSupervisor.h"
@@ -228,6 +232,28 @@ fs::path SilentTarget(const model::Game& game, const fs::path& prefix) {
 
 constexpr std::string_view kInstallLogMark = "[mira] install ";
 
+// An installer's own children (Inno's setup.tmp, msiexec, a bundled sub-installer) can outlive it.
+// Waits for them, but not for Wine's services, up to `limit`.
+void WaitForInstallerChildren(const fs::path& prefix, std::chrono::seconds limit) {
+  static const std::set<std::string> kWineServices = {
+      "services.exe", "winedevice.exe", "plugplay.exe", "explorer.exe", "rpcss.exe",
+      "svchost.exe",  "conhost.exe",    "start.exe",    "wineboot.exe", "tabtip.exe"};
+  const auto installer_running = [&] {
+    for (pid_t pid : proc::FindPrefixProcesses(prefix.string())) {
+      std::string argv0;
+      std::getline(std::ifstream(std::format("/proc/{}/cmdline", pid)), argv0, '\0');
+      std::ranges::replace(argv0, '\\', '/');
+      const std::string name = strings::ToLower(fs::path(argv0).filename().string());
+      if (kWineServices.contains(name)) continue;
+      if (name.ends_with(".exe") || name.ends_with(".tmp") || name.ends_with(".msi")) return true;
+    }
+    return false;
+  };
+  const auto until = std::chrono::steady_clock::now() + limit;
+  while (installer_running() && std::chrono::steady_clock::now() < until)
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+}
+
 // The game's log, where its log window reads: a launch's is written by mira-run, an install's here.
 // Installer runs add to one log, so a quiet run's output survives the shown run tried after it; a
 // launch's log is kept as <log>.1, as mira-run keeps it.
@@ -297,9 +323,12 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   }
 
   const Detector detector(SettingsFromConfig(config));
-  const ExeTimes existed = Executables(detector, game.install_path);
-  const std::set<fs::path> before =
-      InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir);
+  // An installer in a game's own folder may install beside itself; one loose in Downloads or on a
+  // disc never does, and that folder's other programs aren't the game.
+  const bool own_folder =
+      paths::IsWithin(game.install_path, config.GetPathArray("library_roots"), false);
+  const ExeTimes existed = own_folder ? Executables(detector, game.install_path) : ExeTimes{};
+  const std::set<fs::path> before = ProgramFolders(config, provisioned.data_dir);
   const std::uintmax_t baseline_bytes = TreeBytes(game.install_path);
   {
     const std::lock_guard lock(tracked_mutex);
@@ -341,6 +370,7 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
     }
     return std::unexpected(result.error());
   }
+  WaitForInstallerChildren(provisioned.data_dir, std::chrono::minutes(15));
   // A GUI installer's exit code isn't reliable; detection below decides.
   if (silent && result->exit_code != 0) {
     return Err(
@@ -358,23 +388,21 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
     exe = FirstGameExe(detected, target, installer);
     if (exe) done.install_path = target.string();
   }
-  if (!exe) {
+  if (!exe && own_folder) {
     detected = detector.Detect(game.install_path);
     exe = FirstGameExe(detected, game.install_path, installer, existed);
   }
-  for (const fs::path& dir :
-       InstallDirs(config.GetStringArray("install.detect_dirs"), provisioned.data_dir)) {
-    if (exe) break;
-    if (before.contains(dir)) continue;
-    detected = detector.Detect(dir);
-    exe = FirstGameExe(detected, dir, installer);
-    if (!exe) continue;
-    const fs::path folder = GameFolder(dir, exe->rel_path);
-    if (folder != dir) {
-      detected = detector.Detect(folder);
-      exe = FirstGameExe(detected, folder, installer);
+  if (!exe) {
+    if (const auto app = NewInstall(config, provisioned.data_dir, before);
+        app && !app->exe_path.empty()) {
+      detected = detector.Detect(app->dir);
+      const auto found =
+          std::ranges::find(detected.candidates, app->exe_path, &model::Candidate::rel_path);
+      if (found != detected.candidates.end()) {
+        exe = *found;
+        done.install_path = app->dir.string();
+      }
     }
-    if (exe) done.install_path = folder.string();
   }
   if (!exe) {
     return Err("no_executable", "the installer finished, but Mira couldn't find the installed game",
@@ -404,10 +432,6 @@ std::string_view ToString(InstallerFormat format) {
       return "unknown";
   }
   return "unknown";
-}
-
-std::set<fs::path> InstallFolders(const config::Config& config, const fs::path& prefix) {
-  return InstallDirs(config.GetStringArray("install.detect_dirs"), prefix);
 }
 
 namespace {
@@ -450,21 +474,197 @@ std::optional<InstalledApp> FindApp(const Detector& detector, const fs::path& di
 
 std::optional<InstalledApp> NewInstall(const config::Config& config, const fs::path& prefix,
                                        const std::set<fs::path>& before) {
-  const Detector detector(SettingsFromConfig(config));
-  std::optional<InstalledApp> found;
-  for (const fs::path& dir : InstallFolders(config, prefix)) {
-    if (before.contains(dir) || IsWineFolder(dir)) continue;
-    if (auto app = FindApp(detector, dir)) return app;
-    if (!found) found = InstalledApp{dir, ""};
+  std::optional<InstalledApp> best;
+  std::uintmax_t best_bytes = 0;
+  for (InstalledApp& app : NewPrograms(config, prefix, before)) {
+    const std::uintmax_t bytes = TreeBytes(app.dir);
+    if (best && bytes <= best_bytes) continue;
+    best_bytes = bytes;
+    best = std::move(app);
+  }
+  return best;
+}
+
+namespace {
+
+// A value of a Wine .reg file, unquoted and unescaped.
+std::string RegValue(std::string_view raw) {
+  if (raw.size() < 2 || raw.front() != '"') return {};
+  std::string out;
+  for (std::size_t i = 1; i < raw.size() && raw[i] != '"'; ++i) {
+    if (raw[i] == '\\' && i + 1 < raw.size()) ++i;
+    out += raw[i];
+  }
+  return out;
+}
+
+// `path` with each part as it's spelled on disk, since Windows paths ignore case.
+fs::path OnDisk(const fs::path& base, const fs::path& rest) {
+  fs::path at = base;
+  std::error_code ec;
+  for (const fs::path& part : rest) {
+    if (part.empty() || part == ".") continue;
+    fs::path next = at / part;
+    if (!fs::exists(next, ec)) {
+      const std::string want = strings::ToLower(part.string());
+      for (const fs::directory_entry& entry : fs::directory_iterator(at, ec)) {
+        if (strings::ToLower(entry.path().filename().string()) == want) next = entry.path();
+      }
+    }
+    at = std::move(next);
+  }
+  return at;
+}
+
+// Where a Windows path ("C:\Hollow Knight\unins000.exe" /SILENT) is: its drive through the
+// prefix's dosdevices, so Z: is / and a game installed outside drive C is found too.
+fs::path FromWindows(const fs::path& prefix, std::string windows) {
+  if (windows.starts_with('"')) {
+    windows.erase(0, 1);
+    if (const std::size_t quote = windows.find('"'); quote != std::string::npos)
+      windows.resize(quote);
+  } else if (const std::size_t exe = strings::ToLower(windows).find(".exe ");
+             exe != std::string::npos) {
+    windows.resize(exe + 4);  // an unquoted uninstaller's arguments
+  }
+  if (windows.size() < 3 || windows[1] != ':') return {};
+  std::ranges::replace(windows, '\\', '/');
+  const char letter = static_cast<char>(std::tolower(static_cast<unsigned char>(windows[0])));
+  std::error_code ec;
+  fs::path drive = fs::canonical(prefix / "dosdevices" / std::string{letter, ':'}, ec);
+  if (ec) {
+    if (letter != 'c') return {};
+    drive = fs::weakly_canonical(prefix / "drive_c", ec);
+  }
+  return OnDisk(drive, fs::path(windows.substr(3)).lexically_normal());
+}
+
+// An uninstaller an installer registered, as Inno, NSIS and MSI installers do.
+struct Uninstall {
+  std::string name;
+  fs::path folder;              // InstallLocation, else the uninstaller's folder
+  std::vector<fs::path> paths;  // the folder, the uninstaller and its icon
+};
+
+std::vector<Uninstall> Uninstalls(const fs::path& prefix) {
+  std::vector<Uninstall> found;
+  for (const char* file : {"system.reg", "user.reg"}) {
+    std::ifstream reg(prefix / file);
+    std::optional<Uninstall> entry;
+    fs::path location, uninstaller, icon;
+    const auto close = [&] {
+      if (!entry) return;
+      entry->folder = !location.empty()      ? location
+                      : !uninstaller.empty() ? uninstaller.parent_path()
+                                             : icon.parent_path();
+      while (!entry->folder.has_filename() && entry->folder.has_relative_path())
+        entry->folder = entry->folder.parent_path();
+      for (const fs::path& path : {location, uninstaller, icon})
+        if (!path.empty()) entry->paths.push_back(path);
+      if (!entry->folder.empty()) found.push_back(std::move(*entry));
+      entry.reset();
+      location.clear();
+      uninstaller.clear();
+      icon.clear();
+    };
+    for (std::string line; std::getline(reg, line);) {
+      if (line.starts_with('[')) {
+        close();
+        if (line.find("\\\\CurrentVersion\\\\Uninstall\\\\") != std::string::npos)
+          entry = Uninstall{};
+        continue;
+      }
+      if (!entry) continue;
+      const std::size_t equals = line.find("\"=");
+      if (equals == std::string::npos) continue;
+      const std::string key = line.substr(1, equals - 1);
+      const std::string value = RegValue(std::string_view(line).substr(equals + 2));
+      if (key == "DisplayName") entry->name = value;
+      if (key == "InstallLocation") location = FromWindows(prefix, value);
+      if (key == "UninstallString") uninstaller = FromWindows(prefix, value);
+      if (key == "DisplayIcon") icon = FromWindows(prefix, value.substr(0, value.rfind(',')));
+    }
+    close();
   }
   return found;
 }
 
+// The DisplayName registered for an uninstaller of what's in `dir`.
+std::string RegisteredName(const fs::path& prefix, const fs::path& dir) {
+  std::error_code ec;
+  const std::string inside = strings::ToLower(fs::weakly_canonical(dir, ec).string());
+  for (const Uninstall& entry : Uninstalls(prefix)) {
+    for (const fs::path& path : entry.paths) {
+      const std::string at = strings::ToLower(fs::weakly_canonical(path, ec).string());
+      if (!entry.name.empty() && (at == inside || at.starts_with(inside + "/"))) return entry.name;
+    }
+  }
+  return {};
+}
+
+// A registered install folder narrow enough to be one program's: not a drive, the home folder,
+// Windows itself or the Mira folder an installer ran from.
+bool ProgramFolder(const fs::path& prefix, const fs::path& folder) {
+  std::error_code ec;
+  if (!fs::is_directory(folder, ec)) return false;
+  const fs::path drive_c = fs::weakly_canonical(prefix / "drive_c", ec);
+  const fs::path home = fs::weakly_canonical(paths::Home(), ec);
+  if (folder == drive_c || folder == home || paths::IsWithin(home, {folder}, true)) return false;
+  if (paths::IsWithin(folder, {drive_c / "windows"}, true)) return false;
+  return std::distance(folder.begin(), folder.end()) > 2;
+}
+
+// GOG's goggame-<id>.info beside the game holds its name.
+std::string GogName(const fs::path& dir) {
+  std::error_code ec;
+  for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec)) {
+    const std::string file = entry.path().filename().string();
+    if (!file.starts_with("goggame-") || !file.ends_with(".info")) continue;
+    const nlohmann::json info = nlohmann::json::parse(std::ifstream(entry.path()), nullptr, false);
+    if (info.is_object() && info.contains("name") && info["name"].is_string())
+      return info["name"].get<std::string>();
+  }
+  return {};
+}
+
+}  // namespace
+
+std::string InstalledName(const fs::path& prefix, const InstalledApp& app) {
+  std::vector<std::string> names = {GogName(app.dir)};
+  if (!prefix.empty()) names.push_back(RegisteredName(prefix, app.dir));
+  names.push_back(app.dir.filename().string());
+  if (!app.exe_path.empty()) names.push_back(PeProductName(app.dir / app.exe_path));
+  // "Hollow Knight version 1.5.78", as uninstall entries often say.
+  static const std::regex kVersion(R"(\s+(version|ver\.?|v)\s*\d[\w.]*\s*$)", std::regex::icase);
+  for (const std::string& name : names) {
+    std::string clean = strings::CleanGameName(std::regex_replace(name, kVersion, ""));
+    if (!strings::IsGenericName(clean)) return clean;
+  }
+  return {};
+}
+
 std::set<fs::path> ProgramFolders(const config::Config& config, const fs::path& prefix) {
   std::vector<std::string> parents = config.GetStringArray("install.detect_dirs");
-  // Where per-user installers put a program.
-  parents.insert(parents.end(), {"users/*/AppData/Local", "users/*/AppData/Local/Programs"});
-  return InstallDirs(parents, prefix);
+  // Where per-user installers put a program, the few that use ProgramData, and a folder right in
+  // C:\ ("C:\MyGame").
+  parents.insert(parents.end(), {"users/*/AppData/Local", "users/*/AppData/Local/Programs",
+                                 "users/*/AppData/Roaming", "ProgramData", ""});
+  std::set<fs::path> dirs = InstallDirs(parents, prefix);
+  // Wherever an installer said it installed, outside drive C too (another drive, or Z: for a
+  // folder of the user's picked in its Browse…).
+  for (const Uninstall& entry : Uninstalls(prefix))
+    if (ProgramFolder(prefix, entry.folder)) dirs.insert(entry.folder);
+  // Wine's own top folders, and the ones searched inside, aren't programs.
+  static const std::set<std::string> kDriveRoot = {"windows", "users", "programdata",
+                                                   "program files", "program files (x86)"};
+  std::erase_if(dirs, [&](const fs::path& dir) {
+    if (dir.parent_path() != prefix / "drive_c") return false;
+    const std::string name = strings::ToLower(dir.filename().string());
+    return kDriveRoot.contains(name) || std::ranges::any_of(parents, [&](const std::string& p) {
+             return strings::ToLower(p) == name;
+           });
+  });
+  return dirs;
 }
 
 std::vector<InstalledApp> NewPrograms(const config::Config& config, const fs::path& prefix,
@@ -585,13 +785,18 @@ bool AutoInstalls(const config::Config& config, const model::Game& game) {
          InstallerFormat::kUnknown;
 }
 
-void AdoptInstallFolder(model::Game& game, const std::string& install_path) {
+void AdoptInstallFolder(model::Game& game, const std::string& install_path,
+                        const std::string& exe_path, const std::string& prefix) {
   if (install_path.empty() || install_path == game.install_path) return;
-  // Still the name cleaned from the installer's folder, not one the user gave: take the installed
-  // folder's. Cleaning the stored name too matches an older CleanGameName's ("setup crate escape").
-  if (strings::CleanGameName(game.name) ==
-      strings::CleanGameName(fs::path(game.install_path).filename().string())) {
-    game.name = strings::CleanGameName(fs::path(install_path).filename().string());
+  // Still the name cleaned from the installer's folder or file (one loose in Downloads), or one
+  // that says nothing, not one the user gave: take the installed game's. Cleaning the stored name
+  // too matches an older CleanGameName's ("setup crate escape").
+  const std::string current = strings::CleanGameName(game.name);
+  if (current == strings::CleanGameName(fs::path(game.install_path).filename().string()) ||
+      current == strings::CleanGameName(fs::path(game.exe_path).stem().string()) ||
+      strings::IsGenericName(current)) {
+    if (std::string name = InstalledName(prefix, {install_path, exe_path}); !name.empty())
+      game.name = std::move(name);
   }
   if (game.installer_dir.empty()) game.installer_dir = game.install_path;
   game.install_path = install_path;
@@ -661,6 +866,43 @@ bool BeginInstall(const std::string& id) {
   return true;
 }
 
+// After an install renamed the game from its installer's name to the installed one, its prefix,
+// still named after the old one, takes the new name.
+static model::Game FollowName(const config::Config& config, store::GameStore& games,
+                              model::Game game, const std::string& old_name) {
+  if (game.name == old_name || game.data_dir.empty() || config.GetString("prefix_naming") != "name")
+    return game;
+  const fs::path prefix = game.data_dir;
+  const std::string old_slug = strings::Slugify(old_name);
+  const std::string leaf = prefix.filename().string();
+  if (!paths::IsWithin(prefix, PrefixRoots(config)) ||
+      (leaf != old_slug && !leaf.starts_with(old_slug + "-")))
+    return game;
+  const std::vector<model::Game> library = games.All();
+  std::set<fs::path> taken;
+  for (const model::Game& other : library) {
+    if (other.id != game.id && !other.data_dir.empty()) taken.insert(other.data_dir);
+  }
+  const fs::path to = NamedDir(config, game, prefix.parent_path(), prefix, taken);
+  if (to == prefix) return game;
+  const auto moved = Relocate(
+      config, game, {.install_path = std::nullopt, .data_dir = to, .only_given = true}, library);
+  if (!moved) {
+    log::Warn("couldn't rename {}'s prefix to {}: {}", game.id, to.string(), moved.error().message);
+    return game;
+  }
+  auto saved = games.Update(game.id, [&](model::Game& stored) {
+    stored.data_dir = moved->data_dir;
+    stored.install_path = moved->install_path;
+  });
+  if (saved) return *saved;
+  // Not recorded: put the folder back where the game still points.
+  std::error_code ec;
+  fs::rename(moved->data_dir, prefix, ec);
+  log::Warn("couldn't save {}'s renamed prefix: {}", game.id, saved.error().message);
+  return game;
+}
+
 static Result<model::Game> InstallImpl(config::Config& config, store::GameStore& games,
                                        const std::string& id, InstallMode mode,
                                        const std::optional<fs::path>& installer,
@@ -724,7 +966,7 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
   }
   auto saved = games.Update(id, [&](model::Game& stored) {
     if (done) {
-      AdoptInstallFolder(stored, done->install_path);
+      AdoptInstallFolder(stored, done->install_path, done->exe_path, done->data_dir);
       stored.exe_path = done->exe_path;
       stored.candidates = done->candidates;
       stored.confidence = done->confidence;
@@ -734,15 +976,20 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
       stored.last_error.clear();
     } else {
       stored.data_dir = game->data_dir;  // a prefix moved to the target's disk was made there
+      // The installer ran: running it again won't help, picking what it installed will.
       stored.last_error =
-          std::format("Install didn't finish: {}. Run the installer again with its window shown.",
-                      done.error().message);
+          done.error().code == "no_executable"
+              ? "The installer finished, but Mira couldn't find the game. Choose its program in "
+                "the game's settings (it's in drive C of its prefix), then mark it installed."
+              : std::format(
+                    "Install didn't finish: {}. Run the installer again with its window shown.",
+                    done.error().message);
     }
     stored.updated_at = model::NowSeconds();
   });
   if (!saved) return std::unexpected(saved.error());
   if (!done) return std::unexpected(done.error());
-  return *saved;
+  return FollowName(config, games, *saved, game->name);
 }
 
 Result<model::Game> Install(config::Config& config, store::GameStore& games, const std::string& id,

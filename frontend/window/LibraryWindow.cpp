@@ -1485,19 +1485,28 @@ void LibraryWindow::OfferInstall(const std::string& id) {
       ShowNextCard();
       return;
     }
-    // Read first, so the card shows whole: a disc's installer adds its "Install onto" row.
-    mira_gui::api::GetInstallerInfoAsync(
-        this, id, std::string(), [this, id](mira_gui::InstallerInfoResult info) {
-          const mira_gui::GameSummary* game = FindGame(id);
-          if (game == nullptr) {
+    // Queued behind Add games, whose own Install may have started it since.
+    mira_gui::api::GetInstallProgressAsync(
+        this, id, [this, id](mira_gui::InstallProgressResult progress) {
+          if (progress.state == "queued" || progress.state == "running") {
             ShowNextCard();
             return;
           }
-          auto* card = new mira_gui::InstallerCard(*game, info, artwork_);
-          connect(card, &mira_gui::InstallerCard::CloseRequested, this,
-                  &LibraryWindow::CloseSidebarCard);
-          connect(card, &mira_gui::InstallerCard::Started, this, &LibraryWindow::CloseSidebarCard);
-          ShowSidebarCard(card);
+          // Read first, so the card shows whole: a disc's installer adds its "Install onto" row.
+          mira_gui::api::GetInstallerInfoAsync(
+              this, id, std::string(), [this, id](mira_gui::InstallerInfoResult info) {
+                const mira_gui::GameSummary* game = FindGame(id);
+                if (game == nullptr) {
+                  ShowNextCard();
+                  return;
+                }
+                auto* card = new mira_gui::InstallerCard(*game, info, artwork_);
+                connect(card, &mira_gui::InstallerCard::CloseRequested, this,
+                        &LibraryWindow::CloseSidebarCard);
+                connect(card, &mira_gui::InstallerCard::Started, this,
+                        &LibraryWindow::CloseSidebarCard);
+                ShowSidebarCard(card);
+              });
         });
   });
 }

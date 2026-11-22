@@ -38,6 +38,10 @@ std::string Slugify(std::string_view input);
 // "Celeste-v1.4.0.0-AnkerGames" -> "Celeste".
 std::string CleanGameName(std::string_view directory_name);
 
+// A name that says nothing about which game it is ("Setup", "bin", "Downloads"), so a better
+// one should be found.
+bool IsGenericName(std::string_view name);
+
 // 0..1 similarity, used to score an executable name against its folder name.
 double Similarity(std::string_view a, std::string_view b);
 

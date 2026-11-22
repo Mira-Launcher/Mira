@@ -227,11 +227,17 @@ std::string CleanGameName(std::string_view directory_name) {
     if (trimmed.starts_with('(') && trimmed.ends_with(')')) continue;
     kept.push_back(trimmed);
   }
-  // An installer's folder ("setup_crate_escape") names the game after its first word.
-  if (kept.size() > 1) {
-    const std::string first = ToLower(kept.front());
-    if (first == "setup" || first == "install" || first == "installer") kept.erase(kept.begin());
-  }
+  // An installer's own words ("setup_crate_escape", "Celeste-Installer") aren't the game's name.
+  const auto installer_word = [](const std::string& token) {
+    const std::string lower = ToLower(token);
+    return lower == "setup" || lower == "install" || lower == "installer" || lower == "offline";
+  };
+  // Only at the ends, and "offline" only at the end ("Game Offline Installer"), so "Offline
+  // Chronicles" and "Quest Setup Pack" keep theirs.
+  while (kept.size() > 1 && installer_word(kept.back())) kept.pop_back();
+  while (kept.size() > 1 && installer_word(kept.front()) && ToLower(kept.front()) != "offline")
+    kept.erase(kept.begin());
+  if (kept.size() == 1 && installer_word(kept.front())) kept.clear();
   if (kept.empty()) return Trim(directory_name);
 
   std::string out;
@@ -307,6 +313,15 @@ std::string EscapeUrl(std::string_view url) {
     }
   }
   return out;
+}
+
+bool IsGenericName(std::string_view name) {
+  static constexpr std::string_view kGeneric[] = {
+      "",      "setup",    "install", "installer", "autorun", "launcher", "game",      "games",
+      "bin",   "binaries", "app",     "program",   "release", "data",     "downloads", "win64",
+      "win32", "x64",      "x86",     "windows",   "content", "files",    "new folder"};
+  const std::string lower = ToLower(Trim(name));
+  return lower.size() < 2 || std::ranges::find(kGeneric, lower) != std::end(kGeneric);
 }
 
 }  // namespace mira::strings

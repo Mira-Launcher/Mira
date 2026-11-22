@@ -21,6 +21,39 @@ std::string NameOf(const fs::path& path) {
       (fs::is_regular_file(path, ec) ? path.stem() : path.filename()).string());
 }
 
+// An installer split in parts (setup.exe beside setup-1.bin, setup-2.bin): the setup and its parts,
+// setup first; empty when `path` is none of one. Each part drops on its own, but they only work
+// together.
+std::vector<fs::path> InstallerParts(const fs::path& path) {
+  std::error_code ec;
+  if (!fs::is_regular_file(path, ec)) return {};
+  const std::string stem = path.stem().string();
+  fs::path setup;
+  if (strings::ToLower(path.extension().string()) == ".exe") {
+    setup = path;
+  } else if (const std::size_t dash = stem.rfind('-'); dash != std::string::npos) {
+    // Its setup, whatever the case of its name ("GAME.EXE" beside "GAME-1.bin").
+    const std::string wanted = strings::ToLower(stem.substr(0, dash) + ".exe");
+    for (const fs::directory_entry& entry : fs::directory_iterator(path.parent_path(), ec)) {
+      if (strings::ToLower(entry.path().filename().string()) == wanted && entry.is_regular_file(ec))
+        setup = entry.path();
+    }
+    if (setup.empty()) return {};
+  } else {
+    return {};
+  }
+  const std::string prefix = setup.stem().string() + "-";
+  std::vector<fs::path> parts{setup};
+  for (const fs::directory_entry& entry : fs::directory_iterator(path.parent_path(), ec)) {
+    const std::string name = entry.path().filename().string();
+    if (entry.is_regular_file(ec) && name.starts_with(prefix) &&
+        strings::ToLower(entry.path().extension().string()) == ".bin")
+      parts.push_back(entry.path());
+  }
+  if (parts.size() == 1) return {};
+  return parts;
+}
+
 }  // namespace
 
 // A Windows, Linux or HTML game, or a folder holding one, rather than a ROM.
@@ -58,13 +91,43 @@ bool IsMiraFoldersOwn(const config::Config& config, const fs::path& path) {
   return false;
 }
 
-void Drops::Sort(const fs::path& path, bool ask) {
+void Drops::Sort(const fs::path& dropped, bool ask) {
   std::error_code ec;
-  if (!fs::exists(path, ec)) return Forget(path);
+  if (!fs::exists(dropped, ec)) return Forget(dropped);
+  fs::path path = dropped;
+  bool gathered = false;
+  if (const std::vector<fs::path> parts = InstallerParts(dropped); !parts.empty()) {
+    // Gathered in a folder of their own and sorted as one game, its .bin parts never as ROMs.
+    if (dropped != parts.front()) return;
+    const fs::path folder = dropped.parent_path() / NameOf(dropped);
+    if (!fs::exists(folder, ec) && fs::create_directory(folder, ec)) {
+      // All or none: a part that won't move puts back the ones that did.
+      std::vector<fs::path> moved;
+      for (const fs::path& part : parts) {
+        fs::rename(part, folder / part.filename(), ec);
+        if (ec) break;
+        moved.push_back(part);
+      }
+      if (ec) {
+        std::error_code undo;
+        for (const fs::path& part : moved) fs::rename(folder / part.filename(), part, undo);
+        fs::remove(folder, undo);
+      }
+    } else if (!ec) {
+      ec = std::make_error_code(std::errc::file_exists);
+    }
+    if (ec) {
+      log::Warn("couldn't gather {}'s parts into {}: {}", dropped.string(), folder.string(),
+                ec.message());
+    } else {
+      path = folder;
+      gathered = true;
+    }
+  }
   std::vector<std::string> emulators;
   for (const emulators::Emulator& emulator : emulators::All()) {
     // Not one that would take the folder around it, the Mira folder itself.
-    if (games_.Source(emulator.id).added && emulators::Takes(emulator, path) &&
+    if (!gathered && games_.Source(emulator.id).added && emulators::Takes(emulator, path) &&
         emulators::AddedSource(emulator, path) == path) {
       emulators.push_back(emulator.id);
     }

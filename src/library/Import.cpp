@@ -13,6 +13,7 @@
 #include "core/Paths.h"
 #include "core/Strings.h"
 #include "library/Detector.h"
+#include "library/PeVersion.h"
 #include "library/Relocate.h"
 #include "metadata/MetadataFetcher.h"
 #include "runner/Exec.h"
@@ -73,6 +74,11 @@ ImportGuess ClassifyImport(const fs::path& dropped) {
   const fs::path path = dropped.has_filename() ? dropped : dropped.parent_path();
   ImportGuess guess;
   guess.name = strings::CleanGameName(NameOf(path));
+  // "setup.exe" in Downloads says nothing; the program's own version info usually names the game.
+  if (std::error_code ec; strings::IsGenericName(guess.name) && fs::is_regular_file(path, ec)) {
+    const std::string product = strings::CleanGameName(PeProductName(path));
+    if (!strings::IsGenericName(product)) guess.name = product;
+  }
 
   std::error_code ec;
   if (fs::is_regular_file(path, ec) && strings::ToLower(path.extension().string()) == ".appimage") {

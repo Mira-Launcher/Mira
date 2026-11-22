@@ -65,22 +65,13 @@ struct InstallProgress {
   std::int64_t estimated_bytes = -1;  // EstimatedInstallBytes of the game's metadata, at the start
 };
 
-// Top-level folders under install.detect_dirs in `prefix`'s drive_c: taken
-// before a launch, so NewInstall can tell what the run installed.
-std::set<std::filesystem::path> InstallFolders(const config::Config& config,
-                                               const std::filesystem::path& prefix);
-
 struct InstalledApp {
   std::filesystem::path dir;
   std::string exe_path;  // relative to dir; empty when no program was found
 };
 
-// A folder added to `prefix` since `before`, preferring one with a program in it.
-std::optional<InstalledApp> NewInstall(const config::Config& config,
-                                       const std::filesystem::path& prefix,
-                                       const std::set<std::filesystem::path>& before);
-
-// InstallFolders plus the user's AppData/Local, where per-user installers put a program.
+// install.detect_dirs' folders, the user's AppData/Local where per-user installers put a program,
+// and folders right in C:\: taken before an installer runs, for NewPrograms and NewInstall.
 std::set<std::filesystem::path> ProgramFolders(const config::Config& config,
                                                const std::filesystem::path& prefix);
 // The program in each folder added to `prefix` since `before` (from ProgramFolders), leaving out
@@ -88,6 +79,15 @@ std::set<std::filesystem::path> ProgramFolders(const config::Config& config,
 std::vector<InstalledApp> NewPrograms(const config::Config& config,
                                       const std::filesystem::path& prefix,
                                       const std::set<std::filesystem::path>& before);
+// The game an installer added: the biggest of NewPrograms, rather than a launcher or a runtime
+// installed beside it.
+std::optional<InstalledApp> NewInstall(const config::Config& config,
+                                       const std::filesystem::path& prefix,
+                                       const std::set<std::filesystem::path>& before);
+// What a program installed in `prefix` is called: GOG's info file, the name its installer
+// registered for the uninstaller, its folder's name, then the exe's product name, skipping generic
+// ones ("Game", "bin"). Empty when all are.
+std::string InstalledName(const std::filesystem::path& prefix, const InstalledApp& app);
 
 // The latest install for `id` since mirad started, if any.
 std::optional<InstallProgress> Progress(const std::string& id);
@@ -135,7 +135,8 @@ Result<void> DeleteInstallerFolder(const config::Config& config, const model::Ga
 bool AutoInstalls(const config::Config& config, const model::Game& game);
 
 // Points `game` at the folder its installer put it in, remembering the installer's folder
-// in installer_dir, and renames it after that folder while it still has its automatic name.
-void AdoptInstallFolder(model::Game& game, const std::string& install_path);
+// in installer_dir, and renames it by InstalledName while it still has its automatic name.
+void AdoptInstallFolder(model::Game& game, const std::string& install_path,
+                        const std::string& exe_path = {}, const std::string& prefix = {});
 
 }  // namespace mira::library
