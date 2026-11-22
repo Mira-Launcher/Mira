@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <map>
+#include <mutex>
+#include <utility>
 
 #include "config/Config.h"
 #include "config/Resolver.h"
@@ -10,6 +12,7 @@
 #include "core/Strings.h"
 #include "emulators/Emulators.h"
 #include "gog/GameInfo.h"
+#include "library/PeVersion.h"
 #include "runner/UmuDatabase.h"
 
 namespace mira::library {
@@ -61,6 +64,25 @@ std::string SteamAppIdFile(const model::Game& game) {
   return {};
 }
 
+// The name the game's exe gives itself, cleaned; empty when it's a generic one ("Launcher").
+// Remembered per exe and its change time, since a resource section can be large.
+std::string ExeTitle(const model::Game& game) {
+  if (game.install_path.empty() || game.exe_path.empty()) return {};
+  const fs::path exe = fs::path(game.install_path) / game.exe_path;
+  std::error_code ec;
+  const auto modified = fs::last_write_time(exe, ec);
+  if (ec) return {};
+  static std::mutex mutex;
+  static std::map<fs::path, std::pair<fs::file_time_type, std::string>> seen;
+  const std::lock_guard lock(mutex);
+  if (const auto it = seen.find(exe); it != seen.end() && it->second.first == modified)
+    return it->second.second;
+  std::string title = strings::CleanGameName(PeProductName(exe));
+  if (strings::IsGenericName(title)) title.clear();
+  seen[exe] = {modified, title};
+  return title;
+}
+
 }  // namespace
 
 GameIdentity Identify(const config::Config& config, const model::Game& game) {
@@ -79,9 +101,14 @@ GameIdentity Identify(const config::Config& config, const model::Game& game) {
   }
 
   std::optional<runner::UmuRow> row = runner::UmuRowFor(config, identity.store, identity.store_id);
+  const bool app = std::ranges::contains(game.tags, std::string("app"));
+  if (game.platform == model::Platform::Windows && !app) identity.exe_title = ExeTitle(game);
   // By title only for games: an app's name ("Word") is no game's.
-  if (!row && !std::ranges::contains(game.tags, std::string("app"))) {
-    row = runner::UmuRowByTitle(config, identity.title.empty() ? game.name : identity.title);
+  if (!app) {
+    for (const std::string* title :
+         {&std::as_const(identity.title), &game.name, &std::as_const(identity.exe_title)}) {
+      if (!row && !title->empty()) row = runner::UmuRowByTitle(config, *title);
+    }
   }
   if (row && identity.title.empty()) identity.title = row->title;
 
@@ -119,6 +146,7 @@ nlohmann::json ToJson(const GameIdentity& identity) {
   put("steam_from", identity.steam_from);
   put("umu_id", identity.umu_id);
   put("title", identity.title);
+  put("exe_title", identity.exe_title);
   return out;
 }
 

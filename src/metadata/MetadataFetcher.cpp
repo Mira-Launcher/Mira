@@ -17,6 +17,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <regex>
 #include <semaphore>
 #include <set>
 #include <span>
@@ -555,18 +556,65 @@ std::string FindSteamAppId(const std::string& name) {
   return {};
 }
 
-// A game's Steam game: library::Identify's, or else the one of its exact name, searched at most
-// once. What a search finds is kept as the metadata's "steam_match", where Identify finds it next.
+// The disk space Steam's minimum requirements ask for, in bytes; 0 when they don't say.
+std::uintmax_t SteamStorageBytes(const std::string& appid) {
+  const json store = CurlJson(
+      {"curl", "-sSL",
+       std::format(
+           "https://store.steampowered.com/api/appdetails?appids={}&filters=pc_requirements",
+           appid)});
+  if (store.is_discarded() || !store.contains(appid)) return 0;
+  const json requirements =
+      Value(Value(store[appid], "data", json::object()), "pc_requirements", json::object());
+  const std::string text =
+      requirements.is_object() ? Value(requirements, "minimum", std::string()) : std::string();
+  // "<strong>Storage:</strong> 50 GB available space"
+  static const std::regex kStorage(
+      R"((storage|hard drive|hard disk|disk space|hdd)[^0-9]{0,40}(\d+(?:[.,]\d+)?)\s*(tb|gb|mb))",
+      std::regex::icase);
+  std::smatch match;
+  if (!std::regex_search(text, match, kStorage)) return 0;
+  std::string number = match[2];
+  std::ranges::replace(number, ',', '.');
+  const std::string unit = strings::ToLower(match[3].str());
+  const double scale = unit == "tb" ? 1e12 : unit == "gb" ? 1e9 : 1e6;
+  return static_cast<std::uintmax_t>(std::strtod(number.c_str(), nullptr) * scale);
+}
+
+// Whether an installed game is far too small to be the Steam game `appid` (a demo or another
+// game of the same name): under a quarter of the space Steam asks for, and at least 2 GB short.
+bool TooSmallFor(const model::Game& game, const std::string& appid) {
+  if (game.install_path.empty() || game.status == model::GameStatus::NeedsInstall ||
+      game.status == model::GameStatus::Missing)
+    return false;
+  const std::uintmax_t needed = SteamStorageBytes(appid);
+  if (needed < 2'000'000'000) return false;
+  const std::uintmax_t has = paths::TreeBytes(game.install_path);
+  return has > 0 && has < needed / 4 && needed - has >= 2'000'000'000;
+}
+
+// A game's Steam game: library::Identify's, or else the one of its exact name (or GOG's or its
+// exe's name for it), searched at most once, unless it's far too small to be that game. What a
+// search finds is kept as the metadata's "steam_match", where Identify finds it next.
 class SteamMatcher {
  public:
-  SteamMatcher(const config::Config& config, const model::Game& game) : name_(game.name) {
+  SteamMatcher(const config::Config& config, const model::Game& game) : game_(game) {
+    const library::GameIdentity identity = library::Identify(config, game);
     // Known from something surer than its name: no search.
-    if (const library::GameIdentity identity = library::Identify(config, game);
-        identity.steam_from != "name")
-      known_ = identity.steam_appid;
+    if (identity.steam_from != "name") known_ = identity.steam_appid;
+    for (const std::string& name : {game.name, identity.title, identity.exe_title}) {
+      if (!name.empty() && !std::ranges::contains(names_, name)) names_.push_back(name);
+    }
   }
   const std::string& operator()() {
-    if (!found_) found_ = known_.empty() ? FindSteamAppId(name_) : known_;
+    if (found_) return *found_;
+    found_ = known_;
+    for (auto name = names_.begin(); found_->empty() && name != names_.end(); ++name)
+      found_ = FindSteamAppId(*name);
+    if (known_.empty() && !found_->empty() && TooSmallFor(game_, *found_)) {
+      log::Info("{} is too small to be Steam app {}; not matching it", game_.name, *found_);
+      found_->clear();
+    }
     return *found_;
   }
   bool Known() const { return !known_.empty(); }
@@ -578,7 +626,8 @@ class SteamMatcher {
   }
 
  private:
-  std::string name_;
+  const model::Game& game_;
+  std::vector<std::string> names_;
   std::string known_;
   std::optional<std::string> found_;
 };
