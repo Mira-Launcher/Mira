@@ -1211,6 +1211,18 @@ Schema::Schema() {
                 "\"1920x1080@120\". Needs Plasma on Wayland.",
          .keywords = "display monitor refresh rate mode"});
 
+  s.Add({.key = "launch.gpu",
+         .label = "GPU",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::PerGame,
+         .doc = "Which graphics card the game runs on, for a PC with two (most gaming laptops). "
+                "Dedicated is faster; integrated uses less battery. Does nothing on a PC with one.",
+         .constraint = Choices({{"", "System's choice"},
+                                {"dedicated", "Dedicated GPU"},
+                                {"integrated", "Integrated GPU"}}),
+         .keywords = "graphics card prime nvidia optimus hybrid laptop discrete"});
+
   s.Group("Scripts");
   s.ResetTogether();
 

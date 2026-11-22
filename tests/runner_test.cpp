@@ -18,6 +18,7 @@
 #include "runner/AntiCheatRuntime.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
+#include "runner/Gpu.h"
 #include "runner/NativeRunner.h"
 #include "runner/ProtonRunner.h"
 #include "runner/RefMigration.h"
@@ -643,4 +644,25 @@ TEST_CASE("a game shipping an anti-cheat gets Steam's runtime for it; a Steam ga
 
   game.runner_ref = "steam:123";
   CHECK(runner::AntiCheatRuntimeEnv(env.config, game)->empty());
+}
+
+TEST_CASE("a hybrid laptop's game runs on the GPU picked for it") {
+  test::TestEnv env("gpu-pick");
+  const fs::path drm = env.dir / "drm";
+  const auto card = [&](const char* name, const char* vendor, const char* device, bool boot) {
+    fs::create_directories(drm / name / "device");
+    std::ofstream(drm / name / "device" / "vendor") << vendor << "\n";
+    std::ofstream(drm / name / "device" / "device") << device << "\n";
+    std::ofstream(drm / name / "device" / "boot_vga") << (boot ? "1" : "0") << "\n";
+  };
+  card("card0", "0x8086", "0xa7a0", true);
+  CHECK(runner::GpuEnv("dedicated", drm).empty());  // one GPU
+
+  card("card1", "0x10de", "0x2860", false);
+  fs::create_directories(drm / "card1-HDMI-A-1");
+  CHECK(runner::GpuEnv("", drm).empty());
+  CHECK(runner::GpuEnv("dedicated", drm).at("__NV_PRIME_RENDER_OFFLOAD") == "1");
+  const auto integrated = runner::GpuEnv("integrated", drm);
+  CHECK(integrated.at("MESA_VK_DEVICE_SELECT") == "8086:a7a0!");
+  CHECK(integrated.at("__VK_LAYER_NV_optimus") == "non_NVIDIA_only");
 }

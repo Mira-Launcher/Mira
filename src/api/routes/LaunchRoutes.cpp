@@ -40,6 +40,7 @@
 #include "runner/AntiCheat.h"
 #include "runner/AntiCheatRuntime.h"
 #include "runner/Exec.h"
+#include "runner/Gpu.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/WindowsTheme.h"
 #include "runner/Winetricks.h"
@@ -296,6 +297,8 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
   ApplyMangoHud(*command, resolver, game, game_mangohud);
   ApplyShaderCache(*command, resolver, game);
   ApplyHdr(*command, resolver);
+  for (const auto& [name, value] : runner::GpuEnv(resolver.GetString("launch.gpu")))
+    command->env.try_emplace(name, value);
   if (resolved->runner->kind() == "proton") {
     auto runtimes = runner::AntiCheatRuntimeEnv(s.config, game);
     if (!runtimes) {
