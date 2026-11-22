@@ -33,6 +33,7 @@
 #include "migrate/Legacy.h"
 #include "migrate/Sources.h"
 #include "runner/RefMigration.h"
+#include "runner/UmuDatabase.h"
 #include "store/GameStore.h"
 #include "updates/Updates.h"
 
@@ -191,6 +192,7 @@ int main(int argc, char** argv) {
     // On a lane, so shutdown stops a download instead of waiting for it.
     services.operations.Post([&services] { services.EnsureWindowsRunner(); });
     services.operations.Post([&services] { services.EnsureEosOverlay(); });
+    services.operations.Post([&config] { mira::runner::RefreshUmuDatabase(config); });
   });
 
   services.downloads.Start();

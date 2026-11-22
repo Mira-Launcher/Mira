@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <format>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <set>
 #include <string>
 #include <string_view>
@@ -11,6 +13,8 @@
 #include "core/Files.h"
 #include "core/Strings.h"
 #include "steam/BinaryVdf.h"
+#include "steam/SteamDetector.h"
+#include "steam/Vdf.h"
 
 namespace mira::steam {
 namespace {
@@ -215,6 +219,79 @@ std::optional<AppSize> AppSizeFromAppCache(const fs::path& steam_root, const std
         if (size.install_bytes >= 0 || size.download_bytes >= 0) found = size;
       });
   return found;
+}
+
+namespace {
+
+// Valve's Steam Play config: the compat tool each mapped app runs with, and each tool's appid by
+// its name and its aliases ("proton-stable").
+struct SteamPlayConfig {
+  fs::file_time_type read_at{};
+  std::map<std::string, std::string> tool_by_app;
+  std::map<std::string, std::uint32_t> tool_appids;
+};
+
+SteamPlayConfig ReadSteamPlayConfig(const fs::path& steam_root) {
+  SteamPlayConfig config;
+  ForEachApp(
+      steam_root, [](std::uint32_t id) { return id == 891390; },
+      [&config](std::uint32_t, Node& app) {
+        Node* extended = app.Child("extended");
+        if (extended == nullptr) return;
+        if (Node* tools = extended->Child("compat_tools")) {
+          for (Node& tool : tools->children) {
+            Node* appid = tool.Child("appid");
+            if (appid == nullptr || appid->type != kInt) continue;
+            const auto id = static_cast<std::uint32_t>(appid->Int32());
+            config.tool_appids[tool.name] = id;
+            for (const std::string& alias : strings::Split(Text(&tool, "aliases"), ','))
+              config.tool_appids.try_emplace(strings::Trim(alias), id);
+          }
+        }
+        if (Node* mappings = extended->Child("app_mappings")) {
+          for (Node& mapping : mappings->children) {
+            const std::string tool = Text(&mapping, "tool");
+            if (!tool.empty()) config.tool_by_app[mapping.name] = tool;
+          }
+        }
+      });
+  return config;
+}
+
+}  // namespace
+
+std::optional<fs::path> ValveProtonFor(const fs::path& steam_root, const std::string& appid) {
+  // appinfo.vdf runs to hundreds of MB on a big account, so it's read once per change.
+  static std::mutex mutex;
+  static std::map<fs::path, SteamPlayConfig> cache;
+  std::error_code ec;
+  const auto modified = fs::last_write_time(steam_root / "appcache" / "appinfo.vdf", ec);
+  if (ec) return std::nullopt;
+  std::uint32_t tool_appid = 0;
+  {
+    const std::lock_guard lock(mutex);
+    SteamPlayConfig& config = cache[steam_root];
+    if (config.read_at != modified) {
+      config = ReadSteamPlayConfig(steam_root);
+      config.read_at = modified;
+    }
+    const auto tool = config.tool_by_app.find(appid);
+    if (tool == config.tool_by_app.end()) return std::nullopt;
+    const auto id = config.tool_appids.find(tool->second);
+    if (id == config.tool_appids.end()) return std::nullopt;
+    tool_appid = id->second;
+  }
+  for (const fs::path& library : LibraryFolders(steam_root)) {
+    const fs::path steamapps = library / "steamapps";
+    const auto text = files::ReadFile(steamapps / std::format("appmanifest_{}.acf", tool_appid));
+    if (!text) continue;
+    const auto parsed = ParseVdf(*text);
+    const VdfValue* dir = parsed ? parsed->Get({"appstate", "installdir"}) : nullptr;
+    if (dir == nullptr || !dir->scalar) continue;
+    const fs::path folder = steamapps / "common" / *dir->scalar;
+    if (fs::exists(folder / "proton", ec)) return folder;
+  }
+  return std::nullopt;
 }
 
 }  // namespace mira::steam

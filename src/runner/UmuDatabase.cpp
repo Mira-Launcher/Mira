@@ -1,0 +1,202 @@
+#include "runner/UmuDatabase.h"
+
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <chrono>
+#include <fstream>
+#include <map>
+#include <mutex>
+#include <string_view>
+#include <vector>
+
+#include "config/Config.h"
+#include "core/Log.h"
+#include "core/Paths.h"
+#include "core/Strings.h"
+#include "runner/Curl.h"
+
+namespace mira::runner {
+namespace {
+
+namespace fs = std::filesystem;
+
+constexpr auto kMaxAge = std::chrono::days(7);
+
+// Stores protonfixes keeps a folder of fixes for; any other runs as "umu".
+constexpr std::array<std::string_view, 10> kFixStores = {
+    "amazon", "battlenet", "ea",    "egs",     "gog",
+    "humble", "itchio",    "steam", "ubisoft", "zoomplatform"};
+
+struct Row {
+  std::string title;
+  std::string store;
+  std::string codename;
+  std::string umu_id;
+};
+
+struct Database {
+  fs::path file;
+  fs::file_time_type loaded_at{};
+  std::map<std::pair<std::string, std::string>, Row> by_code;  // (store, codename)
+  std::map<std::string, std::vector<Row>> by_title;            // Slugify(title)
+};
+
+std::mutex& DatabaseMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+fs::path DatabaseFile() {
+  return paths::EnvOr("XDG_CACHE_HOME", paths::Home() / ".cache") / "mira" / "umu-database.csv";
+}
+
+// One CSV line's fields; quoted fields may hold commas and "" for a quote.
+std::vector<std::string> CsvFields(const std::string& line) {
+  std::vector<std::string> fields(1);
+  bool quoted = false;
+  for (size_t i = 0; i < line.size(); ++i) {
+    const char c = line[i];
+    if (quoted && c == '"' && i + 1 < line.size() && line[i + 1] == '"') {
+      fields.back() += '"';
+      ++i;
+    } else if (c == '"') {
+      quoted = !quoted;
+    } else if (c == ',' && !quoted) {
+      fields.emplace_back();
+    } else if (c != '\r') {
+      fields.back() += c;
+    }
+  }
+  return fields;
+}
+
+// The database, reread when the file on disk changes. Callers hold DatabaseMutex().
+const Database& Load() {
+  static Database db;
+  std::error_code ec;
+  const fs::path file = DatabaseFile();
+  const auto modified = fs::last_write_time(file, ec);
+  if (ec) db = Database{};
+  if (ec || (file == db.file && modified == db.loaded_at)) return db;
+  db = Database{};
+  db.file = file;
+  db.loaded_at = modified;
+  std::ifstream in(file);
+  std::string line;
+  std::getline(in, line);  // the header
+  while (std::getline(in, line)) {
+    std::vector<std::string> f = CsvFields(line);
+    if (f.size() < 4 || !f[3].starts_with("umu-")) continue;
+    Row row{.title = strings::Trim(f[0]), .store = f[1], .codename = f[2], .umu_id = f[3]};
+    if (row.store != "none") db.by_code.emplace(std::pair{row.store, row.codename}, row);
+    db.by_title[strings::Slugify(row.title)].push_back(std::move(row));
+  }
+  return db;
+}
+
+// The game's store as umu names it, and its id there.
+std::pair<std::string, std::string> StoreCode(const model::Game& game) {
+  if (const auto it = game.runner_config.find("store");
+      it != game.runner_config.end() && it->is_string()) {
+    return {it->get<std::string>(), game.source_ref.substr(0, game.source_ref.find(','))};
+  }
+  static const std::map<std::string, std::string, std::less<>> kStores = {{"epic", "egs"},
+                                                                          {"gog", "gog"},
+                                                                          {"amazon", "amazon"},
+                                                                          {"humble", "humble"},
+                                                                          {"itch", "itchio"}};
+  std::string source = game.source;
+  std::string ref = game.source_ref;
+  // Heroic's refs are "<store>:<id>".
+  if (source == "heroic") {
+    const auto colon = ref.find(':');
+    if (colon == std::string::npos) return {};
+    source = ref.substr(0, colon);
+    ref = ref.substr(colon + 1);
+  }
+  const auto it = kStores.find(source);
+  return it == kStores.end() ? std::pair<std::string, std::string>{} : std::pair{it->second, ref};
+}
+
+}  // namespace
+
+void RefreshUmuDatabase(const config::Config& config) {
+  if (!config.GetBool("umu.match")) return;
+  const fs::path file = DatabaseFile();
+  std::error_code ec;
+  const auto modified = fs::last_write_time(file, ec);
+  if (!ec && fs::file_time_type::clock::now() - modified < kMaxAge) return;
+  fs::create_directories(file.parent_path(), ec);
+  const fs::path partial = file.string() + ".part";
+  if (auto got = CurlDownload(config.GetString("umu.database_url"), partial, 16 << 20); !got) {
+    log::Warn("could not download the umu database: {}", got.error().message);
+    return;
+  }
+  fs::rename(partial, file, ec);
+  if (ec) log::Warn("could not save the umu database: {}", ec.message());
+}
+
+std::optional<UmuMatch> FindUmu(const config::Config& config, const model::Game& game) {
+  if (!config.GetBool("umu.match") || game.platform != model::Platform::Windows) return {};
+  const std::lock_guard lock(DatabaseMutex());
+  const Database& db = Load();
+  const auto [store, code] = StoreCode(game);
+  if (!store.empty()) {
+    if (const auto it = db.by_code.find({store, code}); it != db.by_code.end())
+      return UmuMatch{it->second.umu_id, store, it->second.title};
+  }
+  // A title only counts when every row with it is the same game. Apps aren't in it.
+  if (game.name.empty() || std::ranges::contains(game.tags, std::string("app"))) return {};
+  const auto it = db.by_title.find(strings::Slugify(game.name));
+  if (it == db.by_title.end()) return {};
+  const std::vector<Row>& rows = it->second;
+  if (std::ranges::any_of(rows, [&](const Row& r) { return r.umu_id != rows[0].umu_id; }))
+    return {};
+  return UmuMatch{rows[0].umu_id, store.empty() ? "none" : store, rows[0].title};
+}
+
+UmuMatch UmuIdentity(const config::Config& config, const model::Game& game) {
+  const auto text = [&](const char* key) {
+    const auto it = game.runner_config.find(key);
+    return it != game.runner_config.end() && it->is_string() ? it->get<std::string>()
+                                                             : std::string();
+  };
+  UmuMatch identity{.gameid = text("gameid"), .store = text("store"), .title = {}};
+  if (identity.gameid.empty()) {
+    if (auto match = FindUmu(config, game)) {
+      if (identity.store.empty()) identity.store = match->store;
+      identity.gameid = match->gameid;
+      identity.title = match->title;
+    }
+  }
+  if (identity.store.empty()) identity.store = StoreCode(game).first;
+  // Without a GAMEID every game runs as umu-default, so Proton gives all of their windows the same
+  // class (steam_app_default) and desktops group them as one app. umu only accepts letters, digits
+  // and underscores after "umu-".
+  if (identity.gameid.empty() || identity.gameid == "none") {
+    identity.gameid = "umu-mira_";
+    for (const char ch : game.id) {
+      if (std::isalnum(static_cast<unsigned char>(ch))) identity.gameid.push_back(ch);
+    }
+  }
+  return identity;
+}
+
+bool HasProtonFix(const fs::path& build_dir, const UmuMatch& identity) {
+  const std::string& id = identity.gameid;
+  if (id.empty() || id.starts_with("umu-mira_")) return false;
+  // protonfixes' own lookup: a bare number is a Steam appid, else the store's folder.
+  std::string store = std::ranges::all_of(id, ::isdigit) ? "steam" : identity.store;
+  if (!std::ranges::contains(kFixStores, store)) store = "umu";
+  std::error_code ec;
+  return fs::exists(build_dir / "protonfixes" / ("gamefixes-" + store) / (id + ".py"), ec);
+}
+
+std::string SteamAppId(const std::string& gameid) {
+  const std::string digits = gameid.starts_with("umu-") ? gameid.substr(4) : gameid;
+  if (digits.empty() || !std::ranges::all_of(digits, ::isdigit)) return "";
+  return digits;
+}
+
+}  // namespace mira::runner

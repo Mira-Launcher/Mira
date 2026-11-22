@@ -130,9 +130,9 @@ EnvVar::~EnvVar() {
 
 void Isolate(config::Config& config) {
   for (const char* key :
-       {"metadata.enabled", "metadata.steam_art_by_name", "metadata.steam_by_name",
-        "launchers.umu_lookup", "steam.import_playtime", "runner_scan_common_dirs", "tags.steam",
-        "achievements.enabled", "saves.cloud"}) {
+       {"metadata.enabled", "metadata.steam_art_by_name", "metadata.steam_by_name", "umu.match",
+        "steam.import_playtime", "runner_scan_common_dirs", "tags.steam", "achievements.enabled",
+        "saves.cloud"}) {
     [[maybe_unused]] auto off = config.Set(key, false);
   }
   // Every folder Mira reads or writes, moved next to the settings file.

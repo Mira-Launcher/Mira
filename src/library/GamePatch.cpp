@@ -8,6 +8,7 @@
 #include "library/Detector.h"
 #include "library/FolderTags.h"
 #include "library/LaunchOptions.h"
+#include "runner/RunnerRegistry.h"
 
 namespace mira::library {
 using nlohmann::json;
@@ -45,6 +46,7 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   if (patch.contains("working_dir") && patch["working_dir"].is_string()) {
     game.working_dir = patch["working_dir"];
   }
+  const std::string runner_before = game.runner_ref;
   if (patch.contains("runner_ref") && patch["runner_ref"].is_string()) {
     game.runner_ref = patch["runner_ref"];
   } else if ((game.platform == model::Platform::Web) != game.runner_ref.starts_with("browser:") &&
@@ -58,6 +60,8 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   if (patch.contains("runner_config") && patch["runner_config"].is_object()) {
     game.runner_config.merge_patch(patch["runner_config"]);
   }
+  // A runner chosen by hand stays.
+  if (game.runner_ref != runner_before) game.runner_config.erase(runner::kAutoPicked);
   // Replaced, not merged; {"tags": []} clears them.
   if (patch.contains("tags") && patch["tags"].is_array()) {
     game.tags.clear();

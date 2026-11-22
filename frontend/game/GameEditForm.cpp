@@ -486,6 +486,11 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   patch.runner_config_json = game.runner_config_json;
   patch.launch = game.launch;
   default_runner_ = game.default_runner;
+  runner_defaults_.clear();
+  if (!game.umu_gameid.empty()) {
+    runner_defaults_["gameid"] = game.umu_gameid + " (umu database)";
+    runner_defaults_["store"] = game.umu_store;
+  }
   tags_edit_->SetFolderTags(game.folder_tags);
   original_pick_ = game.folder_tag;
   ShowPatch(patch);
@@ -627,6 +632,10 @@ void GameEditForm::ShowRunnerFieldValues() {
                         : it->is_string()          ? QString::fromStdString(it->get<std::string>())
                                                    : QString::fromStdString(it->dump()));
     field.edit->setCursorPosition(0);
+    const auto shown = runner_defaults_.find(field.key);
+    field.edit->setPlaceholderText(shown != runner_defaults_.end() && !shown->second.empty()
+                                       ? QString::fromStdString(shown->second)
+                                       : QString("Not set"));
     set += it != runner_config_.end();
   }
   runner_options_->SetSummary(set == 0 ? QString("Not set") : QString("%1 set").arg(set));

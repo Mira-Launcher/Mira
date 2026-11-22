@@ -845,6 +845,30 @@ Schema::Schema() {
          .doc = "The first time a Windows game with no runner launches, remember which Proton or "
                 "Wine build was chosen and keep using it."});
 
+  s.Group("Game fixes");
+
+  s.Add({.key = "umu.match",
+         .label = "Find games in the umu database",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Match Windows games to the umu database by their store id, or else their exact "
+                "title, so Proton applies their protonfixes. The database is downloaded weekly; "
+                "nothing about your games is sent."});
+
+  s.Add({.key = "umu.database_url",
+         .label = "umu database",
+         .type = Type::String,
+         .default_value = "https://raw.githubusercontent.com/Open-Wine-Components/umu-database/"
+                          "main/umu-database.csv",
+         .doc = "Where the umu database is downloaded from."});
+
+  s.Add({.key = "runners.pick_per_game",
+         .label = "Pick Proton per game",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "For a game with no runner chosen, prefer a Proton build that has a fix for it, "
+                "else the Proton Steam uses for it. A runner you choose is always kept."});
+
   s.Group("Per store");
 
   for (const auto& [id, name] :
@@ -1420,13 +1444,6 @@ Schema::Schema() {
                 "login, before Mira stops tracking it.",
          .constraint = Range(10, 3600),
          .unit = "s"});
-
-  s.Add({.key = "launchers.umu_lookup",
-         .label = "Look up umu game IDs",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Look up each newly imported launcher game at umu.openwinecomponents.org so its "
-                "protonfixes apply. Only the store name and the game's store id are sent."});
 
   s.Group("Launcher fixes");
 

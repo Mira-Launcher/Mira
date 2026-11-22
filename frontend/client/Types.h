@@ -585,6 +585,9 @@ struct GameDetail {
   std::string env_json;
   // What an empty runner_ref runs with ("proton:auto"), from GET /v1/games/{id} only.
   std::string default_runner;
+  // What the umu database matched it to ("umu-397540", "gog"), from GET /v1/games/{id} only.
+  std::string umu_gameid;
+  std::string umu_store;
   std::vector<Candidate> candidates;
   std::vector<std::string> tags;
   std::string sort_root;  // as GameSummary's

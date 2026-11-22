@@ -24,6 +24,7 @@
 #include "library/SourceRemoval.h"
 #include "proc/Session.h"
 #include "runner/RunnerRegistry.h"
+#include "runner/UmuDatabase.h"
 #include "saves/Backups.h"
 #include "saves/Resolve.h"
 
@@ -90,6 +91,10 @@ void RegisterGameRoutes(Router& http, Services& s) {
     model::Game unpinned = *game;
     unpinned.runner_ref.clear();
     body["default_runner"] = runner::RunnerRegistry(s.config).ResolveRef(unpinned);
+    // What protonfixes knows it by when its runner options don't say.
+    if (const auto umu = runner::FindUmu(s.config, *game)) {
+      body["umu_match"] = {{"gameid", umu->gameid}, {"store", umu->store}, {"title", umu->title}};
+    }
     SendJson(res, body);
   });
 

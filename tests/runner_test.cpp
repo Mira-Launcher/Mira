@@ -12,11 +12,14 @@
 
 #include "config/Config.h"
 #include "config/Schema.h"
+#include "library/GamePatch.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "runner/NativeRunner.h"
+#include "runner/ProtonRunner.h"
 #include "runner/RefMigration.h"
 #include "runner/RunnerRegistry.h"
+#include "runner/UmuDatabase.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -434,4 +437,105 @@ TEST_CASE(
   REQUIRE(pid.has_value());
   CHECK(WIFEXITED(status));
   CHECK(WEXITSTATUS(status) == 0);
+}
+
+namespace {
+
+void WriteUmuDatabase(const fs::path& cache) {
+  fs::create_directories(cache / "mira");
+  std::ofstream(cache / "mira" / "umu-database.csv")
+      << "TITLE,STORE,CODENAME,UMU_ID,COMMON ACRONYM (Optional),NOTE (Optional)\n"
+         "Age of Wonders,gog,1207658883,umu-61500,aow,\"a note, with a comma\"\n"
+         "Age of Wonders,humble,ageofwonders,umu-61500,aow,\n"
+         "Twin,none,none,umu-1,,\n"
+         "Twin,none,none,umu-2,,\n";
+}
+
+// A Proton build Discover finds, with a protonfixes fix at `fixes` when set.
+void FakeProton(const fs::path& dir, const std::string& name, int timestamp,
+                const std::string& fixes = "") {
+  fs::create_directories(dir / name);
+  std::ofstream(dir / name / "proton").close();
+  std::ofstream(dir / name / "toolmanifest.vdf").close();
+  std::ofstream(dir / name / "version") << timestamp << " " << name;
+  if (!fixes.empty()) {
+    const fs::path fix = dir / name / "protonfixes" / fixes;
+    fs::create_directories(fix.parent_path());
+    std::ofstream(fix).close();
+  }
+}
+
+}  // namespace
+
+TEST_CASE("a game's umu GAMEID: its own setting, else the umu database, else its own id") {
+  test::TestEnv env("umu-identity");
+  REQUIRE(env.config.Set("umu.match", true));
+  WriteUmuDatabase(env.dir / "cache");
+
+  model::Game gog;
+  gog.id = "gog-aow";
+  gog.name = "AoW";
+  gog.source = "gog";
+  gog.source_ref = "1207658883";
+  gog.platform = model::Platform::Windows;
+  runner::UmuMatch id = runner::UmuIdentity(env.config, gog);
+  CHECK(id.gameid == "umu-61500");
+  CHECK(id.store == "gog");
+
+  // A folder game by its exact title; an ambiguous title matches nothing.
+  model::Game scanned;
+  scanned.id = "aow";
+  scanned.name = "Age of Wonders";
+  scanned.platform = model::Platform::Windows;
+  id = runner::UmuIdentity(env.config, scanned);
+  CHECK(id.gameid == "umu-61500");
+  CHECK(id.store == "none");
+  scanned.name = "Twin";
+  CHECK(runner::UmuIdentity(env.config, scanned).gameid == "umu-mira_aow");
+
+  gog.runner_config["gameid"] = "umu-7";
+  CHECK(runner::UmuIdentity(env.config, gog).gameid == "umu-7");
+  gog.runner_config["gameid"] = "none";
+  id = runner::UmuIdentity(env.config, gog);
+  CHECK(id.gameid == "umu-mira_gogaow");
+  CHECK(id.store == "gog");
+}
+
+TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked game to it") {
+  test::TestEnv env("umu-auto-pick");
+  REQUIRE(env.config.Set("umu.match", true));
+  WriteUmuDatabase(env.dir / "cache");
+  fs::create_directories(runner::BundledUmuRun().parent_path());
+  std::ofstream(runner::BundledUmuRun()).close();
+  const fs::path dir = env.dir / "proton";
+  REQUIRE(env.config.Set("runner_search_paths", nlohmann::json::array({dir.string()})));
+  FakeProton(dir, "GE-Proton11-1", 1800000000);
+
+  model::Game game;
+  game.id = "gog-aow";
+  game.name = "AoW";
+  game.source = "gog";
+  game.source_ref = "1207658883";
+  game.platform = model::Platform::Windows;
+  game.data_dir = (env.dir / "prefix").string();
+  game.runner_ref = "proton:GE-Proton11-1";
+  game.runner_config[runner::kAutoPicked] = true;
+  CHECK_FALSE(runner::RunnerRegistry(env.config).BetterAutoPick(game));
+
+  FakeProton(dir, "UMU-Proton-9.0", 1700000000, "gamefixes-gog/umu-61500.py");
+  const runner::RunnerRegistry registry(env.config);
+  const auto resolved = registry.Resolve("proton:auto", &game);
+  REQUIRE(resolved);
+  CHECK(resolved->build->name == "UMU-Proton-9.0");
+  CHECK(registry.Resolve("proton:auto")->build->name == "GE-Proton11-1");
+  const auto better = registry.BetterAutoPick(game);
+  REQUIRE(better);
+  CHECK(better->name == "UMU-Proton-9.0");
+
+  // Chosen by hand: kept.
+  game.runner_ref = "proton:UMU-Proton-9.0";
+  const model::Game picked =
+      library::ParseGamePatch(game, {{"runner_ref", "proton:GE-Proton11-1"}});
+  CHECK_FALSE(picked.runner_config.contains(runner::kAutoPicked));
+  CHECK_FALSE(registry.BetterAutoPick(picked));
 }

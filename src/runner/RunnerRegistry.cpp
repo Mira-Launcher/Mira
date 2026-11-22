@@ -19,7 +19,10 @@
 #include "runner/NativeRunner.h"
 #include "runner/ProtonRunner.h"
 #include "runner/SteamRunner.h"
+#include "runner/UmuDatabase.h"
 #include "runner/WineRunner.h"
+#include "steam/AppCache.h"
+#include "steam/SteamDetector.h"
 #include "system/Packages.h"
 
 namespace mira::runner {
@@ -48,11 +51,35 @@ std::int64_t ParseVersion(const std::string& version) {
   return major * 1000 + minor;
 }
 
-// "auto"'s order: a build the distro packages (kept current by the package
-// manager, and tuned for that system), then Mira's preferred families, then
-// the newest.
-std::tuple<bool, int, std::int64_t> AutoRank(const config::Config& config,
-                                             const model::RunnerBuild& build) {
+// What fits one game: a build with its protonfix, then the Proton Steam picks for it.
+struct GameFit {
+  std::optional<UmuMatch> identity;
+  std::optional<std::filesystem::path> valve;
+};
+
+GameFit FitFor(const config::Config& config, const model::Game* game) {
+  if (game == nullptr || !config.GetBool("runners.pick_per_game")) return {};
+  GameFit fit{.identity = UmuIdentity(config, *game), .valve = std::nullopt};
+  const std::string appid = SteamAppId(fit.identity->gameid);
+  if (!appid.empty()) {
+    if (const auto root = steam::FindSteamRoot(config))
+      fit.valve = steam::ValveProtonFor(*root, appid);
+  }
+  return fit;
+}
+
+std::pair<bool, bool> FitRank(const GameFit& fit, const model::RunnerBuild& build) {
+  std::error_code ec;
+  const bool fixed = fit.identity && HasProtonFix(build.path, *fit.identity);
+  const bool valve = fit.valve && std::filesystem::equivalent(*fit.valve, build.path, ec);
+  return {fixed, valve};
+}
+
+// "auto"'s order: what fits the game, then a build the distro packages (kept current by the
+// package manager, and tuned for that system), then Mira's preferred families, then the newest.
+std::tuple<bool, bool, bool, int, std::int64_t> AutoRank(const config::Config& config,
+                                                         const GameFit& fit,
+                                                         const model::RunnerBuild& build) {
   const bool packaged = build.path.starts_with("/usr/") || build.path.starts_with("/opt/");
   const std::vector<RunnerFamily> families = Families(config, build.kind);
   const std::filesystem::path dir =
@@ -63,14 +90,22 @@ std::tuple<bool, int, std::int64_t> AutoRank(const config::Config& config,
     const auto at = std::ranges::find(families, family->id, &RunnerFamily::id);
     preference = static_cast<int>(families.end() - at);
   }
-  return {packaged, preference, ParseVersion(build.version)};
+  const auto [fixed, valve] = FitRank(fit, build);
+  return {fixed, valve, packaged, preference, ParseVersion(build.version)};
+}
+
+const model::RunnerBuild& PickFor(const config::Config& config,
+                                  const std::vector<model::RunnerBuild>& builds,
+                                  const GameFit& fit) {
+  return *std::ranges::max_element(
+      builds, {}, [&](const model::RunnerBuild& build) { return AutoRank(config, fit, build); });
 }
 
 }  // namespace
 
 RunnerRegistry::RunnerRegistry(config::Config& config) : config_(config) {
   auto native = std::make_unique<NativeRunner>();
-  auto proton = std::make_unique<ProtonRunner>();
+  auto proton = std::make_unique<ProtonRunner>(config);
   auto wine = std::make_unique<WineRunner>();
   auto steam = std::make_unique<SteamRunner>();
   runners_[native->kind()] = std::move(native);
@@ -107,8 +142,7 @@ std::vector<model::RunnerBuild> DeduplicateBuilds(std::vector<model::RunnerBuild
 
 const model::RunnerBuild& PickAuto(const config::Config& config,
                                    const std::vector<model::RunnerBuild>& builds) {
-  return *std::ranges::max_element(
-      builds, {}, [&](const model::RunnerBuild& build) { return AutoRank(config, build); });
+  return PickFor(config, builds, {});
 }
 
 const std::vector<model::RunnerBuild>& RunnerRegistry::BuildsFor(const std::string& kind) const {
@@ -137,7 +171,8 @@ const IRunner* RunnerRegistry::FindByKind(const std::string& kind) const {
   return it == runners_.end() ? nullptr : it->second.get();
 }
 
-Result<RunnerRegistry::Resolved> RunnerRegistry::Resolve(const std::string& runner_ref) const {
+Result<RunnerRegistry::Resolved> RunnerRegistry::Resolve(const std::string& runner_ref,
+                                                         const model::Game* game) const {
   const auto colon = runner_ref.find(':');
   if (colon == std::string::npos) {
     return Err("invalid_runner_ref", std::format("\"{}\" is not \"kind:name\"", runner_ref));
@@ -168,8 +203,11 @@ Result<RunnerRegistry::Resolved> RunnerRegistry::Resolve(const std::string& runn
   }
 
   // Browsers are found best first; the others are ranked.
-  if (name == "auto")
-    return Resolved{runner, kind == "browser" ? builds.front() : PickAuto(config_, builds)};
+  if (name == "auto" && kind == "browser") return Resolved{runner, builds.front()};
+  if (name == "auto") {
+    return Resolved{runner,
+                    PickFor(config_, builds, kind == "proton" ? FitFor(config_, game) : GameFit{})};
+  }
   if (name == "latest") {
     auto newest = std::ranges::max_element(
         builds, {}, [](const model::RunnerBuild& build) { return ParseVersion(build.version); });
@@ -214,6 +252,22 @@ std::optional<model::RunnerBuild> RunnerRegistry::StandIn(const std::string& run
   return *newest;
 }
 
+std::optional<model::RunnerBuild> RunnerRegistry::BetterAutoPick(const model::Game& game) const {
+  const auto picked = game.runner_config.find(kAutoPicked);
+  if (picked == game.runner_config.end() || *picked != true ||
+      !game.runner_ref.starts_with("proton:"))
+    return std::nullopt;
+  const GameFit fit = FitFor(config_, &game);
+  if (!fit.identity) return std::nullopt;
+  const std::vector<model::RunnerBuild>& builds = BuildsFor("proton");
+  const auto pinned = std::ranges::find(builds, game.runner_ref, &model::RunnerBuild::Reference);
+  if (builds.empty() || pinned == builds.end()) return std::nullopt;
+  const model::RunnerBuild& best = PickFor(config_, builds, fit);
+  // Only for what fits the game: a newer build alone never moves a working game.
+  if (FitRank(fit, best) <= FitRank(fit, *pinned)) return std::nullopt;
+  return best;
+}
+
 std::string RunnerRegistry::ResolveRef(const model::Game& game) const {
   std::string ref = game.runner_ref;
   // Stores with a <source>.runner key can set their own default.
@@ -250,7 +304,7 @@ std::unique_lock<std::mutex> LockPrefix(const std::string& data_dir) {
 
 model::Game RunnerRegistry::ProvisionGame(model::Game game) const {
   const std::string ref = ResolveRef(game);
-  const Result<Resolved> resolved = Resolve(ref);
+  const Result<Resolved> resolved = Resolve(ref, &game);
   if (!resolved) {
     game.status = model::GameStatus::Broken;
     game.last_error = resolved.error().message;
@@ -259,6 +313,8 @@ model::Game RunnerRegistry::ProvisionGame(model::Game game) const {
 
   // Pin the concrete build, not "latest". A Proton update afterwards must
   // not silently change a working game's runtime.
+  if (resolved->build && (game.runner_ref.empty() || ref.ends_with(":auto")))
+    game.runner_config[kAutoPicked] = true;
   game.runner_ref =
       resolved->build ? std::format("{}:{}", resolved->runner->kind(), resolved->build->name) : ref;
 

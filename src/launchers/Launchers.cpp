@@ -36,6 +36,7 @@
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/RunnerUpdates.h"
+#include "runner/UmuDatabase.h"
 #include "runner/Winetricks.h"
 #include "system/Packages.h"
 
@@ -1046,11 +1047,10 @@ Result<Command> BuildCommand(config::Config& config, const store::GameStore& gam
   }
   // The game's own id, so its window is its own app rather than the launcher's.
   run_as.id = game.id;
-  if (const auto gameid = game.runner_config.find("gameid"); gameid != game.runner_config.end()) {
-    run_as.runner_config["gameid"] = *gameid;
-  } else {
-    run_as.runner_config.erase("gameid");
-  }
+  // And the game's own protonfixes, not the launcher's.
+  const runner::UmuMatch identity = runner::UmuIdentity(config, game);
+  run_as.runner_config["gameid"] = identity.gameid;
+  if (!identity.store.empty()) run_as.runner_config["store"] = identity.store;
   for (const auto& [key, value] : game.env) run_as.env[key] = value;
   auto command = resolved->runner->BuildCommand(run_as, resolved->build);
   if (!command) return std::unexpected(command.error());

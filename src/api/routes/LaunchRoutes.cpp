@@ -223,18 +223,28 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
     s.RepointRemovedRunners();
     if (const auto moved = s.games.Find(game.id)) game.runner_ref = moved->runner_ref;
   }
+  // A build "auto" picked, moved to one with the game's fix once there is one.
+  if (const auto better = registry.BetterAutoPick(game)) {
+    log::Info("{}: {} fits it better than {}", game.id, better->Reference(), game.runner_ref);
+    game.runner_ref = better->Reference();
+    [[maybe_unused]] auto _ =
+        s.games.Update(game.id, [&](model::Game& g) { g.runner_ref = better->Reference(); });
+  }
   auto resolved = program && program->native
                       ? Result<runner::RunnerRegistry::Resolved>(
                             runner::RunnerRegistry::Resolved{registry.FindByKind("native"), {}})
-                      : registry.Resolve(registry.ResolveRef(game));
+                      : registry.Resolve(registry.ResolveRef(game), &game);
   if (!resolved) return std::unexpected(resolved.error());
 
   if (game.runner_ref.empty() && resolved->build && s.config.GetBool("launch.pin_runner")) {
     const std::string pinned =
         std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
     game.runner_ref = pinned;
-    [[maybe_unused]] auto _ =
-        s.games.Update(game.id, [&](model::Game& g) { g.runner_ref = pinned; });
+    game.runner_config[runner::kAutoPicked] = true;
+    [[maybe_unused]] auto _ = s.games.Update(game.id, [&](model::Game& g) {
+      g.runner_ref = pinned;
+      g.runner_config[runner::kAutoPicked] = true;
+    });
   }
 
   model::Game target = game;

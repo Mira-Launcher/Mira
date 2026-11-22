@@ -31,4 +31,9 @@ struct AppSize {
 std::optional<AppSize> AppSizeFromAppCache(const std::filesystem::path& steam_root,
                                            const std::string& appid);
 
+// The folder of the Proton Valve's Steam Play config picks for `appid` (app 891390's
+// app_mappings), when that Proton is installed in one of Steam's libraries.
+std::optional<std::filesystem::path> ValveProtonFor(const std::filesystem::path& steam_root,
+                                                    const std::string& appid);
+
 }  // namespace mira::steam
