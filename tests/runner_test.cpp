@@ -669,3 +669,23 @@ TEST_CASE("a hybrid laptop's game runs on the GPU picked for it") {
   CHECK(integrated.at("MESA_VK_DEVICE_SELECT") == "8086:a7a0!");
   CHECK(integrated.at("__VK_LAYER_NV_optimus") == "non_NVIDIA_only");
 }
+
+TEST_CASE("ray tracing and upscaler flags follow the GPU a game runs on") {
+  test::TestEnv env("gpu-kind");
+  const fs::path drm = env.dir / "drm";
+  const auto card = [&](const char* name, const char* device, const char* vram) {
+    fs::create_directories(drm / name / "device");
+    std::ofstream(drm / name / "device" / "vendor") << "0x1002\n";
+    std::ofstream(drm / name / "device" / "device") << device << "\n";
+    std::ofstream(drm / name / "device" / "mem_info_vram_total") << vram << "\n";
+  };
+  card("card0", "0x15bf", "536870912");  // an APU's 512 MB
+  CHECK(runner::GameGpuFor("", drm).integrated);
+
+  card("card1", "0x7550", "17163091968");  // an RX 9070 XT
+  const runner::GameGpu any = runner::GameGpuFor("", drm);
+  CHECK_FALSE(any.integrated);
+  CHECK(any.rdna4);
+  CHECK(runner::GameGpuFor("integrated", drm).integrated);
+  CHECK_FALSE(runner::GameGpuFor("integrated", drm).rdna4);
+}

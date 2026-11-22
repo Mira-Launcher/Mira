@@ -13,4 +13,12 @@ namespace mira::runner {
 std::map<std::string, std::string> GpuEnv(std::string_view choice,
                                           const std::filesystem::path& drm = "/sys/class/drm");
 
+// What Mira knows of the GPU a game runs on (launch.gpu), for the flags that depend on it.
+struct GameGpu {
+  bool integrated = false;  // only an integrated GPU: too slow for ray tracing
+  bool nvidia = false;      // DLSS
+  bool rdna4 = false;       // FSR 4
+};
+GameGpu GameGpuFor(std::string_view choice, const std::filesystem::path& drm = "/sys/class/drm");
+
 }  // namespace mira::runner

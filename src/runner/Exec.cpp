@@ -72,11 +72,9 @@ void UnblockSignals() {
   sigprocmask(SIG_SETMASK, &none, nullptr);
 }
 
-// mirad can start before the desktop session gives systemd its display, and keeps the
-// environment it started with. Then children take the display from the user manager's
-// current environment, read again at most once a minute.
-std::vector<std::string> SessionEnv() {
-  if (std::getenv("DISPLAY") != nullptr || std::getenv("WAYLAND_DISPLAY") != nullptr) return {};
+// The user manager's display variables, read at most once a minute: mirad can start before the
+// desktop session gives systemd its display, and keeps the environment it started with.
+std::vector<std::string> UserSessionEnv() {
   static std::mutex mutex;
   static std::vector<std::string> cached;
   static std::chrono::steady_clock::time_point read_at;
@@ -97,10 +95,7 @@ std::vector<std::string> SessionEnv() {
     if (!entry.empty() && entry.back() == '\n') entry.pop_back();
     for (const char* key : {"DISPLAY=", "WAYLAND_DISPLAY=", "XAUTHORITY=", "XDG_SESSION_TYPE=",
                             "XDG_CURRENT_DESKTOP="}) {
-      if (entry.starts_with(key) &&
-          std::getenv(std::string(key, std::strlen(key) - 1).c_str()) == nullptr) {
-        found.push_back(entry);
-      }
+      if (entry.starts_with(key)) found.push_back(entry);
     }
   }
   if (pclose(pipe) != 0) return found;  // not kept, so the next launch asks again
@@ -108,6 +103,17 @@ std::vector<std::string> SessionEnv() {
   cached = found;
   read_at = now;
   return found;
+}
+
+// The session's display for children when mirad started without one.
+std::vector<std::string> SessionEnv() {
+  if (std::getenv("DISPLAY") != nullptr || std::getenv("WAYLAND_DISPLAY") != nullptr) return {};
+  std::vector<std::string> missing;
+  for (std::string& entry : UserSessionEnv()) {
+    if (std::getenv(entry.substr(0, entry.find('=')).c_str()) == nullptr)
+      missing.push_back(std::move(entry));
+  }
+  return missing;
 }
 
 // Inherited from whatever started Mira and not meant for what it starts: KWin's activation
@@ -176,10 +182,12 @@ Result<pid_t> ForkWithPipe(int pipe_fds[2]) {
 
 }  // namespace
 
-bool OnWayland() {
-  if (std::getenv("WAYLAND_DISPLAY") != nullptr) return true;
-  return std::ranges::any_of(
-      SessionEnv(), [](const std::string& entry) { return entry.starts_with("WAYLAND_DISPLAY="); });
+std::optional<std::string> WaylandDisplay() {
+  if (const char* display = std::getenv("WAYLAND_DISPLAY")) return display;
+  for (const std::string& entry : UserSessionEnv()) {
+    if (entry.starts_with("WAYLAND_DISPLAY=")) return entry.substr(entry.find('=') + 1);
+  }
+  return std::nullopt;
 }
 
 Result<pid_t> SpawnDetached(const Command& command, int output_fd) {

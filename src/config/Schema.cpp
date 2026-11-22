@@ -1237,6 +1237,40 @@ Schema::Schema() {
          .keywords = "nvidia gpu spoof amd vendor",
          .applies = {.platforms = {"windows"}}});
 
+  s.Add({.key = "launch.ray_tracing",
+         .label = "Ray tracing",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::PerGame,
+         .doc = "Auto turns DirectX 12 ray tracing off when the game runs on an integrated GPU, "
+                "too slow for it, and leaves it to the game otherwise. A game that needs ray "
+                "tracing won't start with it off.",
+         .constraint = Choices({{"", "Auto"}, {"on", "On"}, {"off", "Off"}}),
+         .keywords = "rt dxr raytracing vkd3d integrated",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.upscaler_upgrade",
+         .label = "Newest DLSS and FSR",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Proton swaps the game's DLSS for the newest on an NVIDIA GPU, and FSR 3.1 for "
+                "FSR 4 on a Radeon RX 9000. Skipped for games with anti-cheat. Needs GE-Proton "
+                "or another Proton with these upgrades.",
+         .keywords = "dlss fsr fsr4 upscaling nvidia amd radeon upgrade",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.fps_limit",
+         .label = "Frame rate limit",
+         .type = Type::Int,
+         .default_value = 0,
+         .scope = Scope::PerGame,
+         .doc = "Caps the game's frames per second, for DirectX games run through DXVK or "
+                "vkd3d-proton. 0 is no limit.",
+         .constraint = Range(0, 1000),
+         .keywords = "fps cap frame limiter framerate",
+         .applies = {.platforms = {"windows"}}});
+
   s.Group("Scripts");
   s.ResetTogether();
 

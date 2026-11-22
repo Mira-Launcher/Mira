@@ -112,6 +112,30 @@ void ApplyHdr(Command& command, const config::Resolver& resolver) {
     command.env.try_emplace(key, "1");
 }
 
+// Flags that follow the game's GPU: ray tracing off on an integrated GPU (launch.ray_tracing),
+// Proton's DLSS and FSR 4 upgrades (launch.upscaler_upgrade, skipped for anti-cheat games, which
+// may take swapped DLLs for tampering) and the frame cap (launch.fps_limit). Values the env
+// already has win.
+void ApplyGpuFlags(Command& command, const config::Resolver& resolver, const config::Config& config,
+                   const model::Game& game, const runner::GameGpu& gpu, bool proton) {
+  const std::string rt = resolver.GetString("launch.ray_tracing");
+  if (rt == "off" || (rt.empty() && gpu.integrated)) {
+    std::string& vkd3d = command.env["VKD3D_CONFIG"];
+    if (vkd3d.find("dxr") == std::string::npos) vkd3d += vkd3d.empty() ? "nodxr" : ",nodxr";
+  }
+  if (const auto fps = resolver.GetInt("launch.fps_limit"); fps > 0) {
+    command.env.try_emplace("DXVK_FRAME_RATE", std::to_string(fps));
+    command.env.try_emplace("VKD3D_FRAME_RATE", std::to_string(fps));
+  }
+  if (!proton || !resolver.GetBool("launch.upscaler_upgrade")) return;
+  if (const auto listed = runner::FindAntiCheat(config, game);
+      listed && !listed->anticheats.empty())
+    return;
+  if (gpu.nvidia && resolver.GetBool("launch.nvapi"))
+    command.env.try_emplace("PROTON_DLSS_UPGRADE", "1");
+  if (gpu.rdna4) command.env.try_emplace("PROTON_FSR4_UPGRADE", "1");
+}
+
 // launch.shader_cache: drivers keep 10 GB of shaders rather than 1 GB, and a game outside Proton
 // (which caches in the prefix) gets a folder of its own. Values the env already has win.
 void ApplyShaderCache(Command& command, const config::Resolver& resolver, const model::Game& game) {
@@ -119,7 +143,10 @@ void ApplyShaderCache(Command& command, const config::Resolver& resolver, const 
   command.env.try_emplace("MESA_SHADER_CACHE_MAX_SIZE", "10G");
   command.env.try_emplace("__GL_SHADER_DISK_CACHE_SIZE", "10737418240");
   command.env.try_emplace("__GL_SHADER_DISK_CACHE_SKIP_CLEANUP", "1");
-  if (command.env.contains("PROTONPATH")) return;
+  if (command.env.contains("PROTONPATH")) {
+    command.env.try_emplace("PROTON_LOCAL_SHADER_CACHE", "1");  // per game, in its prefix
+    return;
+  }
   const std::filesystem::path dir = paths::ShaderCacheDir(game.id);
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
@@ -296,8 +323,11 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
   ApplyMangoHud(*command, resolver, game, game_mangohud);
   ApplyShaderCache(*command, resolver, game);
   ApplyHdr(*command, resolver);
-  for (const auto& [name, value] : runner::GpuEnv(resolver.GetString("launch.gpu")))
+  const std::string gpu_choice = resolver.GetString("launch.gpu");
+  for (const auto& [name, value] : runner::GpuEnv(gpu_choice))
     command->env.try_emplace(name, value);
+  ApplyGpuFlags(*command, resolver, s.config, game, runner::GameGpuFor(gpu_choice),
+                resolved->runner->kind() == "proton");
   if (resolved->runner->kind() == "proton") {
     auto runtimes = runner::AntiCheatRuntimeEnv(s.config, game);
     if (!runtimes) {
@@ -311,8 +341,12 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
     if (!resolver.GetBool("launch.nvapi")) command->env.try_emplace("PROTON_DISABLE_NVAPI", "1");
     if (resolver.GetBool("launch.hide_nvidia"))
       command->env.try_emplace("PROTON_HIDE_NVIDIA_GPU", "1");
-    if (resolver.GetBool("launch.proton_wayland") && runner::OnWayland())
-      command->env.try_emplace("PROTON_ENABLE_WAYLAND", "1");
+    if (resolver.GetBool("launch.proton_wayland")) {
+      if (const auto display = runner::WaylandDisplay()) {
+        command->env.try_emplace("PROTON_ENABLE_WAYLAND", "1");
+        command->env.try_emplace("WAYLAND_DISPLAY", *display);  // Proton's driver needs it
+      }
+    }
   }
   if (resolved->runner->kind() == "proton" && resolver.GetBool("launch.proton_log")) {
     const std::filesystem::path logs = proc::ProtonLogDir(s.games.Dir(), game.id);
