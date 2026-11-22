@@ -21,6 +21,7 @@
 #include "../client/api/Stores.h"
 #include "../components/Scrolling.h"
 #include "../components/TabRow.h"
+#include "../components/Text.h"
 #include "../components/TileView.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
@@ -145,7 +146,7 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
   content_layout->addWidget(grid_, /*stretch=*/1);
   empty_hint_ = new QLabel(content);
   empty_hint_->setAlignment(Qt::AlignCenter);
-  empty_hint_->setProperty("role", "muted");
+  SetTextStyle(empty_hint_, text::kDetail);
   empty_hint_->setVisible(false);
   content_layout->addWidget(empty_hint_);
   content_layout->addWidget(BuildOwnedSection());
@@ -465,7 +466,7 @@ QWidget* LibraryPage::BuildOwnedSection() {
   layout->setContentsMargins(margin, 8, margin, margin);
   layout->setSpacing(6);
   owned_heading_ = new QLabel(owned_section_);
-  owned_heading_->setProperty("role", "heading");
+  SetTextStyle(owned_heading_, text::kHeading);
   layout->addWidget(owned_heading_);
 
   owned_model_ = new QStandardItemModel(this);

@@ -29,12 +29,12 @@ LaidOutButton* MakeSavesChoice(QWidget* parent, const QString& name, const QStri
   auto* inside = new QVBoxLayout(button);
   inside->setContentsMargins(14, 12, 14, 12);
   inside->setSpacing(6);
-  inside->addWidget(MakeLabel(button, name, "section"));
+  inside->addWidget(MakeLabel(button, name, text::kSection));
   // A blank line holds its room while it's unknown, so the cards don't grow when it arrives.
-  QLabel* holds = MakeLabel(button, detail.isEmpty() ? QString(" ") : detail, "muted");
+  QLabel* holds = MakeLabel(button, detail.isEmpty() ? QString(" ") : detail, text::kDetail);
   inside->addWidget(holds);
   if (detail_label != nullptr) *detail_label = holds;
-  inside->addWidget(MakeLabel(button, effect, "muted"));
+  inside->addWidget(MakeLabel(button, effect, text::kDetail));
   for (QWidget* child : button->findChildren<QWidget*>())
     child->setAttribute(Qt::WA_TransparentForMouseEvents);
   QSizePolicy policy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -68,13 +68,13 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
   heading_layout->setSpacing(4);
   QLabel* title = MakeLabel(
       heading, QString("Which saves should %1 start with?").arg(QString::fromStdString(game.name)),
-      "heading");
+      text::kHeading);
   heading_layout->addWidget(title);
   heading_layout->addWidget(
       MakeLabel(heading,
                 QString("They changed here and in %1's cloud since they were last in sync.")
                     .arg(store != nullptr ? store->name : QString::fromStdString(game.source)),
-                "subtle"));
+                text::kSubtle));
   SetTitleWidget(heading);
 
   SetClose("Cancel", [this] { emit Chosen({}); });

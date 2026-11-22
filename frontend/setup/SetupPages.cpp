@@ -258,7 +258,7 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
     auto* text = new QVBoxLayout();
     text->setSpacing(1);
     text->addWidget(Bold(card, kFeatures[i].title));
-    text->addWidget(MakeLabel(card, kFeatures[i].text, "muted"));
+    text->addWidget(MakeLabel(card, kFeatures[i].text, text::kDetail));
     line->addLayout(text, /*stretch=*/1);
     features->addWidget(card, i / 2, i % 2);
   }
@@ -290,11 +290,12 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
   space->setSpacing(12);
   used_ = new ProgressRail(folder);
   space->addWidget(used_, /*stretch=*/1);
-  free_ = MakeLabel(folder, QString(), "muted", false);
+  free_ = MakeLabel(folder, QString(), text::kDetail, false);
   space->addWidget(free_);
   card->addLayout(space);
-  drive_warning_ = MakeLabel(
-      folder, "Windows games can fail to start or lose saves on NTFS and exFAT drives.", "error");
+  drive_warning_ =
+      MakeLabel(folder, "Windows games can fail to start or lose saves on NTFS and exFAT drives.",
+                text::kError);
   KeepSpaceWhenHidden(drive_warning_);
   drive_warning_->hide();
   card->addWidget(drive_warning_);
@@ -512,7 +513,7 @@ UsePage::UsePage(const SetupContext& context) : context_(context) {
     text->addWidget(MakeLabel(button,
                               games ? "From Steam, other stores, or ones you install yourself"
                                     : "Programs that only exist for Windows, set up to run here.",
-                              "muted"));
+                              text::kDetail));
     inside->addLayout(text);
     inside->addStretch(1);
     FinishTile(button);
@@ -664,7 +665,7 @@ void FoundPage::Show() {
               ? QString("%1 installed games: %2").arg(games.size()).arg(JoinAnd(names))
               : QString("%1 installed games, including %2").arg(games.size()).arg(JoinAnd(names));
     }
-    text->addWidget(MakeLabel(card, detail, "muted"));
+    text->addWidget(MakeLabel(card, detail, text::kDetail));
     head->addLayout(text, /*stretch=*/1);
     if (steam_games == 0 && !games.empty()) {
       auto* add = new Switch(card);
@@ -681,7 +682,7 @@ void FoundPage::Show() {
       column->addWidget(MakeLabel(card,
                                   QString("Steam has %1 accounts signed in. Which one is yours?")
                                       .arg(accounts_.accounts.size()),
-                                  "muted"));
+                                  text::kDetail));
       auto* group = new QButtonGroup(card);
       const auto palette = theme::SampleArt(tokens);
       for (std::size_t i = 0; i < accounts_.accounts.size(); ++i) {
@@ -712,9 +713,10 @@ void FoundPage::Show() {
         who->setSpacing(0);
         who->addWidget(new QLabel(name, choice));
         if (QString::fromStdString(account.account_name) != name) {
-          who->addWidget(MakeLabel(choice, QString::fromStdString(account.account_name), "muted"));
+          who->addWidget(
+              MakeLabel(choice, QString::fromStdString(account.account_name), text::kDetail));
         } else if (i == 0) {
-          who->addWidget(MakeLabel(choice, "Signed in last", "muted"));
+          who->addWidget(MakeLabel(choice, "Signed in last", text::kDetail));
         }
         line->addLayout(who, /*stretch=*/1);
         FinishTile(choice);
@@ -742,8 +744,9 @@ void FoundPage::Show() {
     auto* text = new QVBoxLayout();
     text->setSpacing(1);
     text->addWidget(Bold(card, source.name));
-    text->addWidget(MakeLabel(
-        card, games > 0 ? QString("%1 games added").arg(games) : QString(importer.adds), "muted"));
+    text->addWidget(
+        MakeLabel(card, games > 0 ? QString("%1 games added").arg(games) : QString(importer.adds),
+                  text::kDetail));
     line->addLayout(text, /*stretch=*/1);
     if (games == 0) {
       auto* add = new Switch(card);
@@ -772,7 +775,7 @@ void FoundPage::Show() {
         MakeLabel(card,
                   "Steam, Lutris and Heroic aren't installed. That's fine: your stores come "
                   "next, and games you install yourself can be added any time.",
-                  "muted"));
+                  text::kDetail));
     line->addLayout(text, /*stretch=*/1);
     body_->addWidget(card);
   }
@@ -814,7 +817,7 @@ void FoundPage::Show() {
     if (!vulkan_) {
       column->addWidget(MakeLabel(
           card, "Games won't start without it. Install your graphics driver's Vulkan package.",
-          "error"));
+          text::kError));
     }
     body_->addWidget(card);
   }
@@ -861,7 +864,7 @@ StoresPage::StoresPage(const SetupContext& context) : context_(context) {
     auto* text = new QVBoxLayout();
     text->setSpacing(1);
     text->addWidget(Bold(tile, StoreName(id)));
-    text->addWidget(MakeLabel(tile, StoreLine(id), "muted"));
+    text->addWidget(MakeLabel(tile, StoreLine(id), text::kDetail));
     text->addStretch(1);
     inside->addLayout(text, /*stretch=*/1);
     inside->addWidget(Tick(tile), 0, Qt::AlignTop);
@@ -881,7 +884,7 @@ StoresPage::StoresPage(const SetupContext& context) : context_(context) {
   grid->setColumnStretch(0, 1);
   grid->setColumnStretch(1, 1);
   layout->addLayout(grid);
-  count_ = MakeLabel(this, QString(), "muted");
+  count_ = MakeLabel(this, QString(), text::kDetail);
   layout->addWidget(count_);
   layout->addWidget(SetupLaterLine(
       this, "Skip this, or leave a store out: every store can be added later from the sidebar."));
@@ -936,7 +939,7 @@ AppsPage::AppsPage(const SetupContext& context) : context_(context) {
   text->addWidget(MakeLabel(tile,
                             "Word, Excel, PowerPoint, Outlook, OneNote, Access and Publisher. "
                             "Needs a Microsoft 365 subscription.",
-                            "muted"));
+                            text::kDetail));
   inside->addLayout(text, /*stretch=*/1);
   inside->addWidget(Tick(tile), 0, Qt::AlignTop);
   FinishTile(tile);
@@ -948,7 +951,7 @@ AppsPage::AppsPage(const SetupContext& context) : context_(context) {
     emit PicksChanged();
   });
   layout->addWidget(tile);
-  line_ = MakeLabel(this, QString(), "muted");
+  line_ = MakeLabel(this, QString(), text::kDetail);
   layout->addWidget(line_);
 
   QFrame* card = SetupCard(this);
@@ -1001,7 +1004,7 @@ StorePage::StorePage(const SetupContext& context, const QString& store)
   auto* text = new QVBoxLayout();
   text->setSpacing(2);
   eyebrow_ = new QLabel(this);
-  eyebrow_->setProperty("role", "group_heading");
+  SetTextStyle(eyebrow_, text::kGroup);
   text->addWidget(eyebrow_);
   auto* title = new QLabel(guide.title, this);
   title->setObjectName("setup_title");
@@ -1009,11 +1012,12 @@ StorePage::StorePage(const SetupContext& context, const QString& store)
   head->addLayout(text, /*stretch=*/1);
   layout->addLayout(head);
   // The guide's own intro, when it has one, says what the store brings.
-  if (guide.intro.isEmpty()) layout->addWidget(MakeLabel(this, StoreLine(store) + ".", "muted"));
+  if (guide.intro.isEmpty())
+    layout->addWidget(MakeLabel(this, StoreLine(store) + ".", text::kDetail));
 
   panel_ = new SignInPanel(store, this, /*header=*/false, /*stacked=*/true);
   layout->addWidget(panel_);
-  done_ = MakeLabel(this, QString(), nullptr);
+  done_ = MakeLabel(this, QString(), text::kBody);
   done_->setObjectName("setup_signed_in");
   done_->hide();
   layout->addWidget(done_);
@@ -1055,7 +1059,7 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   auto* text = new QVBoxLayout();
   text->setSpacing(2);
   auto* eyebrow = new QLabel("APPLICATION 1 OF 1", this);
-  eyebrow->setProperty("role", "group_heading");
+  SetTextStyle(eyebrow, text::kGroup);
   text->addWidget(eyebrow);
   auto* title = new QLabel("Set up Microsoft 365", this);
   title->setObjectName("setup_title");
@@ -1065,7 +1069,7 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   layout->addWidget(MakeLabel(
       this,
       "Office runs in its own Windows setup. Pick your plan and the apps you want. About 4 GB.",
-      "muted"));
+      text::kDetail));
 
   QFrame* plan_card = SetupCard(this);
   auto* plan_rows = new QVBoxLayout(plan_card);
@@ -1081,7 +1085,7 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   auto* apps = new QVBoxLayout(apps_card);
   apps->setContentsMargins(16, 12, 16, 14);
   apps->setSpacing(10);
-  apps->addWidget(MakeLabel(apps_card, "Apps to add to your library", "muted"));
+  apps->addWidget(MakeLabel(apps_card, "Apps to add to your library", text::kDetail));
   app_tiles_ = new QWidget(apps_card);
   auto* grid = new QGridLayout(app_tiles_);
   grid->setContentsMargins(0, 0, 0, 0);
@@ -1090,7 +1094,7 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   layout->addWidget(apps_card);
 
   layout->addWidget(MakeLabel(
-      this, "Next starts the install. It keeps going while you finish setting up.", "muted"));
+      this, "Next starts the install. It keeps going while you finish setting up.", text::kDetail));
   layout->addWidget(Note(this, icons::Glyph::EyeSlash,
                          new QLabel("You sign in inside Word or Excel the first time you open one, "
                                     "like on Windows. Mira never sees your account.")));
@@ -1179,7 +1183,8 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   title_->setObjectName("setup_done_title");
   title_->setAlignment(Qt::AlignCenter);
   layout->addWidget(title_);
-  auto* thanks = MakeLabel(this, "Thanks for downloading Mira! Your library opens next.", "muted");
+  auto* thanks =
+      MakeLabel(this, "Thanks for downloading Mira! Your library opens next.", text::kDetail);
   thanks->setAlignment(Qt::AlignCenter);
   layout->addWidget(thanks);
   layout->addSpacing(6);
@@ -1209,7 +1214,7 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
                                       context.screen == setup::Screen::SteamDeck
                                           ? QString::fromUtf8("\xc2\xb7 looks like a Steam Deck")
                                           : QString::fromUtf8("\xc2\xb7 looks like a TV"),
-                                      "muted", false));
+                                      text::kDetail, false));
     switch_rows->addWidget(MakeDivider(switches, Qt::Horizontal));
     switch_rows->addWidget(row);
     // A login start opens big screen instead of the tray when that's on.
@@ -1293,15 +1298,14 @@ void DonePage::ShowSummary() {
                             row);
     mark->setFixedSize(18, 18);
     mark->setAlignment(Qt::AlignCenter);
-    const QColor color = state == Mark::Done      ? tokens.success
-                         : state == Mark::Running ? tokens.accent
-                                                  : tokens.text_muted;
-    mark->setStyleSheet(QString("color: %1;").arg(color.name()));
+    SetTextStyle(mark, {TextRole::Body, state == Mark::Done      ? Tone::Success
+                                        : state == Mark::Running ? Tone::Accent
+                                                                 : Tone::Muted});
     line->addWidget(mark, 0, Qt::AlignTop);
     auto* text_column = new QVBoxLayout();
     text_column->setSpacing(0);
     text_column->addWidget(MakeLabel(row, text));
-    if (!detail.isEmpty()) text_column->addWidget(MakeLabel(row, detail, "muted"));
+    if (!detail.isEmpty()) text_column->addWidget(MakeLabel(row, detail, text::kDetail));
     line->addLayout(text_column, /*stretch=*/1);
     rows->addWidget(row);
   };
@@ -1359,7 +1363,7 @@ void DonePage::ShowSummary() {
     auto* none = MakeLabel(summary_,
                            "Nothing was set up, and that's fine. Add games and sign in to stores "
                            "from the sidebar any time.",
-                           "muted");
+                           text::kDetail);
     none->setTextFormat(Qt::RichText);
     none->setContentsMargins(0, 6, 0, 6);
     rows->addWidget(none);

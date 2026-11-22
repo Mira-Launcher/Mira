@@ -85,13 +85,13 @@ QVBoxLayout* SetupPageLayout(SetupStep* page, icons::Glyph glyph, const QString&
   auto* text = new QVBoxLayout();
   text->setSpacing(2);
   auto* small = new QLabel(eyebrow.toUpper(), page);
-  small->setProperty("role", "group_heading");
+  SetTextStyle(small, text::kGroup);
   text->addWidget(small);
   auto* heading = new QLabel(title, page);
   heading->setObjectName("setup_title");
   heading->setWordWrap(true);
   text->addWidget(heading);
-  auto* lead_label = MakeLabel(page, lead, "muted");
+  auto* lead_label = MakeLabel(page, lead, text::kDetail);
   lead_label->setObjectName("setup_lead");
   text->addWidget(lead_label);
   head->addLayout(text, /*stretch=*/1);
@@ -108,7 +108,7 @@ QWidget* SetupLaterLine(QWidget* parent, const QString& text) {
   auto* clock = new QLabel(row);
   icons::Follow(clock, icons::Glyph::Clock, 15);
   line->addWidget(clock, 0, Qt::AlignTop);
-  auto* label = MakeLabel(row, text, "muted");
+  auto* label = MakeLabel(row, text, text::kDetail);
   label->setTextFormat(Qt::RichText);
   line->addWidget(label, /*stretch=*/1);
   return row;

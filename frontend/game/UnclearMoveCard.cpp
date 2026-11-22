@@ -23,7 +23,7 @@ UnclearMoveCard::UnclearMoveCard(const UnclearMove& move, const GameLibraryModel
 
   auto* title = new QLabel(
       QString("Which game is %1?").arg(HomeRelative(QString::fromStdString(move.folder))), this);
-  title->setProperty("role", "heading");
+  SetTextStyle(title, text::kHeading);
   title->setWordWrap(true);
   SetTitleWidget(title);
 

@@ -50,7 +50,7 @@ QString FormatDate(const std::string& iso) {
 // A row's facts after its name, in one line that shrinks before the controls do.
 ElidedLabel* Facts(const QString& text, SettingRow* row) {
   auto* facts = new ElidedLabel(text, row);
-  facts->setProperty("role", "subtle");
+  SetTextStyle(facts, text::kSubtle);
   row->AddAfterLabel(facts);
   return facts;
 }
@@ -58,7 +58,7 @@ ElidedLabel* Facts(const QString& text, SettingRow* row) {
 // An empty list's one line, in the card's row padding.
 SettingRow* NoteRow(const QString& text) {
   auto* row = new SettingRow(text, {});
-  row->Label()->setProperty("role", "subtle");
+  SetTextStyle(row->Label(), text::kSubtle);
   return row;
 }
 
@@ -71,7 +71,7 @@ QWidget* Progress(QWidget* parent, double fraction) {
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
   auto* percent = new QLabel(holder);
-  percent->setProperty("role", "subtle");
+  SetTextStyle(percent, text::kSubtle);
   layout->addWidget(percent);
   auto* rail = new ProgressRail(holder);
   rail->setFixedWidth(90);
@@ -143,7 +143,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
 
   installed_ = new Card("Installed", canvas);
   left->addWidget(installed_);
-  default_note_ = MakeLabel(canvas, QString(), "muted");
+  default_note_ = MakeLabel(canvas, QString(), text::kDetail);
   default_note_->setContentsMargins(4, 0, 4, 0);
   default_note_->setTextFormat(Qt::RichText);
   connect(default_note_, &QLabel::linkActivated, this, [this] {
@@ -169,7 +169,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   connect(refresh, &QToolButton::clicked, this, &RunnersPage::Refresh);
   catalog_->AddHeaderWidget(refresh);
   right->addWidget(catalog_);
-  status_ = MakeLabel(canvas, QString(), "muted");
+  status_ = MakeLabel(canvas, QString(), text::kDetail);
   status_->setContentsMargins(4, 0, 4, 0);
   right->addWidget(status_);
 
@@ -206,7 +206,7 @@ std::string RunnersPage::CurrentKind() const {
 
 void RunnersPage::SetStatus(const QString& text, bool error) {
   status_->setText(text);
-  theme::SetStyleProperty(status_, "role", error ? "error" : "muted");
+  SetTextStyle(status_, error ? text::kError : text::kDetail);
 }
 
 void RunnersPage::Refresh() {
@@ -342,7 +342,7 @@ void RunnersPage::RebuildInstalled() {
       if (entry != nullptr && entry->state == DownloadTracker::State::Running) {
         auto* updating =
             new QLabel("Updating to " + QString::fromStdString(update->label) + "…", row);
-        updating->setProperty("role", "subtle");
+        SetTextStyle(updating, text::kSubtle);
         row->AddControl(updating);
       } else {
         // Short, so a long build name can't crowd out the row's facts.
@@ -411,13 +411,7 @@ void RunnersPage::RebuildCatalog() {
     // knowing before a 500 MB download.
     facts << (release.has_checksum ? "verified" : "no checksum");
     ElidedLabel* details = Facts(facts.join(" · "), row);
-    if (!release.has_checksum) {
-      const auto warn = [details] {
-        details->setStyleSheet(QString("color: %1;").arg(theme::Current().warning.name()));
-      };
-      warn();
-      connect(theme::Notifier::Instance(), &theme::Notifier::Changed, details, warn);
-    }
+    if (!release.has_checksum) SetTextStyle(details, {TextRole::Body, Tone::Warning});
 
     const QString key =
         DownloadTracker::KeyFor(DownloadTracker::Kind::Runner, QString::fromStdString(kind),
@@ -430,7 +424,7 @@ void RunnersPage::RebuildCatalog() {
       row->AddControl(progress);
     } else if (release.installed) {
       auto* label = new QLabel("Installed", row);
-      label->setProperty("role", "subtle");
+      SetTextStyle(label, text::kSubtle);
       row->AddControl(label);
     } else {
       auto* install = new QPushButton("Install", row);

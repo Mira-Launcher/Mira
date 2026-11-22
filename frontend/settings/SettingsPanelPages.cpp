@@ -25,6 +25,7 @@
 #include "../components/SettingsPage.h"
 #include "../components/ShortcutEdit.h"
 #include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
 #include "AppearancePreviews.h"
@@ -233,7 +234,7 @@ void SettingsPanel::AddDisplayRows(Card* card) {
   if (const QString hint = display::StretchHint(); !hint.isEmpty()) {
     auto* label = new QLabel(hint, server);
     label->setWordWrap(true);
-    theme::SetStyleProperty(label, "role", "error");
+    SetTextStyle(label, text::kError);
     server->SetBelow(label);
   }
 }
@@ -424,7 +425,7 @@ QWidget* SettingsPanel::MakeSlider(ShapeField& field, int maximum) {
   layout->setSpacing(10);
   // The value before the slider, so the slider ends at the row's right edge like other controls.
   field.value = new QLabel(box);
-  field.value->setProperty("role", "subtle");
+  SetTextStyle(field.value, text::kSubtle);
   field.value->setMinimumWidth(130);
   field.value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   layout->addWidget(field.value);
@@ -726,7 +727,7 @@ void SettingsPanel::BuildShortcutsPage() {
       for (const QKeySequence& alias : binding.extra_aliases)
         aliases << alias.toString(QKeySequence::NativeText);
       auto* also = new QLabel("also " + aliases.join(", "), row);
-      also->setProperty("role", "subtle");
+      SetTextStyle(also, text::kSubtle);
       also->setToolTip("Always works too and can't be changed");
       row->AddControl(also);
     }

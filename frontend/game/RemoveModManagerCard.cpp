@@ -59,7 +59,7 @@ RemoveModManagerCard::RemoveModManagerCard(const QString& game_name, const Sourc
   buttons_layout->setContentsMargins(18, 12, 18, 10);
   buttons_layout->setSpacing(8);
   // Why Remove is off, in the same place whichever reason, so nothing moves when it appears.
-  note_ = MakeLabel(buttons, QString(), "subtle", /*wrap=*/false);
+  note_ = MakeLabel(buttons, QString(), text::kSubtle, /*wrap=*/false);
   buttons_layout->addWidget(note_, 1);
   auto* cancel = new QPushButton("Cancel", buttons);
   connect(cancel, &QPushButton::clicked, this, [this] { cards::Close(this); });
@@ -86,7 +86,7 @@ void RemoveModManagerCard::AddInfoRow(const QString& label, std::function<QStrin
                                       std::function<QString()> tooltip) {
   auto* row = new SettingRow(label, QString(), this);
   auto* value = new ElidedLabel(text(), row);
-  value->setProperty("role", "subtle");
+  SetTextStyle(value, text::kSubtle);
   value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   row->AddControl(value, 1);
   AddRow(row);

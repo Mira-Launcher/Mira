@@ -8,37 +8,37 @@
 
 /* --- Text roles ---------------------------------------------------------- */
 
-QLabel[role="muted"] {
-  color: @text_muted;
+/* components/Text: a label's role, size and tone, set apart so they combine. */
+QLabel[text_role="section"] {
+  font-weight: 600;
+}
+
+QLabel[text_role="heading"] {
+  font-size: @font_size_heading;
+  font-weight: 600;
+}
+
+/* A small heading over a group of rows ("PINNED", "SORT"). */
+QLabel[text_role="group"] {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+QLabel[text_size="small"] {
   font-size: @font_size_small;
 }
+
+QLabel[tone="muted"] { color: @text_muted; }
+QLabel[tone="accent"] { color: @accent; }
+QLabel[tone="info"] { color: @info; }
+QLabel[tone="success"] { color: @success; }
+QLabel[tone="warning"] { color: @warning; }
+QLabel[tone="danger"] { color: @error; }
 
 /* A glyph on a tile, before a card row's label (Add games' choices). */
 QLabel[role="tile_icon"] {
   background: @surface_alt;
   border-radius: 7px;
-}
-
-QLabel[role="heading"] {
-  font-size: @font_size_heading;
-  font-weight: 600;
-}
-
-/* Muted color at the label's own size, for text inside a control. */
-QLabel[role="subtle"] {
-  color: @text_muted;
-}
-
-QLabel[role="section"] {
-  font-weight: 600;
-}
-
-/* A small heading over a group of rows ("PINNED", "SORT"). */
-QLabel[role="group_heading"] {
-  color: @text_muted;
-  font-size: @font_size_small;
-  font-weight: 600;
-  letter-spacing: 0.04em;
 }
 
 QWidget#divider {
@@ -54,16 +54,6 @@ QWidget#tile_skeleton {
 /* Where a dragged source row would land in the sidebar. */
 QWidget#drop_line {
   background: @accent;
-}
-
-QLabel[role="error"] {
-  color: @error;
-  font-size: @font_size_small;
-}
-
-/* Something to notice before confirming, such as a move that copies to another drive. */
-QLabel[role="warning"] {
-  color: @warning;
 }
 
 /* One key of a shortcut, drawn as a keycap. */
@@ -696,10 +686,6 @@ QWidget#expander_head[card_bottom="true"] {
 
 QWidget#expander_head:hover {
   background: @surface_alt;
-}
-
-QLabel#expander_summary[tone="success"] {
-  color: @success;
 }
 
 /* One height for every control in a card (32 px with padding and border), with the row

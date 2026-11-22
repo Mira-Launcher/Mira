@@ -69,7 +69,7 @@ QWidget* TwoLines(QWidget* parent, const QString& top, const QString& bottom, bo
     first->setTextInteractionFlags(Qt::TextSelectableByMouse);
   }
   lines->addWidget(first);
-  if (!bottom.isEmpty()) lines->addWidget(MakeLabel(box, bottom, "muted"));
+  if (!bottom.isEmpty()) lines->addWidget(MakeLabel(box, bottom, text::kDetail));
   return box;
 }
 
@@ -93,7 +93,7 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   icons::Follow(back, icons::Glyph::ArrowLeft);
   connect(back, &QToolButton::clicked, this, &SavesPage::BackClicked);
   auto* title = new QLabel("Saves", this);
-  title->setProperty("role", "heading");
+  SetTextStyle(title, text::kHeading);
   back_up_ = new QPushButton("Back up now", this);
   connect(back_up_, &QPushButton::clicked, this, &SavesPage::BackUp);
   header->addWidget(back);
@@ -221,13 +221,13 @@ void SavesPage::FillBackups() {
                              "The last backup after playing failed: " +
                                  QString::fromStdString(saves_.last_error->message),
                              QString::fromStdString(saves_.last_error->hint));
-    if (auto* first = text->findChild<QLabel*>()) first->setProperty("role", "warning");
+    if (auto* first = text->findChild<QLabel*>()) SetTextStyle(first, text::kWarning);
     line->addWidget(text, 1);
     backups_->AddRow(row);
   }
   if (saves_.snapshots.empty()) {
     QWidget* row = Row(backups_, &line);
-    line->addWidget(MakeLabel(row, "No backups yet", "muted"), 1);
+    line->addWidget(MakeLabel(row, "No backups yet", text::kDetail), 1);
     backups_->AddRow(row);
     return;
   }
@@ -328,7 +328,7 @@ void SavesPage::FillWhere() {
     notes << "From the save locations list: " + QString::fromStdString(saves_.entry);
   for (const QString& note : notes) {
     QWidget* row = Row(where_, &line);
-    line->addWidget(MakeLabel(row, note, "muted"), 1);
+    line->addWidget(MakeLabel(row, note, text::kDetail), 1);
     where_->AddRow(row);
   }
 }
@@ -363,7 +363,7 @@ void SavesPage::FillCloud() {
                              cloud.synced_at > 0
                                  ? "Last synced " + saves_text::When(cloud.synced_at, now, true)
                                  : QString("Never synced"),
-                             "muted"));
+                             text::kDetail));
   line->addWidget(text, 1);
   const bool can_sync = cloud.state != "unsupported" && cloud.state != "off";
   if (!conflict && can_sync) {

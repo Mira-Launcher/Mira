@@ -94,7 +94,7 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
   empty_ = MakeLabel(body,
                      "Nothing is downloading or installing. Add games from links with Add "
                      "games › Download from links.",
-                     "subtle");
+                     text::kSubtle);
   empty_->setWordWrap(true);
   body_layout->addWidget(empty_);
 

@@ -8,6 +8,7 @@
 
 #include "../client/api/Artwork.h"
 #include "../components/PopupCard.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
 #include "GamePresentation.h"
 
@@ -23,9 +24,9 @@ std::string Join(const std::vector<std::string>& values) {
   return joined;
 }
 
-QLabel* AddLine(QVBoxLayout* layout, QWidget* parent, const char* role) {
+QLabel* AddLine(QVBoxLayout* layout, QWidget* parent, TextStyle style) {
   auto* label = new QLabel(parent);
-  label->setProperty("role", role);
+  SetTextStyle(label, style);
   label->setWordWrap(true);
   label->hide();
   layout->addWidget(label);
@@ -54,7 +55,7 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
 
   name_ = new QLabel(this);
   name_->setTextFormat(Qt::PlainText);
-  name_->setProperty("role", "section");
+  SetTextStyle(name_, text::kSection);
   name_->setWordWrap(true);
   layout->addWidget(name_);
 
@@ -62,7 +63,7 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
   status_->setTextFormat(Qt::RichText);
   status_->setWordWrap(true);
   layout->addWidget(status_);
-  size_line_ = AddLine(layout, this, "muted");
+  size_line_ = AddLine(layout, this, text::kDetail);
 
   protondb_ = new QLabel(this);
   // Fixed, not the layout's default: a QSS-painted pill should hug its own
@@ -73,12 +74,12 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
 
   layout->addSpacing(4);
 
-  platform_line_ = AddLine(layout, this, "muted");
-  played_line_ = AddLine(layout, this, "muted");
-  developer_line_ = AddLine(layout, this, "muted");
-  review_line_ = AddLine(layout, this, "muted");
-  error_line_ = AddLine(layout, this, "error");
-  hint_line_ = AddLine(layout, this, "muted");
+  platform_line_ = AddLine(layout, this, text::kDetail);
+  played_line_ = AddLine(layout, this, text::kDetail);
+  developer_line_ = AddLine(layout, this, text::kDetail);
+  review_line_ = AddLine(layout, this, text::kDetail);
+  error_line_ = AddLine(layout, this, text::kError);
+  hint_line_ = AddLine(layout, this, text::kDetail);
 }
 
 void HoverCard::Reset() {

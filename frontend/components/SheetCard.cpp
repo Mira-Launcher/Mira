@@ -7,6 +7,7 @@
 
 #include "../theme/Icons.h"
 #include "Metrics.h"
+#include "Text.h"
 
 namespace mira_gui {
 
@@ -14,7 +15,7 @@ SheetCard::SheetCard(const QString& title, QWidget* parent) : Card(title, parent
 
 QLabel* SheetCard::SetHeading(const QString& title, const QString& subtitle) {
   auto* heading = new QLabel(title, this);
-  heading->setProperty("role", "heading");
+  SetTextStyle(heading, text::kHeading);
   heading->setWordWrap(true);
   if (subtitle.isEmpty()) {
     SetTitleWidget(heading);
@@ -27,7 +28,7 @@ QLabel* SheetCard::SetHeading(const QString& title, const QString& subtitle) {
   heading->setParent(lines);
   layout->addWidget(heading);
   auto* sub = new QLabel(subtitle, lines);
-  sub->setProperty("role", "muted");
+  SetTextStyle(sub, text::kDetail);
   sub->setWordWrap(true);
   layout->addWidget(sub);
   SetTitleWidget(lines);
@@ -56,7 +57,7 @@ QToolButton* SheetCard::SetBack(const std::function<void()>& back) {
 QLabel* SheetCard::ErrorLine() {
   if (error_ == nullptr) {
     error_ = new QLabel(this);
-    error_->setProperty("role", "error");
+    SetTextStyle(error_, text::kError);
     error_->setWordWrap(true);
     error_->setContentsMargins(kRowPaddingX, 4, kRowPaddingX, 0);
     error_->hide();

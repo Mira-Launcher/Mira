@@ -261,12 +261,12 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
     title = new ElidedLabel(name, row);
   }
   title->setObjectName("download_title");
-  title->setStyleSheet("font-weight: 600;");
+  SetTextStyle(title, text::kSection);
   title->setToolTip(name);
   text->addWidget(title);
 
   QString state;
-  const char* role = "muted";
+  TextStyle style = text::kDetail;
   if (entry.state == State::Running) {
     state = RunningText(entry);
   } else if (entry.state == State::Paused && !entry.message.isEmpty()) {
@@ -279,16 +279,16 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   } else if (entry.kind == Kind::Notice) {
     state =
         entry.message.isEmpty() ? QString("Not shown as a desktop notification") : entry.message;
-    if (entry.source == "error") role = "error";
+    if (entry.source == "error") style = text::kError;
   } else {
     state = "Failed";
     if (!entry.error.empty()) state += ": " + error_help::Describe(entry.error);
-    role = "error";
+    style = text::kError;
   }
   const QString origin = Origin(*tracker_, entry);
   auto* status = new QLabel(origin.isEmpty() ? state : origin + "  ·  " + state, row);
   status->setObjectName("download_status");
-  status->setProperty("role", role);
+  SetTextStyle(status, style);
   status->setWordWrap(true);
   status->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   text->addWidget(status);

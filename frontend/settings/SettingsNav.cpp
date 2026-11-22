@@ -21,6 +21,7 @@
 #include "../components/Scrolling.h"
 #include "../components/SettingRow.h"
 #include "../components/SettingsPage.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
 #include "SettingsSearch.h"
 
@@ -160,7 +161,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   sticky_group_ = new QLabel(sticky_);
   sticky_group_->setProperty("role", "nav_heading");
   sticky_title_ = new QLabel(sticky_);
-  sticky_title_->setProperty("role", "heading");
+  SetTextStyle(sticky_title_, text::kHeading);
   sticky_layout->addWidget(sticky_group_);
   sticky_layout->addWidget(sticky_title_);
   sticky_->hide();
@@ -177,7 +178,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
 
   empty_state_ = new QLabel("No settings match your search", this);
   empty_state_->setAlignment(Qt::AlignCenter);
-  empty_state_->setProperty("role", "muted");
+  SetTextStyle(empty_state_, text::kDetail);
 
   content_stack_ = new QStackedWidget(this);
   content_stack_->addWidget(scroll_);

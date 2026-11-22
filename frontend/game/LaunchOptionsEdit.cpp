@@ -20,6 +20,7 @@
 #include "../components/PathField.h"
 #include "../components/PopupDialog.h"
 #include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -65,7 +66,7 @@ LaunchOptionsEdit::LaunchOptionsEdit(QWidget* parent) : QWidget(parent) {
   rows_->setSpacing(0);
 
   empty_ = new QLabel("None", this);
-  theme::SetStyleProperty(empty_, "role", "subtle");
+  SetTextStyle(empty_, text::kSubtle);
   add_ = new QPushButton("Add…", this);
   add_->setCursor(Qt::PointingHandCursor);
   connect(add_, &QPushButton::clicked, this, [this] {

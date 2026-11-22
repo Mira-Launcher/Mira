@@ -22,22 +22,22 @@ PasswordPopup::PasswordPopup(LinkDownloads* downloads, QWidget* parent)
   layout->setSpacing(8);
 
   name_ = new ElidedLabel(QString(), this);
-  name_->setStyleSheet("font-weight: 600;");
+  SetTextStyle(name_, text::kSection);
   layout->addWidget(name_);
   auto* note = MakeLabel(
       this, "The saved passwords didn't open this archive. Mira keeps the one that works.",
-      "muted");
+      text::kDetail);
   note->setWordWrap(true);
   layout->addWidget(note);
 
   password_ = new QLineEdit(this);
   password_->setPlaceholderText("Password");
   layout->addWidget(password_);
-  error_ = MakeLabel(this, "That password didn't open it", "error");
+  error_ = MakeLabel(this, "That password didn't open it", text::kError);
   layout->addWidget(error_);
 
   auto* buttons = new QHBoxLayout();
-  count_ = MakeLabel(this, QString(), "muted");
+  count_ = MakeLabel(this, QString(), text::kDetail);
   buttons->addWidget(count_);
   buttons->addStretch(1);
   auto* skip = new QPushButton("Skip", this);

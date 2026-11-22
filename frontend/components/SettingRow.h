@@ -5,6 +5,8 @@
 #include <QWidget>
 #include <vector>
 
+#include "Text.h"
+
 class QHBoxLayout;
 class QTimer;
 class QToolButton;
@@ -89,8 +91,8 @@ class ExpanderRow : public QWidget {
   const QList<QWidget*>& Rows() const { return rows_; }
   // Muted text after the label, e.g. the consoles an emulator runs.
   void SetMeta(const QString& text);
-  // On the right before the chevron, e.g. "Installed"; `tone` "success" colors it.
-  void SetSummary(const QString& text, const QString& tone = {});
+  // On the right before the chevron, e.g. "Installed", muted unless `tone` says otherwise.
+  void SetSummary(const QString& text, Tone tone = Tone::Muted);
   // Before the chevron, after the summary, e.g. a source's on switch.
   void AddTrailing(QWidget* widget);
   void SetLeading(QWidget* widget);

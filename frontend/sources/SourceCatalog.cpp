@@ -91,7 +91,7 @@ SourceCatalog::SourceCatalog(QWidget* parent) : QWidget(parent) {
     layout->addWidget(group.heading);
     layout->addWidget(group.grid);
   }
-  empty_ = MakeLabel(this, QString(), "subtle");
+  empty_ = MakeLabel(this, QString(), text::kSubtle);
   empty_->hide();
   layout->addWidget(empty_);
   layout->addStretch(1);
@@ -114,7 +114,7 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     ++counts[group];
     auto* tile = new SourceTile(source, groups_[group].grid);
     tile->Line()->setText(Needs(source));
-    QLabel* blurb = MakeLabel(tile, copy.blurb, "subtle");
+    QLabel* blurb = MakeLabel(tile, copy.blurb, text::kSubtle);
     blurb->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     tile->Body()->addWidget(blurb, 1);
     // Lutris and Heroic have nothing to set up: their button imports right away.

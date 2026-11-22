@@ -52,13 +52,13 @@ QString FoldersMove(int count) {
 
 SettingRow* NoteRow(QWidget* parent) {
   auto* row = new SettingRow(QString(), {}, parent);
-  row->Label()->setProperty("role", "subtle");
+  SetTextStyle(row->Label(), text::kSubtle);
   return row;
 }
 
 QLabel* CountLabel(QWidget* parent) {
   auto* count = new QLabel(parent);
-  count->setProperty("role", "subtle");
+  SetTextStyle(count, text::kSubtle);
   count->setFixedWidth(kCountWidth);
   count->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   return count;
@@ -73,7 +73,7 @@ QToolButton* MoreButton(QWidget* parent) {
 
 QLabel* ColumnHeading(const QString& text, int width, Qt::Alignment align, QWidget* parent) {
   auto* heading = new QLabel(text.toUpper(), parent);
-  heading->setProperty("role", "group_heading");
+  SetTextStyle(heading, text::kGroup);
   heading->setFixedWidth(width);
   heading->setAlignment(align | Qt::AlignVCenter);
   return heading;

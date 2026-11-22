@@ -16,6 +16,7 @@
 #include "../components/FlatCombo.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
 #include "SourceText.h"
 
@@ -241,7 +242,7 @@ void SourceSettingsCard::BuildRunnerRow() {
   note_row->setContentsMargins(0, 0, 0, 0);
   runner_note_ = new QLabel(note);
   runner_note_->setWordWrap(true);
-  runner_note_->setProperty("role", "muted");
+  SetTextStyle(runner_note_, text::kDetail);
   note_row->addWidget(runner_note_, /*stretch=*/1);
   runner_apply_ = new QPushButton(note);
   runner_apply_->setVisible(false);
@@ -378,7 +379,7 @@ void SourceSettingsCard::LoadSettings() {
         SettingEditor& editor = settings_[i];
         if (i == first_shared) {
           auto* heading = new QLabel("All emulators", this);
-          theme::SetStyleProperty(heading, "role", "section");
+          SetTextStyle(heading, text::kSection);
           heading->setContentsMargins(18, 12, 18, 2);
           AddRow(heading);
         }
@@ -418,9 +419,7 @@ void SourceSettingsCard::LoadSettings() {
 }
 
 void SourceSettingsCard::ShowStatus(const QString& text, bool error) {
-  theme::SetStyleProperty(status_, "role", error ? "error" : "muted");
-  status_->setText(text);
-  status_->setVisible(true);
+  ShowLine(status_, text, error ? text::kError : text::kDetail);
 }
 
 }  // namespace mira_gui

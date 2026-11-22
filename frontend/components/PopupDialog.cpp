@@ -16,6 +16,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "SheetCard.h"
+#include "Text.h"
 
 namespace mira_gui {
 namespace {
@@ -99,7 +100,7 @@ void PopupDialog::SetDetail(const QString& text) {
   if (detail_ == nullptr) {
     detail_ = new QLabel(this);
     detail_->setWordWrap(true);
-    detail_->setProperty("role", "muted");
+    SetTextStyle(detail_, text::kDetail);
     detail_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     body_->addWidget(detail_);
   }

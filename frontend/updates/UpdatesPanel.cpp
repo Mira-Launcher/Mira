@@ -58,7 +58,7 @@ QLabel* ReleaseLink(QWidget* parent, const UpdateInfo& mira) {
           .arg(QString::fromStdString(mira.installed), QString::fromStdString(mira.latest),
                QString::fromStdString(mira.url), theme::Current().accent.name()),
       parent);
-  label->setProperty("role", "muted");
+  SetTextStyle(label, text::kDetail);
   label->setTextFormat(Qt::RichText);
   label->setOpenExternalLinks(true);
   return label;
@@ -77,7 +77,7 @@ UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpda
   auto* header = new QHBoxLayout();
   header->setContentsMargins(18, 12, 10, 6);
   auto* title = new QLabel("Updates", this);
-  title->setProperty("role", "section");
+  SetTextStyle(title, text::kSection);
   header->addWidget(title);
   header->addStretch(1);
   auto* check = new QPushButton("Check again", this);
@@ -92,7 +92,7 @@ UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpda
   layout->addLayout(header);
 
   empty_ = new QLabel("Mira and everything it downloaded are up to date", this);
-  empty_->setProperty("role", "subtle");
+  SetTextStyle(empty_, text::kSubtle);
   empty_->setWordWrap(true);
   empty_->setContentsMargins(18, 6, 18, 10);
   layout->addWidget(empty_);
@@ -239,11 +239,11 @@ QWidget* UpdatesPanel::BuildMiraRow() {
   auto* text = new QVBoxLayout();
   text->setSpacing(3);
   auto* title = new QLabel("Mira", row);
-  title->setStyleSheet("font-weight: 600;");
+  SetTextStyle(title, text::kSection);
   text->addWidget(title);
 
-  const auto line = [row, text](const QString& message, const char* role = "muted") {
-    auto* label = MakeLabel(row, message, role);
+  const auto line = [row, text](const QString& message, TextStyle style = text::kDetail) {
+    auto* label = MakeLabel(row, message, style);
     text->addWidget(label);
     return label;
   };
@@ -268,7 +268,7 @@ QWidget* UpdatesPanel::BuildMiraRow() {
       line("Restarting Mira…");
       break;
     case MiraUpdater::State::Failed:
-      line("Failed: " + mira_->Error(), "error");
+      line("Failed: " + mira_->Error(), text::kError);
       [[fallthrough]];
     case MiraUpdater::State::Idle: {
       if (mira_->Current() == MiraUpdater::State::Idle) text->addWidget(ReleaseLink(row, entry));
@@ -323,11 +323,11 @@ QWidget* UpdatesPanel::BuildRow(const UpdateRow& update, bool first) {
   auto* text = new QVBoxLayout();
   text->setSpacing(3);
   auto* title = new ElidedLabel(update.name, row);
-  title->setStyleSheet("font-weight: 600;");
+  SetTextStyle(title, text::kSection);
   title->setToolTip(update.name);
   text->addWidget(title);
   const bool updating = Updating(update);
-  text->addWidget(MakeLabel(row, updating ? QString("Updating…") : update.detail, "muted"));
+  text->addWidget(MakeLabel(row, updating ? QString("Updating…") : update.detail, text::kDetail));
   layout->addLayout(text, /*stretch=*/1);
 
   if (!updating) {

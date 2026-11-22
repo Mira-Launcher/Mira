@@ -162,7 +162,7 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
   source_drop_line_->hide();
   source_rows_.resize(AllSources().size());
   nav_layout->addLayout(source_nav_layout_);
-  sources_empty_ = MakeLabel(nav_content, "No sources currently enabled", "muted");
+  sources_empty_ = MakeLabel(nav_content, "No sources currently enabled", text::kDetail);
   sources_empty_->setContentsMargins(8, 2, 8, 2);
   nav_layout->addWidget(sources_empty_);
 
@@ -203,7 +203,7 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
   footer_row->setContentsMargins(0, 6, 0, 0);
   footer_row->setSpacing(6);
   footer_ = new QLabel(this);
-  footer_->setProperty("role", "muted");
+  SetTextStyle(footer_, text::kDetail);
   footer_->setContentsMargins(6, 0, 6, 0);
   footer_->setWordWrap(true);
   footer_row->addWidget(footer_, /*stretch=*/1);
@@ -301,7 +301,7 @@ Sidebar::SourceRow& Sidebar::BuildSourceRow(int index) {
   lines->addStretch(1);
   row->addLayout(lines, /*stretch=*/1);
   auto* count = new QLabel(nav);
-  count->setProperty("role", "muted");
+  SetTextStyle(count, text::kDetail);
   row->addWidget(count);
   for (QLabel* label : nav->findChildren<QLabel*>())
     label->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -1053,7 +1053,7 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
   // Empty places up to `places` show as faded sketches, so the section keeps its size.
   heading->setVisible(!games.empty() || placeholders > 0 || !empty_text.isEmpty());
   if (games.empty() && placeholders == 0 && !empty_text.isEmpty()) {
-    QLabel* empty = MakeLabel(parent, empty_text, "muted");
+    QLabel* empty = MakeLabel(parent, empty_text, text::kDetail);
     empty->setContentsMargins(8, 2, 8, 2);
     layout->addWidget(empty);
   } else if (shelf) {

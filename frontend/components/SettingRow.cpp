@@ -172,13 +172,12 @@ ExpanderRow::ExpanderRow(const QString& label, QWidget* parent) : QWidget(parent
   label_->setMinimumHeight(kControlHeight);
   head_layout_->addWidget(label_);
   meta_ = new QLabel(head_);
-  theme::SetStyleProperty(meta_, "role", "subtle");
+  SetTextStyle(meta_, text::kSubtle);
   meta_->hide();
   head_layout_->addWidget(meta_);
   head_layout_->addStretch(1);
   summary_ = new QLabel(head_);
-  summary_->setObjectName("expander_summary");
-  theme::SetStyleProperty(summary_, "role", "subtle");
+  SetTextStyle(summary_, text::kSubtle);
   summary_->hide();
   head_layout_->addWidget(summary_);
   chevron_ = fold::NewChevron(
@@ -219,10 +218,10 @@ void ExpanderRow::SetMeta(const QString& text) {
   meta_->setVisible(!text.isEmpty());
 }
 
-void ExpanderRow::SetSummary(const QString& text, const QString& tone) {
+void ExpanderRow::SetSummary(const QString& text, Tone tone) {
   summary_->setText(text);
   summary_->setVisible(!text.isEmpty());
-  theme::SetStyleProperty(summary_, "tone", tone);
+  SetTextStyle(summary_, {TextRole::Body, tone});
 }
 
 void ExpanderRow::AddTrailing(QWidget* widget) {

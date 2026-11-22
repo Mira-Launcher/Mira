@@ -17,7 +17,7 @@ UnclearDropCard::UnclearDropCard(const UnclearDrop& drop, QWidget* parent)
   const QString name = drop.name.empty() ? QFileInfo(QString::fromStdString(drop.path)).fileName()
                                          : QString::fromStdString(drop.name);
   auto* title = new QLabel(QString("Where does %1 go?").arg(name), this);
-  title->setProperty("role", "heading");
+  SetTextStyle(title, text::kHeading);
   title->setWordWrap(true);
   SetTitleWidget(title);
 

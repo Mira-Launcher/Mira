@@ -11,6 +11,7 @@
 #include "../app/Notify.h"
 #include "../client/api/Hidden.h"
 #include "../components/SettingRow.h"
+#include "../components/Text.h"
 
 namespace mira_gui {
 namespace {
@@ -23,7 +24,7 @@ QLineEdit* PasswordField(QWidget* parent) {
 
 QLabel* ErrorLabel(QWidget* parent) {
   auto* error = new QLabel(parent);
-  error->setProperty("role", "error");
+  SetTextStyle(error, text::kError);
   error->setWordWrap(true);
   error->hide();
   return error;

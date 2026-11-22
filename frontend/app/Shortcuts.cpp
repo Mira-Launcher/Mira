@@ -10,6 +10,7 @@
 #include <QVBoxLayout>
 
 #include "../components/SheetCard.h"
+#include "../components/Text.h"
 #include "../components/WindowCards.h"
 #include "../game/CardParts.h"
 #include "KeyBindings.h"
@@ -42,7 +43,7 @@ QWidget* Keycaps(const QString& text, QWidget* parent) {
   for (int c = 0; c < combos.size(); ++c) {
     if (c > 0) {
       auto* gap = new QLabel("or", caps);
-      gap->setProperty("role", "muted");
+      SetTextStyle(gap, text::kDetail);
       layout->addWidget(gap);
     }
     const QString& combo = combos[c];
@@ -108,7 +109,7 @@ class ReferenceCard : public SheetCard {
       const int at = rows[1] < rows[0] ? 1 : 0;
       rows[at] += static_cast<int>(list.size()) + 1;
       auto* heading = new QLabel(group.toUpper(), body);
-      heading->setProperty("role", "group_heading");
+      SetTextStyle(heading, text::kGroup);
       heading->setContentsMargins(0, 10, 0, 4);
       column[at]->addWidget(heading);
       for (const Entry& entry : list) {

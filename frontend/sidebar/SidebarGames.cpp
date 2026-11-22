@@ -406,7 +406,7 @@ QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const 
   layout->addWidget(name_label, /*stretch=*/1);
   if (!trailing.isEmpty()) {
     auto* label = new QLabel(trailing, row);
-    label->setProperty("role", "muted");
+    SetTextStyle(label, text::kDetail);
     // Small, so the name keeps as much of a narrow sidebar as it can.
     QString style = QString("font-size: %1px;").arg(theme::Current().font_size_small);
     if (game.running) style += QString(" color: %1;").arg(theme::Current().running.name());

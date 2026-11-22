@@ -20,6 +20,7 @@
 #include "../client/api/Artwork.h"
 #include "../components/FlowLayout.h"
 #include "../components/Scrolling.h"
+#include "../components/Text.h"
 #include "../components/WindowCards.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
@@ -241,7 +242,7 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
   if (!result.ok && !result.missing) {
     auto* error =
         Text(body, "Could not read its store info: " + error_help::Describe(result.error));
-    error->setProperty("role", "error");
+    SetTextStyle(error, text::kError);
     body_->addWidget(error);
     body_->addStretch(1);
     panel_->show();
@@ -266,7 +267,7 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
   QLabel* requirements_text = nullptr;
   if (!facts.isEmpty()) {
     auto* line = Text(body, facts.join("&nbsp;&nbsp;·&nbsp;&nbsp;"), Qt::RichText);
-    line->setProperty("role", "muted");
+    SetTextStyle(line, text::kDetail);
     body_->addWidget(line);
     if (requirements) {
       // Steam's HTML carries its own "Minimum:" / "Recommended:" headings.

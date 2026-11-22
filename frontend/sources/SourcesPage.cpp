@@ -57,7 +57,7 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   titles->setSpacing(2);
   auto* title = new QLabel("Sources", this);
   title->setObjectName("page_title");
-  hint_ = MakeLabel(this, kAddedHint, "subtle");
+  hint_ = MakeLabel(this, kAddedHint, text::kSubtle);
   titles->addWidget(title);
   titles->addWidget(hint_);
   header->addLayout(titles, /*stretch=*/1);

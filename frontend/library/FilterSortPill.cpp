@@ -57,7 +57,7 @@ QWidget* MakeFilterRow(icons::Glyph glyph, const QString& label, QWidget* parent
   layout->addWidget(text, /*stretch=*/1);
   auto* count = new QLabel(row);
   count->setObjectName("count");
-  count->setProperty("role", "muted");
+  SetTextStyle(count, text::kDetail);
   layout->addWidget(count);
   return row;
 }
@@ -142,7 +142,7 @@ FilterSortPill::FilterSortPill(const std::string& sort_key, bool sort_descending
   sort_icon_ = new QLabel(this);
   layout->addWidget(sort_icon_);
   sort_label_ = new QLabel(this);
-  sort_label_->setProperty("role", "subtle");
+  SetTextStyle(sort_label_, text::kSubtle);
   layout->addWidget(sort_label_);
   chevron_ = new QLabel(this);
   layout->addWidget(chevron_);

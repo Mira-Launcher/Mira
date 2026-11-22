@@ -20,10 +20,10 @@ QString ExpandHome(const QString& path) {
   return path == "~" || path.startsWith("~/") ? QDir::homePath() + path.mid(1) : path;
 }
 
-QLabel* MakeLabel(QWidget* parent, const QString& text, const char* role, bool wrap) {
+QLabel* MakeLabel(QWidget* parent, const QString& text, TextStyle style, bool wrap) {
   auto* label = new QLabel(text, parent);
   label->setWordWrap(wrap);
-  if (role != nullptr) label->setProperty("role", role);
+  SetTextStyle(label, style);
   return label;
 }
 
@@ -53,7 +53,7 @@ QString JoinAnd(QStringList items) {
 }
 
 QLabel* MakeGroupHeading(QWidget* parent, const QString& text) {
-  return MakeLabel(parent, text, "group_heading", /*wrap=*/false);
+  return MakeLabel(parent, text, text::kGroup, /*wrap=*/false);
 }
 
 void KeepSpaceWhenHidden(QWidget* widget, bool keep) {

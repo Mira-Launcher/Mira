@@ -6,13 +6,14 @@
 #include <QStringList>
 #include <Qt>
 
+#include "Text.h"
+
 class QWidget;
 
 namespace mira_gui {
 
-// A label in one of base.qss's text roles ("muted", "section", "error", ...),
-// or plain with no `role`. Wraps unless told not to.
-QLabel* MakeLabel(QWidget* parent, const QString& text, const char* role = nullptr,
+// A label in `style` (components/Text). Wraps unless told not to.
+QLabel* MakeLabel(QWidget* parent, const QString& text, TextStyle style = text::kBody,
                   bool wrap = true);
 
 // A small caps-style group heading ("PINNED", "SORT") in the muted color.

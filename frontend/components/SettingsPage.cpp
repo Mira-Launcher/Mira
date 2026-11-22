@@ -88,7 +88,7 @@ SettingsPage::SettingsPage(const QString& title, QWidget* parent) : QWidget(pare
   auto* layout = new CenteredColumn(this);
   title_ = new QLabel(title, this);
   title_->setObjectName("settings_title");
-  title_->setProperty("role", "heading");
+  SetTextStyle(title_, text::kHeading);
   layout->addWidget(title_);
 }
 

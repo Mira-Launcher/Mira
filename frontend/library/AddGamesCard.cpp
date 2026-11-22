@@ -70,7 +70,7 @@ QLabel* Tile(QWidget* parent, icons::Glyph glyph) {
 // height as the line fills in.
 QLabel* Detail(QWidget* parent, const QString& text) {
   auto* label = new ElidedLabel(text, parent);
-  label->setProperty("role", "muted");
+  SetTextStyle(label, text::kDetail);
   return label;
 }
 
@@ -688,7 +688,7 @@ void AddGamesCard::ShowAppMenu() {
       row->AddAfterLabel(tag);
     } else if (!candidate.command.empty()) {
       auto* command = new ElidedLabel(QString::fromStdString(candidate.command), row);
-      command->setProperty("role", "muted");
+      SetTextStyle(command, text::kDetail);
       row->SetBelow(command);
     }
     // Shown once the entry is ticked, keeping its place so nothing shifts.
@@ -711,7 +711,7 @@ void AddGamesCard::ShowAppMenu() {
   QLabel* error = page->ErrorLine();
   QHBoxLayout* buttons = page->ButtonRow();
   count = new QLabel(page);
-  count->setProperty("role", "subtle");
+  SetTextStyle(count, text::kSubtle);
   buttons->insertWidget(0, count);
   auto* cancel = new QPushButton("Cancel", page);
   connect(cancel, &QPushButton::clicked, this, [this] { Close(); });

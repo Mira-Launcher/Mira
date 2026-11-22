@@ -187,7 +187,7 @@ ProgramsFoundCard::ProgramsFoundCard(const GameSummary& game, const ProgramsFoun
     auto* path = new QLabel(QString::fromStdString(program.exe), row);
     path->setWordWrap(true);
     path->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    path->setProperty("role", "subtle");
+    SetTextStyle(path, text::kSubtle);
     row->SetBelow(path);
     auto* mode = new FlatCombo(row);
     for (const auto& [id, text] : kLaunchModes) mode->addItem(text, QString(id));

@@ -13,6 +13,7 @@
 #include <QUrl>
 
 #include "../components/SettingRow.h"
+#include "../components/Text.h"
 #include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
 #include "../game/CardParts.h"
@@ -48,7 +49,7 @@ QToolButton* LinkButton(QWidget* parent, const QString& url) {
 
 QLabel* Below(QWidget* parent, const QString& text) {
   auto* label = new QLabel(text, parent);
-  label->setProperty("role", "muted");
+  SetTextStyle(label, text::kDetail);
   return label;
 }
 

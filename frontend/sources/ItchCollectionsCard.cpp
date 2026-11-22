@@ -9,7 +9,9 @@
 #include "../app/ErrorHelp.h"
 #include "../client/api/Stores.h"
 #include "../components/SettingRow.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
+#include "SourceText.h"
 
 namespace mira_gui {
 
@@ -19,7 +21,7 @@ ItchCollectionsCard::ItchCollectionsCard(QWidget* parent)
       "Games in these collections show on the itch page. Free ones can be installed; paid ones "
       "install once you own them.",
       this);
-  intro->setProperty("role", "muted");
+  SetTextStyle(intro, text::kDetail);
   intro->setWordWrap(true);
   intro->setContentsMargins(18, 8, 18, 8);
   AddRow(intro);
@@ -48,9 +50,7 @@ void ItchCollectionsCard::Refresh() {
 }
 
 void ItchCollectionsCard::SetStatus(const QString& text, bool error) {
-  status_->setText(text);
-  status_->setVisible(!text.isEmpty());
-  theme::SetStyleProperty(status_, "role", error ? "error" : "muted");
+  ShowLine(status_, text, error ? text::kError : text::kDetail);
 }
 
 void ItchCollectionsCard::ShowCollections(const ItchCollectionsResult& result) {
@@ -67,11 +67,11 @@ void ItchCollectionsCard::ShowCollections(const ItchCollectionsResult& result) {
                                  .arg(collection.games_count)
                                  .arg(collection.games_count == 1 ? "" : "s"),
                              row);
-    count->setProperty("role", "muted");
+    SetTextStyle(count, text::kDetail);
     row->AddControl(count);
     if (collection.own) {
       auto* yours = new QLabel("Yours", row);
-      yours->setProperty("role", "muted");
+      SetTextStyle(yours, text::kDetail);
       row->AddControl(yours);
     } else {
       auto* remove = new QPushButton("Remove", row);

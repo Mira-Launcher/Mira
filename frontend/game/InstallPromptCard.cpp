@@ -11,6 +11,7 @@
 #include "../client/Types.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Theme.h"
 
@@ -51,11 +52,11 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
   heading_layout->setContentsMargins(0, 0, 0, 0);
   heading_layout->setSpacing(2);
   auto* title = new QLabel(QString::fromStdString(game.name) + " installed a program", heading);
-  title->setProperty("role", "heading");
+  SetTextStyle(title, text::kHeading);
   heading_layout->addWidget(title);
   auto* question =
       new QLabel("It ran as an installer. Use the program it installed instead?", heading);
-  question->setProperty("role", "subtle");
+  SetTextStyle(question, text::kSubtle);
   question->setWordWrap(true);
   heading_layout->addWidget(question);
   SetTitleWidget(heading);
@@ -100,7 +101,7 @@ void InstallPromptCard::ShowProgram() {
   const bool found = !exe_path_.empty();
   program_->setText(found ? WindowsPath((std::filesystem::path(install_path_) / exe_path_).string())
                           : QString("None found"));
-  theme::SetStyleProperty(program_, "role", found ? "" : "subtle");
+  SetTextStyle(program_, found ? text::kBody : text::kSubtle);
   use_->setEnabled(found);
 }
 

@@ -18,7 +18,7 @@ PageHeader::PageHeader(const QString& title, QWidget* parent) : QWidget(parent) 
   auto* label = new QLabel(title, this);
   label->setObjectName("page_title");
   titles->addWidget(label);
-  subtitle_ = MakeLabel(this, QString(), "subtle");
+  subtitle_ = MakeLabel(this, QString(), text::kSubtle);
   subtitle_->hide();
   titles->addWidget(subtitle_);
   titles->addStretch(1);  // the title stays at the top beside a taller control

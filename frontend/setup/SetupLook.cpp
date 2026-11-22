@@ -850,7 +850,7 @@ SidebarPage::SidebarPage(const SetupContext& context) : context_(context) {
   rows->addWidget(
       SetupRow(card, "Covers on sources", "A few of each source's games beside its name", covers_));
   left->addWidget(card);
-  hint_ = MakeLabel(this, QString(), "muted");
+  hint_ = MakeLabel(this, QString(), text::kDetail);
   left->addWidget(hint_);
   left->addStretch(1);
   columns->addLayout(left, /*stretch=*/1);

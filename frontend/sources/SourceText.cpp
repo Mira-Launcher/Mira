@@ -4,6 +4,7 @@
 #include <QStyle>
 
 #include "../app/ErrorHelp.h"
+#include "../components/Text.h"
 #include "Sources.h"
 
 namespace mira_gui {
@@ -99,10 +100,8 @@ SourceCopy CopyFor(const std::string& id) {
           "Import Lutris games"};
 }
 
-void ShowLine(QLabel* label, const QString& text, const char* role) {
-  label->setProperty("role", role);
-  label->style()->unpolish(label);
-  label->style()->polish(label);
+void ShowLine(QLabel* label, const QString& text, TextStyle style) {
+  SetTextStyle(label, style);
   label->setText(text);
   label->setVisible(!text.isEmpty());
 }
@@ -110,7 +109,7 @@ void ShowLine(QLabel* label, const QString& text, const char* role) {
 void ShowError(QLabel* label, const QString& what, const ApiError& error) {
   QString text = error_help::Describe(error);
   if (!text.isEmpty()) text[0] = text[0].toUpper();
-  ShowLine(label, (what + " " + text).trimmed(), "error");
+  ShowLine(label, (what + " " + text).trimmed(), text::kError);
 }
 
 QString ImportOutcome(int added, int updated, const QString& item) {

@@ -95,7 +95,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
 
   last_error_label_ = new QLabel(cards_page);
   last_error_label_->setWordWrap(true);
-  last_error_label_->setProperty("role", "error");
+  SetTextStyle(last_error_label_, text::kError);
   last_error_label_->hide();
   cards_layout_->addWidget(last_error_label_);
 

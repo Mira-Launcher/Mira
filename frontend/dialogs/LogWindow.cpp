@@ -224,7 +224,7 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   body_layout->addWidget(view_, 1);
 
   count_ = new QLabel(body);
-  count_->setProperty("role", "subtle");
+  SetTextStyle(count_, text::kSubtle);
   body_layout->addWidget(count_);
   root->addWidget(body, 1);
   ApplyIcons();

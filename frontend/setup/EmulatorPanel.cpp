@@ -30,7 +30,7 @@ EmulatorPanel::EmulatorPanel(const EmulatorInfo& emulator, QWidget* parent)
     const QString how = emulator.package.empty()
                             ? "Mira downloads the latest release of " + name + "."
                             : name + " comes from your system's packages.";
-    row->addWidget(MakeLabel(install_, how, "subtle"), 1);
+    row->addWidget(MakeLabel(install_, how, text::kSubtle), 1);
     auto* choose = new QPushButton("Choose program…", install_);
     choose->setToolTip("Use a copy of " + name + " you already have.");
     connect(choose, &QPushButton::clicked, this, &EmulatorPanel::ChooseProgram);
@@ -47,8 +47,8 @@ EmulatorPanel::EmulatorPanel(const EmulatorInfo& emulator, QWidget* parent)
     const QString label = QString::fromStdString(firmware.label);
     const QString state = firmware.present ? "Added" : firmware.required ? "Needed" : "Optional";
     row->addWidget(MakeLabel(this, label), 1);
-    row->addWidget(
-        MakeLabel(this, state, firmware.present || !firmware.required ? "muted" : "error"));
+    row->addWidget(MakeLabel(
+        this, state, firmware.present || !firmware.required ? text::kDetail : text::kError));
     auto* add = new QPushButton(firmware.present ? "Replace…" : "Add…", this);
     add->setAccessibleName("Add " + label);
     connect(add, &QPushButton::clicked, this, [this, firmware] { AddFirmware(firmware); });
@@ -56,11 +56,11 @@ EmulatorPanel::EmulatorPanel(const EmulatorInfo& emulator, QWidget* parent)
     layout->addLayout(row);
   }
   if (!emulator.firmware.empty()) {
-    layout->addWidget(
-        MakeLabel(this, "Mira can't download these: dump them from your own console.", "subtle"));
+    layout->addWidget(MakeLabel(this, "Mira can't download these: dump them from your own console.",
+                                text::kSubtle));
   }
 
-  error_ = MakeLabel(this, QString(), "error");
+  error_ = MakeLabel(this, QString(), text::kError);
   error_->setVisible(false);
   layout->addWidget(error_);
 }
@@ -80,7 +80,7 @@ void EmulatorPanel::Install() {
     });
     return;
   }
-  ShowLine(error_, "Downloading " + name + "…", "muted");
+  ShowLine(error_, "Downloading " + name + "…", text::kDetail);
   api::InstallEmulatorAsync(this, emulator_.id, [this, name](StoreActionResult result) {
     install_->setEnabled(true);
     // Downloaded, but it needs a library from the system's packages too.

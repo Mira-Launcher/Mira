@@ -180,7 +180,7 @@ void RemoveGamesCard::AddInfoRow(const QString& label, std::function<QString()> 
   auto* row = new SettingRow(label, QString(), this);
   // One line, cut short with the whole of it as the tooltip: the size leads, so it always shows.
   auto* value = new ElidedLabel(text(), row);
-  value->setProperty("role", "subtle");
+  SetTextStyle(value, text::kSubtle);
   value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   row->AddControl(value, 1);
   AddRow(row);
@@ -195,7 +195,7 @@ void RemoveGamesCard::AddGameRow(const QString& name, std::function<QString()> t
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(12);
   layout->addWidget(new ElidedLabel(name, line), 1);
-  auto* value = MakeLabel(line, text(), "subtle");
+  auto* value = MakeLabel(line, text(), text::kSubtle);
   layout->addWidget(value);
   row->AddWideControl(line);
   AddRow(row);
@@ -214,7 +214,7 @@ void RemoveGamesCard::AddPrefixRow() {
                         : rest ? "Delete the rest of its prefix"
                                : "Delete its prefix";
   auto* row = new SettingRow(label, QString(), this);
-  auto* size = MakeLabel(row, QString(), "subtle");
+  auto* size = MakeLabel(row, QString(), text::kSubtle);
   row->AddControl(size);
   prefix_ = new Switch(row);
   prefix_->setAccessibleName(label);
@@ -242,7 +242,7 @@ void RemoveGamesCard::AddSavesRow() {
   const bool one = plans_.size() == 1;
   const QString label = one ? "Delete its save backups" : "Delete their save backups";
   auto* row = new SettingRow(label, QString(), this);
-  auto* size = MakeLabel(row, QString(), "subtle");
+  auto* size = MakeLabel(row, QString(), text::kSubtle);
   row->AddControl(size);
   saves_ = new Switch(row);
   saves_->setAccessibleName(label);

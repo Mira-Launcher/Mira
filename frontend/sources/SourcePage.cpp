@@ -574,13 +574,13 @@ QWidget* SourcePage::BuildDropZone(QWidget* parent) {
   logo->setPixmap(SourceLogo(source_, 48, devicePixelRatioF()));
   layout->addWidget(logo, 0, Qt::AlignHCenter);
   auto* title = new QLabel("Drop " + PlaysText(source_) + " games here", drop_zone_);
-  title->setProperty("role", "heading");
+  SetTextStyle(title, text::kHeading);
   title->setAlignment(Qt::AlignCenter);
   title->setWordWrap(true);
   layout->addWidget(title);
   auto* line = MakeLabel(
       drop_zone_, "Or add them from a folder. Games you put in its games folder show up too.",
-      "muted");
+      text::kDetail);
   line->setAlignment(Qt::AlignCenter);
   layout->addWidget(line);
   auto* buttons = new QHBoxLayout();
@@ -610,16 +610,16 @@ QWidget* SourcePage::BuildLibrarySection() {
 
   auto* header = new QHBoxLayout();
   library_heading_ = new QLabel("In your library", section);
-  library_heading_->setProperty("role", "heading");
+  SetTextStyle(library_heading_, text::kHeading);
   header->addWidget(library_heading_);
   header->addStretch(1);
-  import_result_ = MakeLabel(section, QString(), "muted");
+  import_result_ = MakeLabel(section, QString(), text::kDetail);
   import_result_->setWordWrap(false);
   import_result_->setVisible(false);
   header->addWidget(import_result_);
   layout->addLayout(header);
 
-  library_empty_ = MakeLabel(section, QString(), "muted");
+  library_empty_ = MakeLabel(section, QString(), text::kDetail);
   layout->addWidget(library_empty_);
   if (IsEmulator()) layout->addWidget(BuildDropZone(section));
 
@@ -652,9 +652,9 @@ QWidget* SourcePage::BuildOwnedSection() {
                               : IsLauncher()  ? "More " + CopyFor(id_).item + "s"
                                               : QString("Not installed"),
                               owned_section_);
-  owned_heading_->setProperty("role", "heading");
+  SetTextStyle(owned_heading_, text::kHeading);
   header->addWidget(owned_heading_, 0, Qt::AlignBaseline);
-  owned_count_ = MakeLabel(owned_section_, QString(), "muted", /*wrap=*/false);
+  owned_count_ = MakeLabel(owned_section_, QString(), text::kDetail, /*wrap=*/false);
   header->addWidget(owned_count_, 0, Qt::AlignBaseline);
   header->addStretch(1);
   clear_filters_ = new QPushButton("Clear filters", owned_section_);
@@ -707,7 +707,7 @@ QWidget* SourcePage::BuildOwnedSection() {
   owned_skeleton_->setVisible(false);
   layout->addWidget(owned_skeleton_);
 
-  owned_note_ = MakeLabel(owned_section_, QString(), "muted");
+  owned_note_ = MakeLabel(owned_section_, QString(), text::kDetail);
   owned_note_->setVisible(false);
   layout->addWidget(owned_note_);
   if (id_ == "steam") {
@@ -734,7 +734,7 @@ QWidget* SourcePage::BuildOwnedSection() {
       ShowLine(owned_note_,
                source_.name +
                    " doesn't list games you own. What it installs shows up in your library above.",
-               "muted");
+               text::kDetail);
     }
   }
 
@@ -937,7 +937,7 @@ void SourcePage::AddToGames(const std::vector<std::string>& ids) {
                                        : QString("%1 games' prefixes").arg(ids.size());
   adding_ += static_cast<int>(ids.size());
   import_button_->setEnabled(false);
-  ShowLine(import_result_, "Getting " + what + " ready for " + source_.name + "…", "muted");
+  ShowLine(import_result_, "Getting " + what + " ready for " + source_.name + "…", text::kDetail);
   auto failed = std::make_shared<std::vector<std::pair<QString, ApiError>>>();
   auto left = std::make_shared<int>(static_cast<int>(ids.size()));
   const int count = static_cast<int>(ids.size());
@@ -961,7 +961,7 @@ void SourcePage::AddToGames(const std::vector<std::string>& ids) {
                    count == 1
                        ? "Added. Open it from the game's page."
                        : QString("Added to %1 games. Open it from a game's page.").arg(count),
-                   "muted");
+                   text::kDetail);
         });
   }
 }
@@ -998,7 +998,7 @@ void SourcePage::AddGames(const std::vector<std::string>& paths) {
   api::AddEmulatorFilesAsync(this, id_, paths, [this](StoreImportResult result) {
     import_button_->setEnabled(true);
     if (!result.ok) return ShowError(import_result_, "Could not add those games", result.error);
-    ShowLine(import_result_, ImportOutcome(result.added, result.updated, "game"), "muted");
+    ShowLine(import_result_, ImportOutcome(result.added, result.updated, "game"), text::kDetail);
     if (result.added > 0 || result.updated > 0) emit LibraryChanged();
     for (const StartChoice& choice : result.choose) AskStartFile(choice);
   });
@@ -1047,7 +1047,8 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
     // Whatever was listed before signing out isn't this account's to install.
     owned_.clear();
     RebuildOwnedTiles();
-    ShowLine(owned_note_, "Sign in to " + source_.name + " to see the games you own.", "muted");
+    ShowLine(owned_note_, "Sign in to " + source_.name + " to see the games you own.",
+             text::kDetail);
   } else if (owned_section_ != nullptr) {
     owned_refresh_->setEnabled(!owned_loading_);
   }
@@ -1122,7 +1123,7 @@ void SourcePage::UpdateStatusLine() {
                  ? "Install more " + items + " in " + source_.name + ", then press \"" +
                        CopyFor(id_).import_button + "\" to add them here."
                  : "Install " + source_.name + " first, then install " + items + " in it.",
-             "muted");
+             text::kDetail);
   }
   if (library_empty_ == nullptr) return;
   library_empty_->setVisible(library_count_ == 0);
@@ -1157,7 +1158,7 @@ void SourcePage::Import() {
   const auto done = [this](bool ok, const ApiError& error, int added, int updated) {
     import_button_->setEnabled(true);
     if (ok) {
-      ShowLine(import_result_, ImportOutcome(added, updated, CopyFor(id_).item), "muted");
+      ShowLine(import_result_, ImportOutcome(added, updated, CopyFor(id_).item), text::kDetail);
     } else {
       ShowError(import_result_, "Could not import", error);
     }
@@ -1298,14 +1299,14 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
     ShowLine(owned_note_,
              "Steam on this computer hasn't listed any games yet. Open Steam and sign in, or set "
              "a Steam Web API key and your SteamID64 in Settings.",
-             "muted");
+             text::kDetail);
     if (steam_settings_ != nullptr) steam_settings_->setVisible(true);
   } else if (owned_.empty()) {
     ShowLine(owned_note_,
              library_->ShowingHidden() ? "Nothing hidden here" : "Everything you own is installed",
-             "muted");
+             text::kDetail);
   } else {
-    ShowLine(owned_note_, QString(), "muted");
+    ShowLine(owned_note_, QString(), text::kDetail);
   }
   RebuildOwnedTiles();
 }
@@ -1320,7 +1321,7 @@ void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
   }
   // A bundle can't be hidden.
   if (library_->ShowingHidden()) {
-    ShowLine(owned_note_, "Nothing hidden here", "muted");
+    ShowLine(owned_note_, "Nothing hidden here", text::kDetail);
     RebuildOwnedTiles();
     return;
   }
@@ -1333,7 +1334,7 @@ void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
            owned_.empty() ? QString("No purchases on this account")
                           : QString("Downloads land in your games folder, where Mira picks up "
                                     "anything it recognizes."),
-           "muted");
+           text::kDetail);
   RebuildOwnedTiles();
 }
 

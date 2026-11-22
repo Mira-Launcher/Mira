@@ -43,6 +43,7 @@
 #include "../client/api/Artwork.h"
 #include "../components/FlowLayout.h"
 #include "../components/TabRow.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
 #include "HeroBackdrop.h"
 
@@ -312,7 +313,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   match_layout->setContentsMargins(0, 0, 0, 0);
   match_layout->setSpacing(6);
   auto* match_label = new QLabel("Art from", match_row_);
-  match_label->setProperty("role", "muted");
+  SetTextStyle(match_label, text::kDetail);
   match_layout->addWidget(match_label);
   match_ = new QComboBox(match_row_);
   match_->setMinimumWidth(180);
@@ -422,7 +423,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   message_ = new QLabel(message_page_);
   message_->setAlignment(Qt::AlignCenter);
   message_->setWordWrap(true);
-  message_->setProperty("role", "muted");
+  SetTextStyle(message_, text::kDetail);
   message_layout->addWidget(message_);
   fetch_button_ = new QPushButton("Look again on SteamGridDB", message_page_);
   connect(fetch_button_, &QPushButton::clicked, this, [this] {

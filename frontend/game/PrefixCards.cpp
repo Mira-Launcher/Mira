@@ -51,7 +51,7 @@ QHBoxLayout* StatusButtonRow(Card* card, ProgressRail*& rail, QLabel*& status,
   auto* line = new QHBoxLayout();
   line->setSpacing(8);
   status = new QLabel(row);
-  status->setProperty("role", "muted");
+  SetTextStyle(status, text::kDetail);
   status->setWordWrap(true);
   line->addWidget(status, 1);
   if (trailing != nullptr) {
@@ -126,7 +126,7 @@ void RunInPrefixCard::Run() {
   for (QWidget* widget : std::initializer_list<QWidget*>{program_, args_, run_})
     widget->setEnabled(false);
   rail_->show();
-  theme::SetStyleProperty(status_, "role", "muted");
+  SetTextStyle(status_, text::kDetail);
   status_->setText("Starting it, and making the prefix first if there's none…");
   api::RunInPrefixAsync(
       this, game_id_, program, args_->text().toStdString(), [this](RunInPrefixResult result) {
@@ -134,7 +134,7 @@ void RunInPrefixCard::Run() {
         for (QWidget* widget : std::initializer_list<QWidget*>{program_, args_, run_})
           widget->setEnabled(true);
         rail_->hide();
-        theme::SetStyleProperty(status_, "role", "error");
+        SetTextStyle(status_, text::kError);
         status_->setText("Could not run it: " + error_help::Describe(result.error));
       });
 }
@@ -238,7 +238,7 @@ void WinetricksCard::SetRunning(bool running) {
 
 void WinetricksCard::SetStatus(const QString& text, bool error) {
   status_->setText(text);
-  theme::SetStyleProperty(status_, "role", error ? "error" : "muted");
+  SetTextStyle(status_, error ? text::kError : text::kDetail);
 }
 
 void WinetricksCard::Run() {

@@ -61,7 +61,7 @@ void AskDisplay(const ConfigSchemaEntry& entry, SettingRow* row, Switch* toggle,
       note = QString("%1, your main monitor, can't do HDR")
                  .arg(QString::fromStdString(display.output));
     }
-    if (!note.isEmpty()) row->SetBelow(MakeLabel(row, note, "subtle"));
+    if (!note.isEmpty()) row->SetBelow(MakeLabel(row, note, text::kSubtle));
     if (toggle != nullptr && display.ok && display.supported && !display.hdr &&
         !toggle->isChecked())
       toggle->setEnabled(false);

@@ -277,7 +277,7 @@ void SettingsPanel::BuildSchemaPages() {
       Card* first = page->findChild<Card*>();
       auto* row = new SettingRow("GameMode", {});
       gamemode_status_ = new QLabel("Checking…", row);
-      theme::SetStyleProperty(gamemode_status_, "role", "subtle");
+      SetTextStyle(gamemode_status_, text::kSubtle);
       row->AddControl(gamemode_status_);
       first->AddRow(row);
       nav_->RegisterRow(row, "gamemode feral daemon status");
@@ -328,7 +328,7 @@ void SettingsPanel::DescribeEmulatorItems() {
                             .startsWith(QDir::homePath() + "/.local/share/mira/");
       if (emulator.installed) {
         expander->SetSummary(mine || !emulator.version.empty() ? "Installed" : "Your copy",
-                             "success");
+                             Tone::Success);
       } else {
         expander->SetSummary(emulator.package.empty() ? "Not installed" : "From system packages");
       }
@@ -469,7 +469,7 @@ void SettingsPanel::LoadGameModeStatus() {
       text = "Installed and running";
     }
     gamemode_status_->setText(text);
-    theme::SetStyleProperty(gamemode_status_, "role", error ? "error" : "subtle");
+    SetTextStyle(gamemode_status_, error ? text::kError : text::kSubtle);
   });
 }
 
@@ -717,7 +717,7 @@ void SettingsPanel::ShowMiraFolders(const ConfigResult& config) {
     path->setMinimumHeight(kControlHeight);
     line->addWidget(path, /*stretch=*/1);
     auto* free = new QLabel(space, row);
-    free->setProperty("role", "subtle");
+    SetTextStyle(free, text::kSubtle);
     line->addWidget(free);
     items_layout->addWidget(row);
     if (folders.size() > 1) {

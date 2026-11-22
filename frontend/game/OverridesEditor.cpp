@@ -14,6 +14,7 @@
 #include "../components/ChipToggles.h"
 #include "../components/ListEdit.h"
 #include "../components/SettingRow.h"
+#include "../components/Text.h"
 
 namespace mira_gui {
 
@@ -86,7 +87,7 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
     if (field.list != nullptr) {
       // A list the game takes from Settings shows it muted; Edit… starts the game's own copy.
       field.from_settings = new QLabel("From Settings", row);
-      field.from_settings->setProperty("role", "subtle");
+      SetTextStyle(field.from_settings, text::kSubtle);
       row->AddAfterLabel(field.from_settings);
       field.edit_list = new QPushButton("Edit…", row);
       field.edit_list->setToolTip("Give this game a list of its own, starting from Settings' list");

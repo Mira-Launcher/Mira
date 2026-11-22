@@ -1905,7 +1905,7 @@ QWidget* LibraryWindow::BuildSettingsPage() {
   connect(back, &QToolButton::clicked, this, &LibraryWindow::RequestCloseSettings);
   header_layout->addWidget(back);
   auto* title = new QLabel("Settings", header);
-  title->setProperty("role", "heading");
+  mira_gui::SetTextStyle(title, mira_gui::text::kHeading);
   header_layout->addWidget(title, /*stretch=*/1);
   settings_panel_->SetHeader(header);
 

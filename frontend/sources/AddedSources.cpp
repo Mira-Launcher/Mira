@@ -50,7 +50,7 @@ QString Status(const SourceEntry& entry) {
 void AddLine(SourceTile* tile, const QString& text, const QString& tip, QWidget* control) {
   auto* line = new QHBoxLayout();
   line->setContentsMargins(0, 0, 4, 0);
-  QLabel* label = MakeLabel(tile, text, nullptr, false);
+  QLabel* label = MakeLabel(tile, text, text::kBody, false);
   label->setToolTip(tip);
   control->setToolTip(tip);
   line->addWidget(label, 1);
@@ -75,7 +75,7 @@ AddedSources::AddedSources(QWidget* parent) : QWidget(parent) {
   apps_heading_ = MakeGroupHeading(this, "Apps");
   apps_heading_->setContentsMargins(0, 12, 0, 0);
   apps_grid_ = Grid(this);
-  empty_ = MakeLabel(this, QString(), "subtle");
+  empty_ = MakeLabel(this, QString(), text::kSubtle);
   empty_->hide();
   for (QWidget* widget :
        {static_cast<QWidget*>(games_heading_), games_grid_, static_cast<QWidget*>(apps_heading_),
@@ -145,7 +145,7 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
   if (id == "local") {
     AddLine(tile.tile, QString("%1 in library").arg(items[0].toUpper() + items.mid(1)),
             "Games from no store or launcher are always in the library.",
-            MakeLabel(tile.tile, "Always", "subtle", false));
+            MakeLabel(tile.tile, "Always", text::kSubtle, false));
   } else {
     tile.in_library = new Switch(tile.tile);
     tile.in_library->setAccessibleName(QString("%1's %2 in the library").arg(name, items));

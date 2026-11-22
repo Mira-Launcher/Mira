@@ -40,7 +40,7 @@ RatingChips::RatingChips(QWidget* parent) : QWidget(parent) {
   grid->setColumnStretch(1, 1);
 
   const auto row = [&](int at, const QString& label, const QString& help) {
-    auto* name = MakeLabel(this, label, "muted", /*wrap=*/false);
+    auto* name = MakeLabel(this, label, text::kDetail, /*wrap=*/false);
     name->setFixedWidth(104);
     name->setToolTip(help);
     grid->addWidget(name, at, 0, Qt::AlignTop);

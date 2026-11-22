@@ -8,6 +8,7 @@
 #include <QVBoxLayout>
 
 #include "../components/Scrolling.h"
+#include "../components/Text.h"
 #include "DownloadList.h"
 #include "DownloadTracker.h"
 
@@ -24,7 +25,7 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   auto* header = new QHBoxLayout();
   header->setContentsMargins(18, 12, 10, 6);
   auto* title = new QLabel("Activity", this);
-  title->setProperty("role", "section");
+  SetTextStyle(title, text::kSection);
   header->addWidget(title);
   header->addStretch(1);
   auto* manage = new QPushButton("All downloads", this);
@@ -42,7 +43,7 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   layout->addLayout(header);
 
   empty_ = new QLabel("Nothing installing, downloading or running", this);
-  empty_->setProperty("role", "subtle");
+  SetTextStyle(empty_, text::kSubtle);
   empty_->setContentsMargins(18, 6, 18, 10);
   layout->addWidget(empty_);
 

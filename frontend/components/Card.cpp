@@ -44,7 +44,7 @@ Card::Card(const QString& title, QWidget* parent) : QFrame(parent) {
   header_layout_->setContentsMargins(kLabelInset, 14, kRowPaddingX - 6, 4);
   header_layout_->setSpacing(10);
   title_ = new QLabel(title, header_);
-  title_->setProperty("role", "section");
+  SetTextStyle(title_, text::kSection);
   header_layout_->addWidget(title_, /*stretch=*/1);
   header_->setVisible(!title.isEmpty());
   layout->addWidget(header_);
@@ -235,7 +235,7 @@ void Card::SetTitleWidget(QWidget* widget) {
 }
 
 void Card::SetProminentTitle() {
-  theme::SetStyleProperty(title_, "role", "heading");
+  SetTextStyle(title_, text::kHeading);
   header_layout_->setContentsMargins(kRowPaddingX + 2, 16, 10, 6);
 }
 
@@ -272,7 +272,7 @@ void Card::SetCollapsible(bool collapsed) {
 void Card::SetSummary(const QString& text) {
   if (summary_ == nullptr) {
     summary_ = new QLabel(header_);
-    theme::SetStyleProperty(summary_, "role", "subtle");
+    SetTextStyle(summary_, text::kSubtle);
     header_layout_->insertWidget(TrailingEnd(), summary_, 0, Qt::AlignVCenter);
   }
   summary_->setText(text);

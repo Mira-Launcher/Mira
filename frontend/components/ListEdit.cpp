@@ -11,6 +11,7 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "Text.h"
 
 namespace mira_gui {
 
@@ -53,7 +54,7 @@ ListEdit::ListEdit(Kind kind, const QString& add_text, QWidget* parent)
   layout->addWidget(more_);
 
   empty_ = new QLabel("None", this);
-  theme::SetStyleProperty(empty_, "role", "subtle");
+  SetTextStyle(empty_, text::kSubtle);
 
   add_ = new QPushButton(add_text, this);
   add_->setCursor(Qt::PointingHandCursor);

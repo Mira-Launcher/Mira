@@ -56,7 +56,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
     head->addWidget(back);
     head->addWidget(MakeSourceBadge(*FindSourceInfo("office"), 26, this));
     auto* title = new QLabel(guide.title, this);
-    title->setProperty("role", "heading");
+    SetTextStyle(title, text::kHeading);
     head->addWidget(title);
     head->addStretch(1);
     done_label_ = new QLabel(QString::fromUtf8("\xe2\x9c\x93 ") + guide.done, this);
@@ -70,7 +70,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   auto* plan = new QVBoxLayout(plan_box_);
   plan->setContentsMargins(0, 0, 0, 0);
   plan->setSpacing(8);
-  plan->addWidget(MakeLabel(plan_box_, "Which plan do you have?", "section"));
+  plan->addWidget(MakeLabel(plan_box_, "Which plan do you have?", text::kSection));
   auto* choices = new QHBoxLayout();
   choices->setSpacing(8);
   plans_ = new QButtonGroup(this);
@@ -117,7 +117,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   auto* apps = new QVBoxLayout(apps_box_);
   apps->setContentsMargins(0, 0, 0, 0);
   apps->setSpacing(8);
-  apps->addWidget(MakeLabel(apps_box_, "Add to your library", "section"));
+  apps->addWidget(MakeLabel(apps_box_, "Add to your library", text::kSection));
   app_tiles_ = new QWidget(apps_box_);
   apps->addWidget(app_tiles_);
   add_ = new QPushButton(apps_box_);
@@ -135,10 +135,10 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   auto* icon = new QLabel(this);
   icons::Follow(icon, icons::Glyph::EyeSlash, 14);
   note->addWidget(icon, 0, Qt::AlignTop);
-  note->addWidget(MakeLabel(this, guide.note, "muted"), /*stretch=*/1);
+  note->addWidget(MakeLabel(this, guide.note, text::kDetail), /*stretch=*/1);
   layout->addLayout(note);
 
-  error_ = MakeLabel(this, QString(), "error");
+  error_ = MakeLabel(this, QString(), text::kError);
   error_->setVisible(false);
   layout->addWidget(error_);
   log_ = new SetupLog("office", FindSourceInfo("office")->name, this);

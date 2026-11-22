@@ -31,7 +31,7 @@ SourceTile::SourceTile(const SourceInfo& source, QWidget* parent)
   name_ = new ElidedLabel(source.name, this);
   name_->setObjectName("source_tile_name");
   line_ = new ElidedLabel(QString(), this);
-  line_->setProperty("role", "subtle");
+  SetTextStyle(line_, text::kSubtle);
   if (source.beta || source.recommended) {
     auto* name_row = new QHBoxLayout();
     name_row->setSpacing(6);
@@ -68,7 +68,7 @@ void SourceTile::SetClickable(const QString& tooltip) {
 
 void SourceTile::SetDim(bool dim) {
   SetSourceBadgeDim(badge_, source_, dim);
-  name_->setProperty("role", dim ? "subtle" : "");
+  SetTextStyle(name_, dim ? text::kSubtle : text::kBody);
   name_->style()->unpolish(name_);
   name_->style()->polish(name_);
 }

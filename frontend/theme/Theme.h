@@ -154,11 +154,10 @@ QString CurrentName();
 // the desktop's light or dark theme. For previewing a theme before picking it.
 Tokens Peek(const QString& name);
 
-// Sets one of the stylesheet's own properties on a widget: "role" for a text
-// style (muted, heading, section, error, keys), "status" for a lifecycle
-// color. Qt does not restyle a widget when a property changes after it has
-// been polished, so this re-polishes it; setting the property directly works
-// only before the widget is first shown.
+// Sets one of the stylesheet's own properties on a widget, e.g. "status" for a lifecycle color
+// (a label's text style goes through components/Text's SetTextStyle). Qt does not restyle a widget
+// when a property changes after it has been polished, so this re-polishes it; setting the property
+// directly works only before the widget is first shown.
 void SetStyleProperty(QWidget* widget, const char* name, const QString& value);
 
 // Changed() fires after every Apply(). Anything that paints with tokens
