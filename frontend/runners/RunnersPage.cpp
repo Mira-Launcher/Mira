@@ -170,7 +170,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   connect(source_, &QComboBox::activated, this, [this] { RefreshCatalog(); });
   catalog_->AddHeaderWidget(source_);
   search_ = new SearchField("Search versions", catalog_);
-  search_->setFixedWidth(theme::TextPx(150));
+  search_->setFixedWidth(theme::TextPx(190));
   connect(search_, &QLineEdit::textChanged, this, &RunnersPage::RebuildCatalog);
   catalog_->AddHeaderWidget(search_);
   auto* refresh =
