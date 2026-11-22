@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../components/Card.h"
+#include "../components/SheetCard.h"
 #include "../components/Switch.h"
 
 namespace mira_gui {
@@ -18,7 +18,7 @@ class ArtworkStore;
 // /v1/games/removal), with one switch for their prefixes, off by default since saves live there,
 // and one for their save backups, off by default so a game added back finds them. An in-window
 // card over the library.
-class RemoveGamesCard : public Card {
+class RemoveGamesCard : public SheetCard {
   Q_OBJECT
 
  public:

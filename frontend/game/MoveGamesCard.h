@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../components/Card.h"
+#include "../components/SheetCard.h"
 
 class QPushButton;
 class QLabel;
@@ -17,7 +17,7 @@ namespace mira_gui {
 // /v1/games/relocation): for one game, where its files and prefix go (or why they stay); for
 // several, a row per game that opens to the same lines, with the games that have nothing to move
 // sharing one. An in-window card (cards::Show).
-class MoveGamesCard : public Card {
+class MoveGamesCard : public SheetCard {
   Q_OBJECT
 
  public:

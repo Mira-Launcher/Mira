@@ -4,7 +4,7 @@
 #include <QString>
 
 #include "../client/Types.h"
-#include "../components/Card.h"
+#include "../components/SheetCard.h"
 #include "Sources.h"
 
 class QLabel;
@@ -14,7 +14,7 @@ namespace mira_gui {
 // What a store or launcher still needs before its page is useful: the same panel Set up Mira
 // shows (signing in step by step, or installing the launcher), made when first needed. Hidden
 // once the source is set up.
-class SourceSetupCard : public Card {
+class SourceSetupCard : public SheetCard {
   Q_OBJECT
 
  public:

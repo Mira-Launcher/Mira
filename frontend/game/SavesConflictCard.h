@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "../components/Card.h"
+#include "../components/SheetCard.h"
 
 class QLabel;
 
@@ -19,7 +19,7 @@ LaidOutButton* MakeSavesChoice(QWidget* parent, const QString& name, const QStri
 
 // Asked when a launch found the game's saves changed both here and in its store's cloud: which
 // to start with. An in-window card over the library.
-class SavesConflictCard : public Card {
+class SavesConflictCard : public SheetCard {
   Q_OBJECT
 
  public:

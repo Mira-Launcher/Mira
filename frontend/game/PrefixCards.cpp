@@ -68,12 +68,13 @@ QHBoxLayout* StatusButtonRow(Card* card, ProgressRail*& rail, QLabel*& status,
 
 RunInPrefixCard::RunInPrefixCard(std::string game_id, std::string install_path, const QString& name,
                                  QWidget* parent)
-    : Card(QString(), parent),
+    : SheetCard(QString(), parent),
       game_id_(std::move(game_id)),
       install_path_(std::move(install_path)) {
   setFixedWidth(kWidth);
   SetProminentTitle();
-  AddCardHeading(this, "Run in " + name + "'s prefix", "Close", [this] { cards::Close(this); });
+  SetHeading("Run in " + name + "'s prefix");
+  SetClose("Close", [this] { cards::Close(this); });
 
   auto* program_row = new SettingRow("Program", QString(), this);
   program_ = new QLineEdit(program_row);
@@ -139,10 +140,11 @@ void RunInPrefixCard::Run() {
 }
 
 WinetricksCard::WinetricksCard(std::string game_id, const QString& name, QWidget* parent)
-    : Card(QString(), parent), game_id_(std::move(game_id)), name_(name) {
+    : SheetCard(QString(), parent), game_id_(std::move(game_id)), name_(name) {
   setFixedWidth(kWidth);
   SetProminentTitle();
-  AddCardHeading(this, "Winetricks for " + name, "Close", [this] { cards::Close(this); });
+  SetHeading("Winetricks for " + name);
+  SetClose("Close", [this] { cards::Close(this); });
 
   auto* pick = new QWidget(this);
   auto* pick_layout = new QVBoxLayout(pick);

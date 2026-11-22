@@ -3,8 +3,8 @@
 #include <QString>
 #include <vector>
 
-#include "../components/Card.h"
 #include "../components/SettingRow.h"
+#include "../components/SheetCard.h"
 #include "../components/Switch.h"
 #include "../settings/SettingEditor.h"
 #include "Sources.h"
@@ -18,7 +18,7 @@ namespace mira_gui {
 // A source page's settings, opened from its banner: the runner its games
 // use, then every setting under its own keys. Like the settings screen,
 // edits apply on Save; "Switch them too" is an action and applies at once.
-class SourceSettingsCard : public Card {
+class SourceSettingsCard : public SheetCard {
   Q_OBJECT
 
  public:

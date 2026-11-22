@@ -357,12 +357,7 @@ void SourcePage::OpenSettingsModal() {
     connect(settings_card_, &SourceSettingsCard::OpenSettingsRequested, this,
             &SourcePage::OpenSettingsRequested);
     settings_card_->setMaximumWidth(560);
-    auto* close = new QToolButton(settings_card_);
-    icons::Follow(close, icons::Glyph::Close);
-    close->setToolTip("Close");
-    close->setAutoRaise(true);
-    connect(close, &QToolButton::clicked, this, &SourcePage::CloseSettingsModal);
-    settings_card_->Header()->addWidget(close);
+    settings_card_->SetClose("Close", [this] { CloseSettingsModal(); });
   } else {
     settings_card_->Refresh();
   }
@@ -374,12 +369,7 @@ void SourcePage::OpenCollectionsModal() {
     collections_card_ = new ItchCollectionsCard(this);
     collections_card_->setMaximumWidth(560);
     connect(collections_card_, &ItchCollectionsCard::Changed, this, [this] { RefreshOwned(); });
-    auto* close = new QToolButton(collections_card_);
-    icons::Follow(close, icons::Glyph::Close);
-    close->setToolTip("Close");
-    close->setAutoRaise(true);
-    connect(close, &QToolButton::clicked, this, &SourcePage::CloseSettingsModal);
-    collections_card_->Header()->addWidget(close);
+    collections_card_->SetClose("Close", [this] { CloseSettingsModal(); });
   }
   collections_card_->Refresh();
   ShowModal(collections_card_);

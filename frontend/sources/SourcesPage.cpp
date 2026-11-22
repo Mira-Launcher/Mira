@@ -328,12 +328,7 @@ void SourcesPage::OpenSetup(const QString& id) {
   setup_card_ = new SourceSetupCard(source, this);
   setup_card_->setFixedWidth(560);
   setup_card_->SetLeading(MakeSourceBadge(source, 24, setup_card_));
-  auto* close = new QToolButton(setup_card_);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Close");
-  close->setAutoRaise(true);
-  connect(close, &QToolButton::clicked, this, &SourcesPage::CloseSetup);
-  setup_card_->Header()->addWidget(close);
+  setup_card_->SetClose("Close", [this] { CloseSetup(); });
   if (source.kind == SourceInfo::Kind::Launcher) {
     LauncherInfo launcher;
     launcher.id = id.toStdString();

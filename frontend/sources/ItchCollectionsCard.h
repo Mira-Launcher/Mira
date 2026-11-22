@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "../components/Card.h"
+#include "../components/SheetCard.h"
 
 class QLabel;
 class QLineEdit;
@@ -14,7 +14,7 @@ struct ItchCollectionsResult;
 
 // The itch.io collections whose games show on the itch page: the account's
 // own, plus any added by link. Added ones can be removed again.
-class ItchCollectionsCard : public Card {
+class ItchCollectionsCard : public SheetCard {
   Q_OBJECT
 
  public:

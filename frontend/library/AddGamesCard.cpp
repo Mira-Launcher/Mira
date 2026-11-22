@@ -27,11 +27,11 @@
 #include "../client/api/Downloads.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
-#include "../components/Card.h"
 #include "../components/FlatCombo.h"
 #include "../components/Labels.h"
 #include "../components/Segmented.h"
 #include "../components/SettingRow.h"
+#include "../components/SheetCard.h"
 #include "../components/Switch.h"
 #include "../components/WindowCards.h"
 #include "../downloads/LinkText.h"
@@ -74,8 +74,8 @@ QLabel* Detail(QWidget* parent, const QString& text) {
   return label;
 }
 
-Card* NewPage() {
-  auto* page = new Card(QString());
+SheetCard* NewPage() {
+  auto* page = new SheetCard();
   page->setFixedWidth(kWidth);
   page->SetProminentTitle();
   return page;
@@ -142,7 +142,7 @@ AddGamesCard::AddGamesCard(QWidget* parent) : QWidget(parent) {
   });
 }
 
-void AddGamesCard::ShowPage(Card* page) {
+void AddGamesCard::ShowPage(SheetCard* page) {
   if (page_ != nullptr) {
     // Out of the layout now: until it's deleted, its height would add to the new page's.
     layout_->removeWidget(page_);
@@ -176,8 +176,9 @@ bool AddGamesCard::InLibraryRoot(const QString& path) const {
 void AddGamesCard::ShowMenu() {
   ++request_;  // a pick still being read no longer opens its page
   name_hint_.clear();
-  Card* page = NewPage();
-  AddCardHeading(page, "Add games", "Close", [this] { Close(); });
+  SheetCard* page = NewPage();
+  page->SetHeading("Add games");
+  page->SetClose("Close", [this] { Close(); });
 
   std::vector<QPushButton*> buttons;
   const auto add_row = [page, &buttons](icons::Glyph glyph, const QString& label,
@@ -278,11 +279,7 @@ void AddGamesCard::Classify(const QString& path, std::optional<bool> installer) 
                              if (!guess.ok) {
                                // The page stays as it is; the line under it says why.
                                if (page_ != nullptr) {
-                                 QLabel* error = page_->findChild<QLabel*>("add_error");
-                                 if (error == nullptr) {
-                                   error = AddErrorLine(page_);
-                                   error->setObjectName("add_error");
-                                 }
+                                 QLabel* error = page_->ErrorLine();
                                  error->setText("Could not read " + QFileInfo(path).fileName() +
                                                 ": " + error_help::Describe(guess.error));
                                  error->show();
@@ -304,10 +301,10 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
                           : guess.name.empty()  ? fallback
                                                 : QString::fromStdString(guess.name);
 
-  Card* page = NewPage();
-  AddCardBack(page, [this] { ShowMenu(); });
-  QLabel* heading = AddCardHeading(
-      page, guessed, "Close", [this] { Close(); }, QString::fromStdString(guess.reason));
+  SheetCard* page = NewPage();
+  page->SetBack([this] { ShowMenu(); });
+  QLabel* heading = page->SetHeading(guessed, QString::fromStdString(guess.reason));
+  page->SetClose("Close", [this] { Close(); });
 
   auto* where = new SettingRow(folder ? "Folder" : "Program", QString(), page);
   auto* path_line = Detail(where, HomeRelative(path));
@@ -366,9 +363,8 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
     connect(kinds, &Segmented::Changed, row, label);
   }
 
-  QLabel* error = AddErrorLine(page);
-  error->setObjectName("add_error");
-  QHBoxLayout* buttons = AddButtonRow(page);
+  QLabel* error = page->ErrorLine();
+  QHBoxLayout* buttons = page->ButtonRow();
   auto* cancel = new QPushButton("Cancel", page);
   connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
   buttons->addWidget(cancel);
@@ -430,9 +426,10 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
                           : guess.name.empty()  ? QFileInfo(path).completeBaseName()
                                                 : QString::fromStdString(guess.name);
 
-  Card* page = NewPage();
-  AddCardBack(page, [this] { ShowMenu(); });
-  QLabel* heading = AddCardHeading(page, QString(), "Close", [this] { Close(); });
+  SheetCard* page = NewPage();
+  page->SetBack([this] { ShowMenu(); });
+  QLabel* heading = page->SetHeading(QString());
+  page->SetClose("Close", [this] { Close(); });
 
   auto* installer = new SettingRow("Installer", QString(), page);
   QStringList parts{QFileInfo(path).fileName()};
@@ -475,13 +472,12 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
     page->AddRow(row);
   }
 
-  QLabel* error = AddErrorLine(page);
-  error->setObjectName("add_error");
+  QLabel* error = page->ErrorLine();
   if (!info.ok) {
     error->setText("Mira can't run this installer itself: add it, then install it from its card.");
     error->show();
   }
-  QHBoxLayout* buttons = AddButtonRow(page);
+  QHBoxLayout* buttons = page->ButtonRow();
   auto* add_only = new QPushButton("Add without installing", page);
   add_only->setToolTip("Add it as needing install, and install it later");
   buttons->addWidget(add_only);
@@ -547,9 +543,10 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
 
 void AddGamesCard::ShowLinks() {
   const int request = ++request_;
-  Card* page = NewPage();
-  AddCardBack(page, [this] { ShowMenu(); });
-  AddCardHeading(page, "Download from links", "Close", [this] { Close(); });
+  SheetCard* page = NewPage();
+  page->SetBack([this] { ShowMenu(); });
+  page->SetHeading("Download from links");
+  page->SetClose("Close", [this] { Close(); });
 
   auto* intro = new SettingRow("Links for one game", QString(), page);
   intro->SetBelow(Detail(intro, "One per line. Enter downloads, Shift+Enter adds a line."));
@@ -597,8 +594,8 @@ void AddGamesCard::ShowLinks() {
     page->AddRow(row);
   }
 
-  QLabel* error = AddErrorLine(page);
-  QHBoxLayout* buttons = AddButtonRow(page);
+  QLabel* error = page->ErrorLine();
+  QHBoxLayout* buttons = page->ButtonRow();
   auto* cancel = new QPushButton("Cancel", page);
   connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
   buttons->addWidget(cancel);
@@ -656,14 +653,15 @@ void AddGamesCard::ShowLinks() {
 
 void AddGamesCard::ShowAppMenu() {
   if (!candidates_ || !candidates_->ok) return;
-  Card* page = NewPage();
-  AddCardBack(page, [this] { ShowMenu(); });
-  AddCardHeading(page, "From your app menu", "Close", [this] { Close(); });
+  SheetCard* page = NewPage();
+  page->SetBack([this] { ShowMenu(); });
+  page->SetHeading("From your app menu");
+  page->SetClose("Close", [this] { Close(); });
   auto* search = new QLineEdit(page);
   search->setPlaceholderText("Search");
   search->setClearButtonEnabled(true);
   search->setFixedWidth(170);
-  page->Header()->insertWidget(page->Header()->count() - 1, search, 0, Qt::AlignVCenter);
+  page->AddHeaderWidget(search);
 
   struct Entry {
     std::string id;
@@ -710,8 +708,8 @@ void AddGamesCard::ShowAppMenu() {
   }
   if (entries->size() > 6) page->SetScrollable();
 
-  QLabel* error = AddErrorLine(page);
-  QHBoxLayout* buttons = AddButtonRow(page);
+  QLabel* error = page->ErrorLine();
+  QHBoxLayout* buttons = page->ButtonRow();
   count = new QLabel(page);
   count->setProperty("role", "subtle");
   buttons->insertWidget(0, count);

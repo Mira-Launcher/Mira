@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../components/Card.h"
+#include "../components/SheetCard.h"
 
 class QComboBox;
 class QLabel;
@@ -21,7 +21,7 @@ struct GameSummary;
 // found, Change… to pick another, the library root to install into for one on a disc, and
 // whether to run it quietly or with its window. An in-window card over the library, asked
 // when one is found, from "Install…" and from an install error's fix.
-class InstallerCard : public Card {
+class InstallerCard : public SheetCard {
   Q_OBJECT
 
  public:
@@ -53,7 +53,7 @@ class InstallerCard : public Card {
 
 // After an install left its installer folder behind (game.installer_leftover): delete it
 // (DELETE /v1/games/{id}/installer) or keep it.
-class InstallerLeftoverCard : public Card {
+class InstallerLeftoverCard : public SheetCard {
   Q_OBJECT
 
  public:
@@ -70,7 +70,7 @@ class InstallerLeftoverCard : public Card {
 };
 
 // Offers the programs a run in the game's prefix installed as its launch options, a row each.
-class ProgramsFoundCard : public Card {
+class ProgramsFoundCard : public SheetCard {
   Q_OBJECT
 
  public:

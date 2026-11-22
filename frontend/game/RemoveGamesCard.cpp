@@ -77,7 +77,7 @@ QString RemoveGamesCard::ActionText(const std::vector<RemovalPlan>& plans) {
 
 RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<RemovalPlan> plans,
                                  ArtworkStore* artwork, QWidget* parent)
-    : Card(QString(), parent), games_(std::move(games)), plans_(std::move(plans)) {
+    : SheetCard(QString(), parent), games_(std::move(games)), plans_(std::move(plans)) {
   setFixedWidth(520);
   const bool one = plans_.size() == 1;
 
@@ -106,7 +106,7 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
           one ? FindSourceInfo(QString::fromStdString(games_.front().source)) : nullptr) {
     QLabel* badge = MakeSourceBadge(*source, kSourceBadge, this);
     badge->setToolTip(source->name);
-    Header()->addWidget(badge, 0, Qt::AlignVCenter);
+    AddHeaderWidget(badge);
   }
 
   if (one) {
@@ -159,15 +159,11 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
   AddPrefixRow();
   AddSavesRow();
 
-  auto* buttons = new QWidget(this);
-  auto* buttons_layout = new QHBoxLayout(buttons);
-  buttons_layout->setContentsMargins(18, 12, 18, 10);
-  buttons_layout->setSpacing(8);
-  buttons_layout->addStretch(1);
-  auto* cancel = new QPushButton("Cancel", buttons);
+  QHBoxLayout* buttons_layout = ButtonRow();
+  auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, &RemoveGamesCard::CloseRequested);
   buttons_layout->addWidget(cancel);
-  auto* confirm = new QPushButton(action, buttons);
+  auto* confirm = new QPushButton(action, this);
   // Red when it deletes anything; a plain remove only forgets the game.
   const bool deletes = std::ranges::any_of(plans_, DeletesFiles);
   if (deletes) confirm->setProperty("tone", "danger");
@@ -176,7 +172,6 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
                    saves_ != nullptr && saves_->isChecked());
   });
   buttons_layout->addWidget(confirm);
-  AddFooterRow(buttons);
   // Reached by a click or the Delete key, so Return mustn't confirm it a second time.
   cancel->setFocus();
 }

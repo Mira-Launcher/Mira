@@ -375,7 +375,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   add->setObjectName("text_button");
   icons::Follow(add, icons::Glyph::Plus);
   connect(add, &QPushButton::clicked, this, [this] { OpenPicker(QString(), /*existing=*/false); });
-  mine_->Header()->addWidget(add);
+  mine_->AddHeaderWidget(add);
   mine_->SetScrollable();
   auto* mine_headings = HeadingsRow(mine_);
   mine_headings->AddControl(ColumnHeading("Games", kCountWidth, Qt::AlignRight, mine_headings));
@@ -410,7 +410,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   steam_search_->setClearButtonEnabled(true);
   steam_search_->setFixedWidth(180);
   connect(steam_search_, &QLineEdit::textChanged, this, &TagsPage::FilterSteam);
-  steam_->Header()->addWidget(steam_search_);
+  steam_->AddHeaderWidget(steam_search_);
   steam_->SetScrollable();
   steam_note_ = NoteRow(steam_);
   steam_->AddRow(steam_note_);

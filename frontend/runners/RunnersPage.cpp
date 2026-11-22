@@ -161,13 +161,13 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   source_ = new FlatCombo(catalog_);
   source_->setToolTip("Where builds are downloaded from");
   connect(source_, &QComboBox::activated, this, [this] { RefreshCatalog(); });
-  catalog_->Header()->addWidget(source_);
+  catalog_->AddHeaderWidget(source_);
   auto* refresh = new QToolButton(catalog_);
   refresh->setAutoRaise(true);
   icons::Follow(refresh, icons::Glyph::Refresh, &theme::Tokens::text_muted);
   refresh->setToolTip("Check again");
   connect(refresh, &QToolButton::clicked, this, &RunnersPage::Refresh);
-  catalog_->Header()->addWidget(refresh);
+  catalog_->AddHeaderWidget(refresh);
   right->addWidget(catalog_);
   status_ = MakeLabel(canvas, QString(), "muted");
   status_->setContentsMargins(4, 0, 4, 0);

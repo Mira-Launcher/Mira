@@ -63,9 +63,9 @@ Card::Card(const QString& title, QWidget* parent) : QFrame(parent) {
   layout->addWidget(footer_);
 }
 
-void Card::AddFooterRow(QWidget* row) {
+void Card::AddFooterRow(QWidget* row, int at) {
   row->setParent(footer_);
-  footer_layout_->addWidget(row);
+  footer_layout_->insertWidget(at, row);
   footer_->show();
 }
 
@@ -203,6 +203,24 @@ void Card::SetLeading(QWidget* widget) {
   header_->show();
 }
 
+void Card::AddHeaderWidget(QWidget* widget, Qt::Alignment align) {
+  header_layout_->insertWidget(TrailingEnd(), widget, 0, align);
+  header_->show();
+}
+
+void Card::SetHeaderEnd(QWidget* widget) {
+  header_layout_->addWidget(widget, 0, Qt::AlignTop);
+  header_end_ = widget;
+  header_->show();
+}
+
+int Card::TrailingEnd() const {
+  for (QWidget* end : {static_cast<QWidget*>(chevron_), header_end_}) {
+    if (end != nullptr) return header_layout_->indexOf(end);
+  }
+  return header_layout_->count();
+}
+
 void Card::SetTitle(const QString& title) {
   title_->setText(title);
   header_->setVisible(!title.isEmpty());
@@ -231,11 +249,7 @@ void Card::SetResettable(bool resettable) {
     reset_->setFixedHeight(title_->sizeHint().height());
     KeepSpaceWhenHidden(reset_);
     connect(reset_, &QToolButton::clicked, this, &Card::ResetClicked);
-    // Before the chevron, so a folding card keeps it at the far right.
-    const int at =
-        chevron_ != nullptr ? header_layout_->indexOf(chevron_) : header_layout_->count();
-    header_layout_->insertWidget(at, reset_, 0, Qt::AlignVCenter);
-    header_->show();
+    AddHeaderWidget(reset_);
   }
   reset_->setVisible(resettable);
 }
@@ -245,7 +259,9 @@ void Card::SetCollapsible(bool collapsed) {
     chevron_ = fold::NewChevron(
         header_, this, [this] { return Expanded(); }, [this](bool on) { SetExpanded(on); });
     chevron_->setFocusPolicy(Qt::StrongFocus);
-    header_layout_->addWidget(chevron_);
+    header_layout_->insertWidget(
+        header_end_ != nullptr ? header_layout_->indexOf(header_end_) : header_layout_->count(),
+        chevron_);
     header_->setCursor(Qt::PointingHandCursor);
     header_->installEventFilter(this);
     header_->show();
@@ -257,9 +273,7 @@ void Card::SetSummary(const QString& text) {
   if (summary_ == nullptr) {
     summary_ = new QLabel(header_);
     theme::SetStyleProperty(summary_, "role", "subtle");
-    const int at =
-        chevron_ != nullptr ? header_layout_->indexOf(chevron_) : header_layout_->count();
-    header_layout_->insertWidget(at, summary_, 0, Qt::AlignVCenter);
+    header_layout_->insertWidget(TrailingEnd(), summary_, 0, Qt::AlignVCenter);
   }
   summary_->setText(text);
 }

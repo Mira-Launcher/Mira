@@ -4,7 +4,6 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QToolButton>
 #include <QVBoxLayout>
 #include <filesystem>
 
@@ -13,7 +12,6 @@
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
-#include "../theme/Icons.h"
 #include "../theme/Theme.h"
 
 namespace mira_gui {
@@ -33,7 +31,7 @@ QString WindowsPath(const std::string& path) {
 InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string& install_path,
                                      const std::string& exe_path, ArtworkStore* artwork,
                                      QWidget* parent)
-    : Card(QString(), parent), install_path_(install_path), exe_path_(exe_path) {
+    : SheetCard(QString(), parent), install_path_(install_path), exe_path_(exe_path) {
   setFixedWidth(560);
 
   auto* cover = new QLabel(this);
@@ -62,12 +60,7 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
   heading_layout->addWidget(question);
   SetTitleWidget(heading);
 
-  auto* close = new QToolButton(this);
-  close->setAutoRaise(true);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Keep as is");
-  connect(close, &QToolButton::clicked, this, &InstallPromptCard::CloseRequested);
-  Header()->addWidget(close, 0, Qt::AlignTop);
+  SetClose("Keep as is", [this] { emit CloseRequested(); });
 
   // The path under its label, full width, so the file name shows.
   auto* program = new SettingRow("Program", QString(), this);

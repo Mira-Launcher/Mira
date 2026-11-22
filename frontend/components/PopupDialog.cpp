@@ -10,13 +10,12 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QShowEvent>
-#include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "Card.h"
+#include "SheetCard.h"
 
 namespace mira_gui {
 namespace {
@@ -65,7 +64,7 @@ PopupDialog::PopupDialog(QWidget* parent, Tone tone, const QString& title)
 
   auto* outer = new QGridLayout(this);
   outer->setContentsMargins(overlay_ ? QMargins(24, 24, 24, 24) : QMargins());
-  card_ = new Card(QString(), this);
+  card_ = new SheetCard(QString(), this);
   card_->setFixedWidth(kWidth);
   outer->addWidget(card_, 0, 0, Qt::AlignCenter);
 
@@ -73,16 +72,8 @@ PopupDialog::PopupDialog(QWidget* parent, Tone tone, const QString& title)
   const auto [glyph, role] = ToneIcon(tone);
   icons::Follow(icon, glyph, kIcon, role);
   card_->SetLeading(icon);
-  auto* heading = new QLabel(title, card_);
-  heading->setProperty("role", "heading");
-  heading->setWordWrap(true);
-  card_->SetTitleWidget(heading);
-  auto* close = new QToolButton(card_);
-  close->setAutoRaise(true);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Close");
-  connect(close, &QToolButton::clicked, this, &QDialog::reject);
-  card_->Header()->addWidget(close, 0, Qt::AlignTop);
+  card_->SetHeading(title);
+  card_->SetClose("Close", [this] { reject(); });
 
   // Lined up under the title, past the icon.
   auto* body = new QWidget(card_);
@@ -96,12 +87,7 @@ PopupDialog::PopupDialog(QWidget* parent, Tone tone, const QString& title)
   body_->addWidget(message_);
   card_->AddRow(body);
 
-  auto* buttons = new QWidget(card_);
-  buttons_ = new QHBoxLayout(buttons);
-  buttons_->setContentsMargins(18, 10, 18, 10);
-  buttons_->setSpacing(8);
-  buttons_->addStretch(1);
-  card_->AddRow(buttons);
+  buttons_ = card_->ButtonRow();
 }
 
 void PopupDialog::SetMessage(const QString& text) {

@@ -13,7 +13,7 @@
 namespace mira_gui {
 
 SourceSetupCard::SourceSetupCard(const SourceInfo& source, QWidget* parent)
-    : Card("Set up " + source.name, parent), source_(source) {
+    : SheetCard("Set up " + source.name, parent), source_(source) {
   setVisible(false);
   error_ = MakeLabel(this, QString(), "error");
   error_->setContentsMargins(18, 4, 18, 14);

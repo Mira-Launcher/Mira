@@ -41,10 +41,10 @@ QString Counted(int count, const QString& item) {
 }  // namespace
 
 SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent)
-    : Card(source.name + " settings", parent), source_(source), id_(source.id.toStdString()) {
+    : SheetCard(source.name + " settings", parent), source_(source), id_(source.id.toStdString()) {
   status_ = new QLabel(this);
   status_->setVisible(false);
-  Header()->addWidget(status_);
+  AddHeaderWidget(status_);
 
   if (HasRunner()) BuildRunnerRow();
   if (source_.kind == SourceInfo::Kind::Emulator) BuildEmulatorRow();

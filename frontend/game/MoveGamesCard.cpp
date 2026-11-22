@@ -123,7 +123,7 @@ bool MoveGamesCard::Moves(const RelocationPlan& plan) {
 }
 
 MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
-    : Card(QString(), parent), plans_(std::move(plans)) {
+    : SheetCard(QString(), parent), plans_(std::move(plans)) {
   setFixedWidth(kWidth);
   SetProminentTitle();
   std::vector<std::string> moving;
@@ -131,10 +131,9 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
     if (Moves(plan)) moving.push_back(plan.id);
   }
   const bool one = plans_.size() == 1;
-  AddCardHeading(this,
-                 one ? "Move " + QString::fromStdString(plans_.front().name)
-                     : QString("Move %1 games").arg(plans_.size()),
-                 "Cancel", [this] { cards::Close(this); });
+  SetHeading(one ? "Move " + QString::fromStdString(plans_.front().name)
+                 : QString("Move %1 games").arg(plans_.size()));
+  SetClose("Cancel", [this] { cards::Close(this); });
 
   if (one) {
     const RelocationPlan& plan = plans_.front();
@@ -230,7 +229,7 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
     if (static_cast<int>(moving.size() + unmoved.size()) > 6) SetScrollable();
   }
 
-  QHBoxLayout* buttons = AddButtonRow(this);
+  QHBoxLayout* buttons = ButtonRow();
   if (!one) {
     auto* total = Line(this, QString(), "subtle");
     total->setWordWrap(false);

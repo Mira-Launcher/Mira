@@ -4,7 +4,6 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QToolButton>
 #include <QVBoxLayout>
 
 #include "../client/Types.h"
@@ -13,7 +12,6 @@
 #include "../components/LaidOutButton.h"
 #include "../library/ArtworkStore.h"
 #include "../sources/Sources.h"
-#include "../theme/Icons.h"
 #include "SavesText.h"
 
 namespace mira_gui {
@@ -47,7 +45,7 @@ LaidOutButton* MakeSavesChoice(QWidget* parent, const QString& name, const QStri
 
 SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artwork,
                                      QWidget* parent)
-    : Card(QString(), parent), id_(game.id) {
+    : SheetCard(QString(), parent), id_(game.id) {
   setFixedWidth(620);
 
   auto* cover = new QLabel(this);
@@ -79,12 +77,7 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
                 "subtle"));
   SetTitleWidget(heading);
 
-  auto* close = new QToolButton(this);
-  close->setAutoRaise(true);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Cancel");
-  connect(close, &QToolButton::clicked, this, [this] { emit Chosen({}); });
-  Header()->addWidget(close, 0, Qt::AlignTop);
+  SetClose("Cancel", [this] { emit Chosen({}); });
 
   auto* choices = new QWidget(this);
   auto* choices_layout = new QHBoxLayout(choices);

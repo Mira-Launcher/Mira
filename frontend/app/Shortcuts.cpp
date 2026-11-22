@@ -9,7 +9,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include "../components/Card.h"
+#include "../components/SheetCard.h"
 #include "../components/WindowCards.h"
 #include "../game/CardParts.h"
 #include "KeyBindings.h"
@@ -67,12 +67,12 @@ QWidget* Keycaps(const QString& text, QWidget* parent) {
 }
 
 // Every key a window answers to, its groups in two columns, each group's rows in order.
-class ReferenceCard : public Card {
+class ReferenceCard : public SheetCard {
  public:
-  ReferenceCard(const QList<Entry>& entries, const std::function<void()>& change)
-      : Card(QString()) {
+  ReferenceCard(const QList<Entry>& entries, const std::function<void()>& change) : SheetCard() {
     SetProminentTitle();
-    AddCardHeading(this, "Keyboard shortcuts", "Close", [this] { cards::Close(this); });
+    SetHeading("Keyboard shortcuts");
+    SetClose("Close", [this] { cards::Close(this); });
     if (change) {
       auto* edit = new QPushButton("Change…", this);
       edit->setFlat(true);
@@ -81,7 +81,7 @@ class ReferenceCard : public Card {
         cards::Close(this);
         change();
       });
-      Header()->insertWidget(Header()->count() - 1, edit, 0, Qt::AlignVCenter);
+      AddHeaderWidget(edit);
     }
 
     std::vector<std::pair<QString, QList<Entry>>> groups;

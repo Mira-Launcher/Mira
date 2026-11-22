@@ -151,7 +151,7 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
     tracker_->ClearFinished();
     links_->ClearFinished();
   });
-  finished.card->Header()->addWidget(clear);
+  finished.card->AddHeaderWidget(clear);
   body_layout->addStretch(1);
   scroll->setWidget(body);
   outer->addWidget(scroll, /*stretch=*/1);

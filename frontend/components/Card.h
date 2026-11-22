@@ -24,8 +24,9 @@ class Card : public QFrame {
   void ClearRows();
   // Removes and deletes one row.
   void RemoveRow(QWidget* row);
-  // The header, for trailing widgets such as a switch or a button.
-  QHBoxLayout* Header() const { return header_layout_; }
+  // A widget at the header's end, e.g. a switch or a button: after those added before it, before
+  // the fold chevron and a sheet's close button.
+  void AddHeaderWidget(QWidget* widget, Qt::Alignment align = Qt::AlignVCenter);
   // A widget before the title, e.g. a source's colored initial.
   void SetLeading(QWidget* widget);
   // Retitles the card; empty hides the header.
@@ -49,7 +50,7 @@ class Card : public QFrame {
   // A row between the header and the rows that stays put while they scroll, e.g. column headings.
   void SetPinnedRow(QWidget* row);
   // A row under the rows that stays put while they scroll, e.g. the card's buttons.
-  void AddFooterRow(QWidget* row);
+  void AddFooterRow(QWidget* row, int at = -1);
   // The scroll the rows are in, once SetScrollable made one.
   QScrollArea* Scroll() const { return scroll_; }
   // A "Reset to defaults" button in the header, shown while `resettable`.
@@ -62,12 +63,16 @@ class Card : public QFrame {
   void ResetClicked();
 
  protected:
+  // The header's last widget, which AddHeaderWidget keeps after the rest, e.g. a close button.
+  void SetHeaderEnd(QWidget* widget);
   bool eventFilter(QObject* watched, QEvent* event) override;
   bool event(QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 
  private:
   bool HandleGrip(QWidget* grip, QEvent* event);
+  // Where AddHeaderWidget inserts: before the chevron and the end widget.
+  int TrailingEnd() const;
   // Gives a sunken row (a list's, an opened expander's) that ends the card the card's rounded
   // bottom corners, so its square ones don't poke past them.
   void RoundBottomRow();
@@ -80,6 +85,7 @@ class Card : public QFrame {
   QLabel* summary_ = nullptr;
   QToolButton* chevron_ = nullptr;
   QToolButton* reset_ = nullptr;
+  QWidget* header_end_ = nullptr;
   QWidget* body_ = nullptr;
   QVBoxLayout* body_layout_ = nullptr;
   QScrollArea* scroll_ = nullptr;
