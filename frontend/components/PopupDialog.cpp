@@ -65,7 +65,7 @@ PopupDialog::PopupDialog(QWidget* parent, Tone tone, const QString& title)
 
   auto* outer = new QGridLayout(this);
   outer->setContentsMargins(overlay_ ? QMargins(24, 24, 24, 24) : QMargins());
-  card_ = new SettingsCard(QString(), this);
+  card_ = new Card(QString(), this);
   card_->setFixedWidth(kWidth);
   outer->addWidget(card_, 0, 0, Qt::AlignCenter);
 

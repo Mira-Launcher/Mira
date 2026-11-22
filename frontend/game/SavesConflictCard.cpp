@@ -47,7 +47,7 @@ LaidOutButton* MakeSavesChoice(QWidget* parent, const QString& name, const QStri
 
 SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artwork,
                                      QWidget* parent)
-    : SettingsCard(QString(), parent), id_(game.id) {
+    : Card(QString(), parent), id_(game.id) {
   setFixedWidth(620);
 
   auto* cover = new QLabel(this);

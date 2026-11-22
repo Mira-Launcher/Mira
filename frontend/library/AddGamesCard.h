@@ -15,7 +15,7 @@ class QVBoxLayout;
 
 namespace mira_gui {
 
-class SettingsCard;
+class Card;
 
 // Adding games and apps by hand, as one in-window card (cards::Show): scanning the library
 // folders, something already installed, an installer (added, then installed at once) or entries
@@ -36,7 +36,7 @@ class AddGamesCard : public QWidget {
   void DownloadStarted();
 
  private:
-  void ShowPage(SettingsCard* page);
+  void ShowPage(Card* page);
   void ShowMenu();
   // Reads `path` (POST /v1/library/import/classify), then shows its page; `installer` picks the
   // Installer page whatever the file looks like, unset lets classify decide.
@@ -53,7 +53,7 @@ class AddGamesCard : public QWidget {
   bool InLibraryRoot(const QString& path) const;
 
   QVBoxLayout* layout_ = nullptr;
-  SettingsCard* page_ = nullptr;
+  Card* page_ = nullptr;
   int request_ = 0;  // only the latest Classify's reply counts
   QStringList library_roots_;
   QString mira_folder_;

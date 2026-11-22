@@ -12,6 +12,7 @@
 #include <QToolButton>
 #include <QUrl>
 
+#include "../components/SettingRow.h"
 #include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
 #include "../game/CardParts.h"
@@ -53,7 +54,7 @@ QLabel* Below(QWidget* parent, const QString& text) {
 
 }  // namespace
 
-AboutCard::AboutCard(QWidget* parent) : SettingsCard(QString(), parent) {
+AboutCard::AboutCard(QWidget* parent) : Card(QString(), parent) {
   setFixedWidth(440);
   SetProminentTitle();
   logo_ = new QLabel(this);

@@ -24,6 +24,7 @@
 #include "../components/Card.h"
 #include "../components/Labels.h"
 #include "../components/LaidOutButton.h"
+#include "../components/Metrics.h"
 #include "../components/Scrolling.h"
 #include "../library/GamePresentation.h"
 #include "../theme/Icons.h"
@@ -119,10 +120,10 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   scroll_->setWidget(content);
   layout->addWidget(scroll_, 1);
 
-  backups_ = new SettingsCard("Backups", content);
-  where_ = new SettingsCard("Where they are", content);
-  cloud_ = new SettingsCard("Cloud saves", content);
-  settings_ = new SettingsCard("Settings", content);
+  backups_ = new Card("Backups", content);
+  where_ = new Card("Where they are", content);
+  cloud_ = new Card("Cloud saves", content);
+  settings_ = new Card("Settings", content);
   cloud_->hide();
   // Rebuilt on a theme change: the newest backup's tint and the state dots are drawn colors.
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] {
@@ -446,7 +447,7 @@ void SavesPage::SetBusy(bool busy) {
   back_up_->setText(!doing_.empty() ? SavesDoingLabel(doing_)
                     : busy          ? QString("Working…")
                                     : QString("Back up now"));
-  for (SettingsCard* card : {backups_, where_, cloud_})
+  for (Card* card : {backups_, where_, cloud_})
     for (QAbstractButton* button : card->findChildren<QAbstractButton*>())
       if (!button->property("idle_only").isValid() || button->property("idle_only").toBool())
         button->setEnabled(!Busy());

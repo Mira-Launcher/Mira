@@ -101,7 +101,7 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
   const auto add_section = [&](const QString& heading,
                                std::function<bool(const Entry&)> filter) -> Section& {
     Section section;
-    section.card = new SettingsCard(heading, body);
+    section.card = new Card(heading, body);
     section.list = new DownloadList(tracker_, artwork, DownloadList::Style::Full, section.card);
     section.list->SetFilter(std::move(filter));
     section.card->AddRow(section.list);

@@ -13,7 +13,7 @@ class QScrollArea;
 
 namespace mira_gui {
 
-class SettingsCard;
+class Card;
 
 // The game card's Saves page: its backups, newest first, with Restore and Delete; where its saves
 // are; for a GOG or Epic game, how they stand with the store's cloud; and its saves settings.
@@ -73,10 +73,10 @@ class SavesPage : public QWidget {
   QScrollArea* scroll_ = nullptr;
   QGridLayout* grid_ = nullptr;
   int columns_ = 0;
-  SettingsCard* backups_ = nullptr;
-  SettingsCard* where_ = nullptr;
-  SettingsCard* cloud_ = nullptr;
-  SettingsCard* settings_ = nullptr;
+  Card* backups_ = nullptr;
+  Card* where_ = nullptr;
+  Card* cloud_ = nullptr;
+  Card* settings_ = nullptr;
 };
 
 }  // namespace mira_gui

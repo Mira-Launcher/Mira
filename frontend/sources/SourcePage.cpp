@@ -385,7 +385,7 @@ void SourcePage::OpenCollectionsModal() {
   ShowModal(collections_card_);
 }
 
-void SourcePage::ShowModal(mira_gui::SettingsCard* card) {
+void SourcePage::ShowModal(mira_gui::Card* card) {
   if (settings_overlay_ == nullptr) {
     settings_overlay_ = new ModalOverlay(this);
     settings_overlay_->scrim = QColor(0, 0, 0, 150);

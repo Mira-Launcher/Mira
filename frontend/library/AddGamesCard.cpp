@@ -31,6 +31,8 @@
 #include "../components/FlatCombo.h"
 #include "../components/Labels.h"
 #include "../components/Segmented.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../components/WindowCards.h"
 #include "../downloads/LinkText.h"
 #include "../game/CardParts.h"
@@ -72,8 +74,8 @@ QLabel* Detail(QWidget* parent, const QString& text) {
   return label;
 }
 
-SettingsCard* NewPage() {
-  auto* page = new SettingsCard(QString());
+Card* NewPage() {
+  auto* page = new Card(QString());
   page->setFixedWidth(kWidth);
   page->SetProminentTitle();
   return page;
@@ -140,7 +142,7 @@ AddGamesCard::AddGamesCard(QWidget* parent) : QWidget(parent) {
   });
 }
 
-void AddGamesCard::ShowPage(SettingsCard* page) {
+void AddGamesCard::ShowPage(Card* page) {
   if (page_ != nullptr) {
     // Out of the layout now: until it's deleted, its height would add to the new page's.
     layout_->removeWidget(page_);
@@ -174,7 +176,7 @@ bool AddGamesCard::InLibraryRoot(const QString& path) const {
 void AddGamesCard::ShowMenu() {
   ++request_;  // a pick still being read no longer opens its page
   name_hint_.clear();
-  SettingsCard* page = NewPage();
+  Card* page = NewPage();
   AddCardHeading(page, "Add games", "Close", [this] { Close(); });
 
   std::vector<QPushButton*> buttons;
@@ -302,7 +304,7 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
                           : guess.name.empty()  ? fallback
                                                 : QString::fromStdString(guess.name);
 
-  SettingsCard* page = NewPage();
+  Card* page = NewPage();
   AddCardBack(page, [this] { ShowMenu(); });
   QLabel* heading = AddCardHeading(
       page, guessed, "Close", [this] { Close(); }, QString::fromStdString(guess.reason));
@@ -428,7 +430,7 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
                           : guess.name.empty()  ? QFileInfo(path).completeBaseName()
                                                 : QString::fromStdString(guess.name);
 
-  SettingsCard* page = NewPage();
+  Card* page = NewPage();
   AddCardBack(page, [this] { ShowMenu(); });
   QLabel* heading = AddCardHeading(page, QString(), "Close", [this] { Close(); });
 
@@ -545,7 +547,7 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
 
 void AddGamesCard::ShowLinks() {
   const int request = ++request_;
-  SettingsCard* page = NewPage();
+  Card* page = NewPage();
   AddCardBack(page, [this] { ShowMenu(); });
   AddCardHeading(page, "Download from links", "Close", [this] { Close(); });
 
@@ -654,7 +656,7 @@ void AddGamesCard::ShowLinks() {
 
 void AddGamesCard::ShowAppMenu() {
   if (!candidates_ || !candidates_->ok) return;
-  SettingsCard* page = NewPage();
+  Card* page = NewPage();
   AddCardBack(page, [this] { ShowMenu(); });
   AddCardHeading(page, "From your app menu", "Close", [this] { Close(); });
   auto* search = new QLineEdit(page);

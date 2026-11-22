@@ -14,11 +14,12 @@
 #include <algorithm>
 #include <set>
 
-#include "../components/Card.h"
 #include "../components/FlatCombo.h"
 #include "../components/ListEdit.h"
+#include "../components/Metrics.h"
 #include "../components/PathField.h"
 #include "../components/PopupDialog.h"
+#include "../components/Switch.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"

@@ -8,6 +8,8 @@
 #include <algorithm>
 
 #include "../components/Labels.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
@@ -75,7 +77,7 @@ QString RemoveGamesCard::ActionText(const std::vector<RemovalPlan>& plans) {
 
 RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<RemovalPlan> plans,
                                  ArtworkStore* artwork, QWidget* parent)
-    : SettingsCard(QString(), parent), games_(std::move(games)), plans_(std::move(plans)) {
+    : Card(QString(), parent), games_(std::move(games)), plans_(std::move(plans)) {
   setFixedWidth(520);
   const bool one = plans_.size() == 1;
 

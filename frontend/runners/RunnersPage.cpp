@@ -25,6 +25,7 @@
 #include "../components/ProgressRail.h"
 #include "../components/Scrolling.h"
 #include "../components/Segmented.h"
+#include "../components/SettingRow.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "RunnerUpdater.h"
@@ -136,11 +137,11 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   columns->addStretch(0);
 
   // What runners need besides a build, first since nothing works without it.
-  tools_card_ = new SettingsCard("Missing tools", canvas);
+  tools_card_ = new Card("Missing tools", canvas);
   tools_card_->hide();
   left->addWidget(tools_card_);
 
-  installed_ = new SettingsCard("Installed", canvas);
+  installed_ = new Card("Installed", canvas);
   left->addWidget(installed_);
   default_note_ = MakeLabel(canvas, QString(), "muted");
   default_note_->setContentsMargins(4, 0, 4, 0);
@@ -156,7 +157,7 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   });
   left->addWidget(default_note_);
 
-  catalog_ = new SettingsCard("Get more", canvas);
+  catalog_ = new Card("Get more", canvas);
   source_ = new FlatCombo(catalog_);
   source_->setToolTip("Where builds are downloaded from");
   connect(source_, &QComboBox::activated, this, [this] { RefreshCatalog(); });

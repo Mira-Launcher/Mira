@@ -19,7 +19,7 @@ LaidOutButton* MakeSavesChoice(QWidget* parent, const QString& name, const QStri
 
 // Asked when a launch found the game's saves changed both here and in its store's cloud: which
 // to start with. An in-window card over the library.
-class SavesConflictCard : public SettingsCard {
+class SavesConflictCard : public Card {
   Q_OBJECT
 
  public:

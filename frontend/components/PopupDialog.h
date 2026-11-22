@@ -13,7 +13,7 @@ class QPushButton;
 
 namespace mira_gui {
 
-class SettingsCard;
+class Card;
 
 // Themed QMessageBox replacement: the same card as every other in-window card, over the window
 // it was asked from with the rest dimmed, so a question never looks like another program's
@@ -62,7 +62,7 @@ class PopupDialog : public QDialog {
 
  private:
   bool overlay_ = false;  // over its window, rather than a window of its own
-  SettingsCard* card_ = nullptr;
+  Card* card_ = nullptr;
   QVBoxLayout* body_ = nullptr;
   QHBoxLayout* buttons_ = nullptr;
   QLabel* message_ = nullptr;

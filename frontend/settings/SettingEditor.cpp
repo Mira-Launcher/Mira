@@ -20,13 +20,15 @@
 
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
-#include "../components/Card.h"
 #include "../components/ChipToggles.h"
 #include "../components/FlatCombo.h"
 #include "../components/Labels.h"
 #include "../components/ListEdit.h"
+#include "../components/Metrics.h"
 #include "../components/PathField.h"
 #include "../components/Segmented.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 

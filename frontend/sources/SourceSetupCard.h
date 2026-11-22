@@ -14,7 +14,7 @@ namespace mira_gui {
 // What a store or launcher still needs before its page is useful: the same panel Set up Mira
 // shows (signing in step by step, or installing the launcher), made when first needed. Hidden
 // once the source is set up.
-class SourceSetupCard : public SettingsCard {
+class SourceSetupCard : public Card {
   Q_OBJECT
 
  public:

@@ -18,7 +18,7 @@ class RunnerUpdater;
 
 class DownloadTracker;
 class Segmented;
-class SettingsCard;
+class Card;
 
 // The library window's Runners page: the Proton or Wine builds installed,
 // which one Windows games default to, updates for them, the builds available
@@ -61,12 +61,12 @@ class RunnersPage : public QWidget {
   RunnerUpdater* updater_ = nullptr;
   Segmented* kinds_ = nullptr;     // proton or wine
   QBoxLayout* columns_ = nullptr;  // side by side, or stacked on a narrow window
-  SettingsCard* installed_ = nullptr;
+  Card* installed_ = nullptr;
   bool installed_error_ = false;  // the status shows a failed runner list
   QLabel* default_note_ = nullptr;
-  SettingsCard* catalog_ = nullptr;
+  Card* catalog_ = nullptr;
   QComboBox* source_ = nullptr;
-  SettingsCard* tools_card_ = nullptr;  // shown only while a tool is missing
+  Card* tools_card_ = nullptr;  // shown only while a tool is missing
   QLabel* status_ = nullptr;
 
   std::vector<GameSummary> games_;

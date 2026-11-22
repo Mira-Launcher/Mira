@@ -39,7 +39,7 @@ class ModalOverlay;
 class ModManagerPicker;
 class ProgressRail;
 class RatingChips;
-class SettingsCard;
+class Card;
 class SourceSettingsCard;
 class ZoomSettle;
 class SourceSetupCard;
@@ -72,7 +72,7 @@ class SourcePage : public QWidget {
   // Starts an update of an installed store title.
   void UpdateTitle(const QString& ref);
   // Null until the banner's settings button first opens it.
-  SourceSettingsCard* SettingsCard() const { return settings_card_; }
+  SourceSettingsCard* Card() const { return settings_card_; }
   bool SettingsModalOpen() const;
   const SourceInfo& Source() const { return source_; }
   // The source's settings over the page.
@@ -129,7 +129,7 @@ class SourcePage : public QWidget {
 
   void OpenCollectionsModal();
   // Shows `card` alone over the page, in place of whichever card was there.
-  void ShowModal(mira_gui::SettingsCard* card);
+  void ShowModal(mira_gui::Card* card);
   void FitSettingsModal();
   void FillMoreMenu(QMenu* menu);
   void UpdateTool();
@@ -212,7 +212,7 @@ class SourcePage : public QWidget {
   int adding_ = 0;                               // games the mod manager is still being added to
   SourceSettingsCard* settings_card_ = nullptr;  // built on first open
   ItchCollectionsCard* collections_card_ = nullptr;  // itch only, built on first open
-  mira_gui::SettingsCard* modal_card_ = nullptr;     // the one the overlay shows
+  mira_gui::Card* modal_card_ = nullptr;             // the one the overlay shows
   ModalOverlay* settings_overlay_ = nullptr;
   QScrollArea* settings_scroll_ = nullptr;
 

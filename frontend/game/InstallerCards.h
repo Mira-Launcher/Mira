@@ -21,7 +21,7 @@ struct GameSummary;
 // found, Change… to pick another, the library root to install into for one on a disc, and
 // whether to run it quietly or with its window. An in-window card over the library, asked
 // when one is found, from "Install…" and from an install error's fix.
-class InstallerCard : public SettingsCard {
+class InstallerCard : public Card {
   Q_OBJECT
 
  public:
@@ -53,7 +53,7 @@ class InstallerCard : public SettingsCard {
 
 // After an install left its installer folder behind (game.installer_leftover): delete it
 // (DELETE /v1/games/{id}/installer) or keep it.
-class InstallerLeftoverCard : public SettingsCard {
+class InstallerLeftoverCard : public Card {
   Q_OBJECT
 
  public:
@@ -70,7 +70,7 @@ class InstallerLeftoverCard : public SettingsCard {
 };
 
 // Offers the programs a run in the game's prefix installed as its launch options, a row each.
-class ProgramsFoundCard : public SettingsCard {
+class ProgramsFoundCard : public Card {
   Q_OBJECT
 
  public:

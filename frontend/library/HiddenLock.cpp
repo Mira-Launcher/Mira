@@ -10,6 +10,7 @@
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
 #include "../client/api/Hidden.h"
+#include "../components/SettingRow.h"
 
 namespace mira_gui {
 namespace {
@@ -34,7 +35,7 @@ QString Problem(const ApiError& error, const QString& wrong) {
 
 }  // namespace
 
-HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : SettingsCard("Unlock hidden games", parent) {
+HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : Card("Unlock hidden games", parent) {
   setFixedWidth(440);
   auto* row = new SettingRow("Password", QString(), this);
   password_ = PasswordField(row);
@@ -64,7 +65,7 @@ HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : SettingsCard("Unlock hidde
 }
 
 void HiddenUnlockCard::showEvent(QShowEvent* event) {
-  SettingsCard::showEvent(event);
+  Card::showEvent(event);
   // After the overlay has taken focus for itself.
   QTimer::singleShot(0, password_, [this] { password_->setFocus(); });
 }

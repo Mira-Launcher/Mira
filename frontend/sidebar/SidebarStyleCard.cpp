@@ -13,6 +13,9 @@
 #include <utility>
 
 #include "../components/Card.h"
+#include "../components/Metrics.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GamePresentation.h"
 #include "../theme/Icons.h"
@@ -194,7 +197,7 @@ SettingRow* SidebarStyleChoices::MakeStyleRow(const QString& label, bool recent)
 SidebarStyleCard::SidebarStyleCard(const Choices& choices, std::vector<GameSummary> pinned,
                                    std::vector<GameSummary> recent, ArtworkStore* artwork,
                                    QWidget* parent)
-    : SettingsCard("Pinned and recently played", parent) {
+    : Card("Pinned and recently played", parent) {
   SetProminentTitle();
   auto* close = new QToolButton(this);
   close->setAutoRaise(true);

@@ -16,7 +16,7 @@
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
 #include "../client/api/Games.h"
-#include "../components/Card.h"
+#include "../components/ChangeBar.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"

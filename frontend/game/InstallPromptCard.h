@@ -3,6 +3,7 @@
 #include <string>
 
 #include "../components/Card.h"
+#include "../components/Switch.h"
 
 class QPushButton;
 
@@ -14,7 +15,7 @@ struct GameSummary;
 
 // Asked after a launched game turned out to be an installer: switch the entry
 // to the program it installed. An in-window card over the library.
-class InstallPromptCard : public SettingsCard {
+class InstallPromptCard : public Card {
   Q_OBJECT
 
  public:

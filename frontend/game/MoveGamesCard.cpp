@@ -11,6 +11,7 @@
 
 #include "../app/ErrorHelp.h"
 #include "../components/Labels.h"
+#include "../components/SettingRow.h"
 #include "../components/WindowCards.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -122,7 +123,7 @@ bool MoveGamesCard::Moves(const RelocationPlan& plan) {
 }
 
 MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
-    : SettingsCard(QString(), parent), plans_(std::move(plans)) {
+    : Card(QString(), parent), plans_(std::move(plans)) {
   setFixedWidth(kWidth);
   SetProminentTitle();
   std::vector<std::string> moving;

@@ -5,6 +5,7 @@
 #include <QPushButton>
 
 #include "../components/Labels.h"
+#include "../components/SettingRow.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 
@@ -17,7 +18,7 @@ constexpr QSize kCover(32, 48);
 
 UnclearMoveCard::UnclearMoveCard(const UnclearMove& move, const GameLibraryModel* library,
                                  ArtworkStore* artwork, QWidget* parent)
-    : SettingsCard(QString(), parent), folder_(move.folder) {
+    : Card(QString(), parent), folder_(move.folder) {
   setFixedWidth(560);
 
   auto* title = new QLabel(

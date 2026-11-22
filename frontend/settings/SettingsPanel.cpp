@@ -34,8 +34,12 @@
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
 #include "../components/Card.h"
+#include "../components/ChangeBar.h"
 #include "../components/Labels.h"
 #include "../components/ListEdit.h"
+#include "../components/Metrics.h"
+#include "../components/SettingRow.h"
+#include "../components/SettingsPage.h"
 #include "../components/ShortcutEdit.h"
 #include "../library/HiddenLock.h"
 #include "../sources/Sources.h"
@@ -228,7 +232,7 @@ void SettingsPanel::BuildSchemaPages() {
     // Which sources the sidebar shows, and in what order, sits with the sources themselves.
     if (category == "Sources" && sources_card_ != nullptr) page->AddWidget(sources_card_);
     if (category == "Library") AddMiraFoldersCard(page);
-    SettingsCard* card = nullptr;
+    Card* card = nullptr;
     ExpanderRow* expander = nullptr;
     int group = -1;
     std::vector<size_t> card_rows;
@@ -270,7 +274,7 @@ void SettingsPanel::BuildSchemaPages() {
     finish_card();
 
     if (category == "Launching") {
-      SettingsCard* first = page->findChild<SettingsCard*>();
+      Card* first = page->findChild<Card*>();
       auto* row = new SettingRow("GameMode", {});
       gamemode_status_ = new QLabel("Checking…", row);
       theme::SetStyleProperty(gamemode_status_, "role", "subtle");
@@ -313,7 +317,7 @@ void SettingsPanel::DescribeSourceItems() {
 void SettingsPanel::DescribeEmulatorItems() {
   api::GetEmulatorsAsync(this, [this](EmulatorsResult result) {
     if (!result.ok) return;
-    std::map<SettingsCard*, std::pair<int, int>> counts;  // emulators, installed
+    std::map<Card*, std::pair<int, int>> counts;  // emulators, installed
     for (const EmulatorInfo& emulator : result.emulators) {
       const auto it = items_.find({"Emulators", QString::fromStdString(emulator.id)});
       if (it == items_.end()) continue;
@@ -328,7 +332,7 @@ void SettingsPanel::DescribeEmulatorItems() {
       } else {
         expander->SetSummary(emulator.package.empty() ? "Not installed" : "From system packages");
       }
-      auto* card = qobject_cast<SettingsCard*>(expander->parentWidget()->parentWidget());
+      auto* card = qobject_cast<Card*>(expander->parentWidget()->parentWidget());
       if (card == nullptr) continue;
       auto& [all, installed] = counts[card];
       ++all;
@@ -357,7 +361,7 @@ void SettingsPanel::DescribeDownloadItems() {
   }
 }
 
-SettingRow* SettingsPanel::AddSchemaRow(SettingsCard* card, size_t index, ExpanderRow* expander) {
+SettingRow* SettingsPanel::AddSchemaRow(Card* card, size_t index, ExpanderRow* expander) {
   SettingEditor& field = fields_[index];
   const auto find = [this](const std::string& key) -> SettingEditor* {
     const auto it =
@@ -435,10 +439,10 @@ void SettingsPanel::AddSectionAction(const QString& category, const QString& car
 void SettingsPanel::AppendSectionAction(const SectionAction& action) {
   SettingsPage* page = pages_.value(action.category);
   if (page == nullptr) return;
-  const QList<SettingsCard*> cards = page->findChildren<SettingsCard*>();
+  const QList<Card*> cards = page->findChildren<Card*>();
   if (cards.isEmpty()) return;
-  const auto titled = std::ranges::find(cards, action.card, &SettingsCard::Title);
-  SettingsCard* card = titled != cards.end() ? *titled : cards.back();
+  const auto titled = std::ranges::find(cards, action.card, &Card::Title);
+  Card* card = titled != cards.end() ? *titled : cards.back();
   auto* row = new SettingRow(action.label, action.doc);
   auto* button = new QPushButton(action.button_text, row);
   connect(button, &QPushButton::clicked, this, action.activated);

@@ -14,6 +14,8 @@
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
 #include "../components/FlatCombo.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../theme/Theme.h"
 #include "SourceText.h"
 
@@ -39,9 +41,7 @@ QString Counted(int count, const QString& item) {
 }  // namespace
 
 SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent)
-    : SettingsCard(source.name + " settings", parent),
-      source_(source),
-      id_(source.id.toStdString()) {
+    : Card(source.name + " settings", parent), source_(source), id_(source.id.toStdString()) {
   status_ = new QLabel(this);
   status_->setVisible(false);
   Header()->addWidget(status_);

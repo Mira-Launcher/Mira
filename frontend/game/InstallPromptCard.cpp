@@ -10,6 +10,8 @@
 
 #include "../app/Notify.h"
 #include "../client/Types.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -31,7 +33,7 @@ QString WindowsPath(const std::string& path) {
 InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string& install_path,
                                      const std::string& exe_path, ArtworkStore* artwork,
                                      QWidget* parent)
-    : SettingsCard(QString(), parent), install_path_(install_path), exe_path_(exe_path) {
+    : Card(QString(), parent), install_path_(install_path), exe_path_(exe_path) {
   setFixedWidth(560);
 
   auto* cover = new QLabel(this);

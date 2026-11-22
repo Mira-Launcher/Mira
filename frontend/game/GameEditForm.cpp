@@ -32,8 +32,11 @@
 #include "../components/Card.h"
 #include "../components/FlatCombo.h"
 #include "../components/Labels.h"
+#include "../components/Metrics.h"
 #include "../components/PathField.h"
 #include "../components/Scrolling.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../settings/SettingEditor.h"
 #include "../sources/Sources.h"
 #include "HeroBackdrop.h"
@@ -351,7 +354,7 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
   arranged_ = true;
   QWidget* page = scroll_->widget();
   const auto add_card = [this, page](const QString& title, std::initializer_list<QWidget*> rows) {
-    auto* card = new SettingsCard(title, page);
+    auto* card = new Card(title, page);
     for (QWidget* row : rows) {
       card->AddRow(row);
       row->show();
@@ -361,13 +364,13 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
   };
   const bool emulated = game.runner_ref.starts_with("emulator:");
   const std::vector<std::string> store_keys = StoreKeys(game.source);
-  const auto place_store_keys = [this, &store_keys](SettingsCard* card) {
+  const auto place_store_keys = [this, &store_keys](Card* card) {
     for (size_t i = 0; i < store_keys.size(); ++i)
       overrides_->PlaceRow(store_keys[i], card, static_cast<int>(i));
   };
   // The scripts, each with its ready-made steps inside its row, for any game that can use them.
   const auto add_scripts = [this, &add_card] {
-    SettingsCard* scripts = add_card("Scripts", {});
+    Card* scripts = add_card("Scripts", {});
     for (const char* key : {"launch.pre_script", "launch.post_script"})
       overrides_->PlaceRow(key, scripts);
     overrides_->HideWhenEmpty(scripts);
@@ -376,14 +379,13 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
   add_card("Details", {name_row_, tags_row_});
   if (game.source == "steam") {
     // Steam starts the game from its own record, so there is no executable or runner to pick.
-    SettingsCard* steam =
-        add_card("Steam", {launch_options_row_, play_starts_row_, only_choice_row_});
+    Card* steam = add_card("Steam", {launch_options_row_, play_starts_row_, only_choice_row_});
     place_store_keys(steam);
     overrides_->PlaceRow("launch.env", steam);
     add_scripts();
     add_card("Files", {install_row_, data_dir_row_});
   } else if (emulated) {
-    SettingsCard* emulator = add_card("Emulator", {emulator_row_, args_row_});
+    Card* emulator = add_card("Emulator", {emulator_row_, args_row_});
     overrides_->PlaceRow("launch.env", emulator);
     add_scripts();
     install_row_->Label()->setText("Game file");
@@ -391,12 +393,12 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
   } else {
     add_card("Launch", {exe_row_, args_row_, working_dir_row_, launch_options_row_,
                         play_starts_row_, only_choice_row_});
-    SettingsCard* runner = add_card("Runner", {runner_row_, runner_options_});
+    Card* runner = add_card("Runner", {runner_row_, runner_options_});
     runner_options_->hide();  // until the runner kind has options
     overrides_->PlaceRow("launch.env", runner);
     if (!store_keys.empty()) {
       const SourceInfo* store = FindSourceInfo(QString::fromStdString(game.source));
-      SettingsCard* card =
+      Card* card =
           add_card(store != nullptr ? store->name : QString::fromStdString(game.source), {});
       place_store_keys(card);
       overrides_->HideWhenEmpty(card);
@@ -404,7 +406,7 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
     add_scripts();
     add_card("Files", {install_row_, data_dir_row_});
   }
-  auto* overrides = new SettingsCard("Overrides", page);
+  auto* overrides = new Card("Overrides", page);
   cards_layout_->addWidget(overrides);
   overrides_->SetOverridesCard(overrides);
   cards_layout_->addStretch(1);

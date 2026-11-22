@@ -15,7 +15,7 @@ class ExpanderRow;
 class LaunchOptionsEdit;
 class OverridesEditor;
 class SettingRow;
-class SettingsCard;
+class Card;
 class TagEdit;
 }  // namespace mira_gui
 

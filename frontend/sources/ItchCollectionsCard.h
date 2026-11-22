@@ -14,7 +14,7 @@ struct ItchCollectionsResult;
 
 // The itch.io collections whose games show on the itch page: the account's
 // own, plus any added by link. Added ones can be removed again.
-class ItchCollectionsCard : public SettingsCard {
+class ItchCollectionsCard : public Card {
   Q_OBJECT
 
  public:

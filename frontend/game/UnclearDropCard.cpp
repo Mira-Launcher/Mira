@@ -6,11 +6,12 @@
 #include <QPushButton>
 
 #include "../components/Labels.h"
+#include "../components/SettingRow.h"
 
 namespace mira_gui {
 
 UnclearDropCard::UnclearDropCard(const UnclearDrop& drop, QWidget* parent)
-    : SettingsCard(QString(), parent), path_(drop.path) {
+    : Card(QString(), parent), path_(drop.path) {
   setFixedWidth(560);
 
   const QString name = drop.name.empty() ? QFileInfo(QString::fromStdString(drop.path)).fileName()

@@ -28,7 +28,10 @@
 #include "../client/api/Config.h"
 #include "../client/api/Tags.h"
 #include "../components/Card.h"
+#include "../components/ChangeBar.h"
 #include "../components/Labels.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -367,7 +370,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
 
   const int more_width = std::unique_ptr<QToolButton>(MoreButton(nullptr))->sizeHint().width();
 
-  mine_ = new SettingsCard("Your tags", overview_);
+  mine_ = new Card("Your tags", overview_);
   auto* add = new QPushButton("New tag", mine_);
   add->setObjectName("text_button");
   icons::Follow(add, icons::Glyph::Plus);
@@ -389,9 +392,9 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   mine_note_ = NoteRow(mine_);
   mine_note_->Label()->setText("No tags yet. Add one from Steam's, or a new one.");
   mine_->AddRow(mine_note_);
-  connect(mine_, &SettingsCard::RowsReordered, this, &TagsPage::FoldersReordered);
+  connect(mine_, &Card::RowsReordered, this, &TagsPage::FoldersReordered);
 
-  settings_card_ = new SettingsCard("Tag settings", overview_);
+  settings_card_ = new Card("Tag settings", overview_);
 
   left_ = new QWidget(overview_);
   auto* left_layout = new QVBoxLayout(left_);
@@ -401,7 +404,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   left_layout->addWidget(mine_, /*stretch=*/1);
   left_layout->addWidget(settings_card_);
 
-  steam_ = new SettingsCard("From Steam", overview_);
+  steam_ = new Card("From Steam", overview_);
   steam_search_ = new QLineEdit(steam_);
   steam_search_->setPlaceholderText("Find a tag");
   steam_search_->setClearButtonEnabled(true);

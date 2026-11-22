@@ -8,12 +8,12 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Stores.h"
+#include "../components/SettingRow.h"
 #include "../theme/Theme.h"
 
 namespace mira_gui {
 
-ItchCollectionsCard::ItchCollectionsCard(QWidget* parent)
-    : SettingsCard("itch.io collections", parent) {
+ItchCollectionsCard::ItchCollectionsCard(QWidget* parent) : Card("itch.io collections", parent) {
   auto* intro = new QLabel(
       "Games in these collections show on the itch page. Free ones can be installed; paid ones "
       "install once you own them.",

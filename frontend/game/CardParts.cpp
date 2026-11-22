@@ -17,7 +17,7 @@ constexpr QSize kCover(40, 60);
 
 }  // namespace
 
-QLabel* AddCardHeading(SettingsCard* card, const QString& title, const QString& close_tip,
+QLabel* AddCardHeading(Card* card, const QString& title, const QString& close_tip,
                        const std::function<void()>& close, const QString& subtitle) {
   auto* heading = new QLabel(title, card);
   heading->setProperty("role", "heading");
@@ -47,7 +47,7 @@ QLabel* AddCardHeading(SettingsCard* card, const QString& title, const QString& 
   return heading;
 }
 
-QLabel* AddGameCardHeading(SettingsCard* card, const GameSummary& game, const QString& title,
+QLabel* AddGameCardHeading(Card* card, const GameSummary& game, const QString& title,
                            ArtworkStore* artwork, const QString& close_tip,
                            const std::function<void()>& close) {
   auto* cover = new QLabel(card);
@@ -64,7 +64,7 @@ QLabel* AddGameCardHeading(SettingsCard* card, const GameSummary& game, const QS
   return AddCardHeading(card, title, close_tip, close);
 }
 
-QToolButton* AddCardBack(SettingsCard* card, const std::function<void()>& back) {
+QToolButton* AddCardBack(Card* card, const std::function<void()>& back) {
   auto* button = new QToolButton(card);
   button->setAutoRaise(true);
   icons::Follow(button, icons::Glyph::ArrowLeft);
@@ -74,7 +74,7 @@ QToolButton* AddCardBack(SettingsCard* card, const std::function<void()>& back) 
   return button;
 }
 
-QLabel* AddErrorLine(SettingsCard* card) {
+QLabel* AddErrorLine(Card* card) {
   auto* error = new QLabel(card);
   error->setProperty("role", "error");
   error->setWordWrap(true);
@@ -84,7 +84,7 @@ QLabel* AddErrorLine(SettingsCard* card) {
   return error;
 }
 
-QHBoxLayout* AddButtonRow(SettingsCard* card) {
+QHBoxLayout* AddButtonRow(Card* card) {
   auto* buttons = new QWidget(card);
   auto* layout = new QHBoxLayout(buttons);
   layout->setContentsMargins(18, 12, 18, 10);

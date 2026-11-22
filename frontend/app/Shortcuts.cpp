@@ -67,10 +67,10 @@ QWidget* Keycaps(const QString& text, QWidget* parent) {
 }
 
 // Every key a window answers to, its groups in two columns, each group's rows in order.
-class ReferenceCard : public SettingsCard {
+class ReferenceCard : public Card {
  public:
   ReferenceCard(const QList<Entry>& entries, const std::function<void()>& change)
-      : SettingsCard(QString()) {
+      : Card(QString()) {
     SetProminentTitle();
     AddCardHeading(this, "Keyboard shortcuts", "Close", [this] { cards::Close(this); });
     if (change) {

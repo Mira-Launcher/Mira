@@ -671,19 +671,21 @@ QWidget#settings_sticky QLabel[role="nav_heading"] {
   padding: 0;
 }
 
-QFrame#settings_card {
+/* A card, and an achievement on the same raised surface. */
+mira_gui--Card,
+mira_gui--AchievementTile {
   background: @surface;
   border: 1px solid @border;
   border-radius: @radius_card;
 }
 
-/* components/Card's ExpanderRow: its rows, opened, on a sunken surface. */
+/* components/SettingRow's ExpanderRow: its rows, opened, on a sunken surface. */
 QWidget#expander_body {
   background: @surface_sunken;
   border-top: 1px solid @border;
 }
 
-/* A sunken row that ends its card takes the card's bottom corners (SettingsCard::RoundBottomRow). */
+/* A sunken row that ends its card takes the card's bottom corners (Card::RoundBottomRow). */
 QWidget#list_row[card_bottom="true"],
 QPushButton#list_more[card_bottom="true"],
 QWidget#expander_body[card_bottom="true"],
@@ -701,33 +703,33 @@ QLabel#expander_summary[tone="success"] {
 }
 
 /* One height for every control in a card (32 px with padding and border), with the row
- * labels' minimum height in components/Card.cpp, so every row is as tall as the next. */
-QFrame#settings_card QLineEdit,
-QFrame#settings_card QSpinBox,
-QFrame#settings_card QDoubleSpinBox,
-QFrame#settings_card QComboBox {
+ * labels' minimum height in components/SettingRow.cpp, so every row is as tall as the next. */
+mira_gui--Card QLineEdit,
+mira_gui--Card QSpinBox,
+mira_gui--Card QDoubleSpinBox,
+mira_gui--Card QComboBox {
   min-height: 22px;
   max-height: 22px;
 }
 
 /* A longer choice in a card is its value and a chevron, boxed only on hover. Its chevron ends
  * where the switches and fields of the rows around it do (components/FlatCombo sizes from this). */
-QFrame#settings_card QComboBox:!editable {
+mira_gui--Card QComboBox:!editable {
   background: transparent;
   border: 1px solid transparent;
   padding-right: 0;
 }
 
-QFrame#settings_card QComboBox:!editable::drop-down {
+mira_gui--Card QComboBox:!editable::drop-down {
   width: 14px;
 }
 
-QFrame#settings_card QComboBox:!editable::down-arrow {
+mira_gui--Card QComboBox:!editable::down-arrow {
   margin-right: 1px;
 }
 
-QFrame#settings_card QComboBox:!editable:hover,
-QFrame#settings_card QComboBox:!editable:focus {
+mira_gui--Card QComboBox:!editable:hover,
+mira_gui--Card QComboBox:!editable:focus {
   background: @surface_alt;
 }
 
@@ -738,10 +740,10 @@ QScrollArea#card_scroll > QWidget > QWidget {
 }
 
 /* Fields sit a step darker than the card they are on, as in the grid. */
-QFrame#settings_card QLineEdit,
-QFrame#settings_card QSpinBox,
-QFrame#settings_card QDoubleSpinBox,
-QFrame#settings_card QComboBox {
+mira_gui--Card QLineEdit,
+mira_gui--Card QSpinBox,
+mira_gui--Card QDoubleSpinBox,
+mira_gui--Card QComboBox {
   background: @window;
 }
 
@@ -804,7 +806,7 @@ QWidget#list_row {
   border-top: 1px solid @border;
 }
 
-QFrame#settings_card QLineEdit#list_item {
+mira_gui--Card QLineEdit#list_item {
   background: transparent;
   border: none;
   padding: 6px 0px;

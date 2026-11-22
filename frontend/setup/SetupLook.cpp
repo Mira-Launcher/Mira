@@ -16,9 +16,9 @@
 #include <algorithm>
 #include <cmath>
 
-#include "../components/Card.h"
 #include "../components/Labels.h"
 #include "../components/Segmented.h"
+#include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"

@@ -9,7 +9,7 @@ namespace mira_gui {
 
 // Asked when something was dropped into a Mira folder that Mira couldn't sort: where it goes.
 // An in-window card over the library.
-class UnclearDropCard : public SettingsCard {
+class UnclearDropCard : public Card {
   Q_OBJECT
 
  public:

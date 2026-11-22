@@ -31,7 +31,7 @@ class ArtworkStore;
 class ChangeBar;
 class ExpanderRow;
 class SettingRow;
-class SettingsCard;
+class Card;
 class SettingsNavWidget;
 class SettingsPage;
 class ShortcutEdit;
@@ -152,7 +152,7 @@ class SettingsPanel : public QWidget {
   };
 
   struct CardReset {
-    SettingsCard* card = nullptr;
+    Card* card = nullptr;
     std::vector<size_t> prefs;   // into pref_fields_
     std::vector<size_t> schema;  // into fields_
   };
@@ -164,7 +164,7 @@ class SettingsPanel : public QWidget {
   void FollowConfigChanges();
   void ReloadValues();
   void BuildInterfacePage();
-  void AddDisplayRows(SettingsCard* card);
+  void AddDisplayRows(Card* card);
   void BuildBigScreenPage();
   // Settings › Library's Mira folders, each with Games and Applications in library_roots.
   void AddMiraFoldersCard(SettingsPage* page);
@@ -180,23 +180,22 @@ class SettingsPanel : public QWidget {
   void DescribeEmulatorItems();
   void DescribeDownloadItems();
   // Into `expander` when the setting belongs to an item, else straight into `card`.
-  SettingRow* AddSchemaRow(SettingsCard* card, size_t index, ExpanderRow* expander = nullptr);
-  Switch* AddToggle(SettingsCard* card, const QString& label, const QString& doc,
-                    const QString& search, std::optional<bool> FrontendPrefs::* member,
-                    bool fallback);
+  SettingRow* AddSchemaRow(Card* card, size_t index, ExpanderRow* expander = nullptr);
+  Switch* AddToggle(Card* card, const QString& label, const QString& doc, const QString& search,
+                    std::optional<bool> FrontendPrefs::* member, bool fallback);
   // A number of seconds kept in milliseconds; `maximum` in seconds.
-  QDoubleSpinBox* AddSeconds(SettingsCard* card, const QString& label, const QString& doc,
+  QDoubleSpinBox* AddSeconds(Card* card, const QString& label, const QString& doc,
                              const QString& search, std::optional<int> FrontendPrefs::* member,
                              int fallback_ms, double maximum);
   // A choice among `options` (value, label).
   template <typename T>
-  QComboBox* AddChoice(SettingsCard* card, const QString& label, const QString& doc,
-                       const QString& search, std::optional<T> FrontendPrefs::* member,
+  QComboBox* AddChoice(Card* card, const QString& label, const QString& doc, const QString& search,
+                       std::optional<T> FrontendPrefs::* member,
                        const std::vector<std::pair<T, QString>>& options, const T& fallback);
   // Returns the field's index in pref_fields_.
   size_t AddPrefField(PrefField field);
   // A card's "Reset to defaults" over these pref_fields_ and fields_ indices.
-  void AddCardReset(SettingsCard* card, std::vector<size_t> prefs, std::vector<size_t> schema);
+  void AddCardReset(Card* card, std::vector<size_t> prefs, std::vector<size_t> schema);
   QWidget* MakeSlider(ShapeField& field, int maximum);
   void RefreshShape(ShapeField& field);
   void RefreshShapeDefaults();
@@ -249,7 +248,7 @@ class SettingsPanel : public QWidget {
   // Sidebar
   SidebarStyleChoices* sidebar_style_ = nullptr;
   SidebarStyleChoices::Choices sidebar_style_saved_;
-  SettingsCard* sources_card_ = nullptr;
+  Card* sources_card_ = nullptr;
   std::map<std::pair<QString, QString>, ExpanderRow*> items_;  // by category and item
   bool restart_prompt_ = false;  // a saved display setting takes a restart
 
@@ -263,7 +262,7 @@ class SettingsPanel : public QWidget {
   bool rows_built_ = false;
   // Read-only "is Feral GameMode installed/running" on the Launching page; not a config key.
   QLabel* gamemode_status_ = nullptr;
-  SettingsCard* mira_folders_card_ = nullptr;
+  Card* mira_folders_card_ = nullptr;
   int saves_pending_ = 0;
   int loads_pending_ = 2;  // the settings and the display prefs; Ready at zero
   bool values_loaded_ = false;

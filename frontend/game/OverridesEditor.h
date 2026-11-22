@@ -15,7 +15,7 @@ class QWidget;
 namespace mira_gui {
 
 class ExpanderRow;
-class SettingsCard;
+class Card;
 
 // A game's own values for the settings it can use, resolved through default -> Settings -> this
 // game and edited with the settings screen's own editors. A row the game sets for itself shows a
@@ -34,11 +34,11 @@ class OverridesEditor : public QObject {
 
   // Puts `key`'s row into `card` at row `at` (-1 the end) instead of the Overrides card. Call
   // before Load.
-  void PlaceRow(const std::string& key, SettingsCard* card, int at = -1);
+  void PlaceRow(const std::string& key, Card* card, int at = -1);
   // The card the other rows go into. Call before Load.
-  void SetOverridesCard(SettingsCard* card);
+  void SetOverridesCard(Card* card);
   // Shows `card`, which holds only placed rows, only while one of them is shown.
-  void HideWhenEmpty(SettingsCard* card);
+  void HideWhenEmpty(Card* card);
 
   // Fetches the schema and Settings' values the first time, then this game's values. Non-fatal if
   // a request fails: the rest of the form still works without these rows.
@@ -73,7 +73,7 @@ class OverridesEditor : public QObject {
     QPushButton* edit_list = nullptr;  // Edit… on a list the game takes from Settings
     QLabel* from_settings = nullptr;   // says so beside the label
     ExpanderRow* expander = nullptr;   // in the Overrides card, else placed by the host
-    SettingsCard* card = nullptr;      // where the host placed it
+    Card* card = nullptr;              // where the host placed it
     bool embedded = false;             // shown inside its shown_in's row, which undoes both
   };
 
@@ -91,14 +91,14 @@ class OverridesEditor : public QObject {
   void UpdateSummaries();
 
   struct Placement {
-    SettingsCard* card = nullptr;
+    Card* card = nullptr;
     int at = -1;
   };
   std::string game_id_;
   QWidget* parent_ = nullptr;
   std::map<std::string, Placement> placed_;
-  SettingsCard* overrides_card_ = nullptr;
-  std::vector<SettingsCard*> hide_when_empty_;
+  Card* overrides_card_ = nullptr;
+  std::vector<Card*> hide_when_empty_;
   std::map<std::string, ExpanderRow*> expanders_;  // by category
   std::map<std::string, std::string> settings_values_;
   std::string reveal_key_;  // a row RevealKey asked for before the values arrived

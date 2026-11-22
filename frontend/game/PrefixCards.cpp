@@ -17,6 +17,7 @@
 #include "../components/Labels.h"
 #include "../components/PathField.h"
 #include "../components/ProgressRail.h"
+#include "../components/SettingRow.h"
 #include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
 #include "../theme/Icons.h"
@@ -36,7 +37,7 @@ constexpr const char* kCommonVerbs[] = {
 
 // The button row, with a status line at its left and a rail over it that keeps its place while
 // hidden, so the card never changes height. Returns the row's layout for the buttons.
-QHBoxLayout* StatusButtonRow(SettingsCard* card, ProgressRail*& rail, QLabel*& status,
+QHBoxLayout* StatusButtonRow(Card* card, ProgressRail*& rail, QLabel*& status,
                              QPushButton** trailing = nullptr) {
   auto* row = new QWidget(card);
   auto* layout = new QVBoxLayout(row);
@@ -67,7 +68,7 @@ QHBoxLayout* StatusButtonRow(SettingsCard* card, ProgressRail*& rail, QLabel*& s
 
 RunInPrefixCard::RunInPrefixCard(std::string game_id, std::string install_path, const QString& name,
                                  QWidget* parent)
-    : SettingsCard(QString(), parent),
+    : Card(QString(), parent),
       game_id_(std::move(game_id)),
       install_path_(std::move(install_path)) {
   setFixedWidth(kWidth);
@@ -138,7 +139,7 @@ void RunInPrefixCard::Run() {
 }
 
 WinetricksCard::WinetricksCard(std::string game_id, const QString& name, QWidget* parent)
-    : SettingsCard(QString(), parent), game_id_(std::move(game_id)), name_(name) {
+    : Card(QString(), parent), game_id_(std::move(game_id)), name_(name) {
   setFixedWidth(kWidth);
   SetProminentTitle();
   AddCardHeading(this, "Winetricks for " + name, "Close", [this] { cards::Close(this); });

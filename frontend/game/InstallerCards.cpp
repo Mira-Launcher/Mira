@@ -14,6 +14,7 @@
 #include "../client/api/Games.h"
 #include "../components/FlatCombo.h"
 #include "../components/Labels.h"
+#include "../components/SettingRow.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "CardParts.h"
@@ -23,7 +24,7 @@ namespace mira_gui {
 
 InstallerCard::InstallerCard(const GameSummary& game, const InstallerInfoResult& info,
                              ArtworkStore* artwork, QWidget* parent)
-    : SettingsCard(QString(), parent), game_id_(game.id), install_path_(game.install_path) {
+    : Card(QString(), parent), game_id_(game.id), install_path_(game.install_path) {
   setFixedWidth(560);
   AddGameCardHeading(this, game, "Install " + QString::fromStdString(game.name) + "?", artwork,
                      "Not now", [this] { emit CloseRequested(); });
@@ -134,7 +135,7 @@ void InstallerCard::Install(bool interactive) {
 InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game,
                                              const std::string& installer_dir, std::int64_t bytes,
                                              ArtworkStore* artwork, QWidget* parent)
-    : SettingsCard(QString(), parent), game_id_(game.id) {
+    : Card(QString(), parent), game_id_(game.id) {
   setFixedWidth(560);
   AddGameCardHeading(this, game, "Delete " + QString::fromStdString(game.name) + "'s installer?",
                      artwork, "Keep it", [this] { emit CloseRequested(); });
@@ -173,7 +174,7 @@ InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game,
 ProgramsFoundCard::ProgramsFoundCard(const GameSummary& game, const ProgramsFoundEvent& event,
                                      ArtworkStore* artwork, std::function<GameLaunch()> current,
                                      QWidget* parent)
-    : SettingsCard(QString(), parent), game_id_(game.id), current_(std::move(current)) {
+    : Card(QString(), parent), game_id_(game.id), current_(std::move(current)) {
   setFixedWidth(560);
   AddGameCardHeading(this, game,
                      QString::fromStdString(event.by) + " installed " +

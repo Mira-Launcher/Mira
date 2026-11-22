@@ -58,6 +58,7 @@
 #include "../client/api/Stores.h"
 #include "../components/FramelessRoot.h"
 #include "../components/Labels.h"
+#include "../components/Metrics.h"
 #include "../components/ModalOverlay.h"
 #include "../components/PopupDialog.h"
 #include "../components/TileView.h"
@@ -715,8 +716,7 @@ void LibraryWindow::ClosePagesForTray() {
   CloseSourcesPage();
   if (settings_loading_ || (SettingsOpen() && !settings_panel_->IsDirty())) CloseSettings();
   if (GameEditOpen() && !game_card_->IsDirty()) CloseGameEdit();
-  mira_gui::SourceSettingsCard* card =
-      source_page_ != nullptr ? source_page_->SettingsCard() : nullptr;
+  mira_gui::SourceSettingsCard* card = source_page_ != nullptr ? source_page_->Card() : nullptr;
   if (source_page_ != nullptr && (card == nullptr || !card->IsDirty())) CloseSource();
   CloseRunners();
   CloseDownloadsPage();
@@ -919,7 +919,7 @@ mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& pr
   connect(sidebar, &Sidebar::ManageSourcesRequested, this, [this] { OpenSourcesPage(false); });
   connect(sidebar, &Sidebar::SourceRemoved, this, [this](const QString& id) {
     if (source_page_ == nullptr || source_page_->Source().id != id) return;
-    if (mira_gui::SourceSettingsCard* card = source_page_->SettingsCard()) card->Discard();
+    if (mira_gui::SourceSettingsCard* card = source_page_->Card()) card->Discard();
     CloseSource();
   });
   connect(sidebar, &Sidebar::StyleRequested, this, &LibraryWindow::OpenSidebarStyle);
@@ -2137,7 +2137,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
   connect(source_page_, &mira_gui::SourcePage::OpenSettingsRequested, this,
           [this](const QString& key) { OpenSettings(key); });
   connect(source_page_, &mira_gui::SourcePage::Removed, this, [this, id = source.id] {
-    if (mira_gui::SourceSettingsCard* card = source_page_->SettingsCard()) card->Discard();
+    if (mira_gui::SourceSettingsCard* card = source_page_->Card()) card->Discard();
     CloseSource();
     sidebar_->ForgetSource(id);
   });
@@ -2174,8 +2174,7 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
 }
 
 bool LibraryWindow::ConfirmLeaveSource(std::function<void()> retry) {
-  mira_gui::SourceSettingsCard* card =
-      source_page_ != nullptr ? source_page_->SettingsCard() : nullptr;
+  mira_gui::SourceSettingsCard* card = source_page_ != nullptr ? source_page_->Card() : nullptr;
   if (card == nullptr || !card->IsDirty()) return true;
   const bool leave =
       mira_gui::notify::LeaveUnsaved(this, "This source's settings changed but aren't saved", [&] {

@@ -7,8 +7,8 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Tags.h"
-#include "../components/Card.h"
 #include "../components/Labels.h"
+#include "../components/Switch.h"
 
 namespace mira_gui {
 

@@ -12,7 +12,7 @@ class GameLibraryModel;
 
 // Asked when a folder turned up in a library folder that could be any of several games moved by
 // hand: which one it is, or a new game. An in-window card over the library.
-class UnclearMoveCard : public SettingsCard {
+class UnclearMoveCard : public Card {
   Q_OBJECT
 
  public:

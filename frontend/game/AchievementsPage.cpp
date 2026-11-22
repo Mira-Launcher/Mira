@@ -78,7 +78,6 @@ class AchievementIcon : public QWidget {
 
 AchievementTile::AchievementTile(const Achievement& item, QWidget* parent)
     : QFrame(parent), item_(item) {
-  setObjectName("settings_card");
   // Its column's width, whatever its text would like: the grid sets the columns.
   setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   auto* row = new QHBoxLayout(this);

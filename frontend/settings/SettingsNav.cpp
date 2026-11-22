@@ -17,7 +17,10 @@
 #include <algorithm>
 
 #include "../components/Card.h"
+#include "../components/Metrics.h"
 #include "../components/Scrolling.h"
+#include "../components/SettingRow.h"
+#include "../components/SettingsPage.h"
 #include "../theme/Theme.h"
 #include "SettingsSearch.h"
 
@@ -356,14 +359,14 @@ void SettingsNavWidget::RegisterRow(QWidget* row_widget, const QString& searchab
 
   RowEntry row;
   row.row_widget = row_widget;
-  row.card = AncestorOf<SettingsCard>(row_widget);
+  row.card = AncestorOf<Card>(row_widget);
   row.expander = AncestorOf<ExpanderRow>(row_widget);
   row.search_text = settings_search::Normalize(searchable_text);
   row.category_index = static_cast<int>(category - categories_.begin());
   rows_.push_back(row);
   row_index_by_widget_.insert(row_widget, static_cast<int>(rows_.size()) - 1);
   category->total_rows++;
-  // A row rebuilt later (SettingsCard::ClearRows) leaves the search with it.
+  // A row rebuilt later (Card::ClearRows) leaves the search with it.
   connect(row_widget, &QObject::destroyed, this, [this, row_widget] { UnregisterRow(row_widget); });
 }
 
@@ -392,7 +395,7 @@ void SettingsNavWidget::ApplyFilter() {
   const QString query = search_->text().trimmed();
   const bool searching = !query.isEmpty();
   std::vector<int> visible_count(categories_.size(), 0);
-  QHash<SettingsCard*, int> card_visible;
+  QHash<Card*, int> card_visible;
   QHash<ExpanderRow*, int> expander_visible;
 
   for (const RowEntry& row : rows_) {
@@ -419,7 +422,7 @@ void SettingsNavWidget::ApplyFilter() {
   // A card shows while any of its rows does. Searching unfolds a folded card
   // with a match, and clearing the search folds it again.
   for (const Category& category : categories_) {
-    for (SettingsCard* card : category.page->findChildren<SettingsCard*>()) {
+    for (Card* card : category.page->findChildren<Card*>()) {
       if (!card_visible.contains(card)) {
         card->setVisible(!searching);  // no searchable rows: only shown outside a search
         continue;

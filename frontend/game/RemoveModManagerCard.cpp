@@ -6,6 +6,7 @@
 #include <QStringList>
 
 #include "../components/Labels.h"
+#include "../components/SettingRow.h"
 #include "../components/WindowCards.h"
 #include "../sources/Sources.h"
 
@@ -18,9 +19,7 @@ constexpr int kBadge = 40;
 
 RemoveModManagerCard::RemoveModManagerCard(const QString& game_name, const SourceInfo& manager,
                                            QWidget* parent)
-    : SettingsCard(QString(), parent),
-      manager_name_(manager.name),
-      vortex_(manager.id == "vortex") {
+    : Card(QString(), parent), manager_name_(manager.name), vortex_(manager.id == "vortex") {
   setFixedWidth(520);
   SetLeading(MakeSourceBadge(manager, kBadge, this));
   SetTitle("Remove " + manager_name_ + " from " + game_name);
