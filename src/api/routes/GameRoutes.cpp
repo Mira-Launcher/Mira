@@ -18,6 +18,7 @@
 #include "core/Strings.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
+#include "library/GameIdentity.h"
 #include "library/GamePatch.h"
 #include "library/PrefixNaming.h"
 #include "library/Relocate.h"
@@ -128,10 +129,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
     model::Game unpinned = *game;
     unpinned.runner_ref.clear();
     body["default_runner"] = runner::RunnerRegistry(s.config).ResolveRef(unpinned);
-    // What protonfixes knows it by when its runner options don't say.
-    if (const auto umu = runner::FindUmu(s.config, *game)) {
-      body["umu_match"] = {{"gameid", umu->gameid}, {"store", umu->store}, {"title", umu->title}};
-    }
+    body["identity"] = library::ToJson(library::Identify(s.config, *game));
     if (const auto fix = ProtonFixStatus(s.config, *game)) body["protonfix"] = *fix;
     if (const auto log = NewestFile(proc::ProtonLogDir(s.games.Dir(), game->id)); !log.empty())
       body["proton_log"] = log.string();

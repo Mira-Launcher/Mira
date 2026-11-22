@@ -737,16 +737,24 @@ void GameStore::MarkSourceAdded(const std::string& id, bool imported) {
   }
 }
 
+model::Game GameStore::HandOut(model::Game game) const {
+  game.steam_match = metadata_.SteamMatch(game.id);
+  return game;
+}
+
 std::vector<model::Game> GameStore::All() const {
   std::lock_guard lock(mutex_);
-  return games_;
+  std::vector<model::Game> all;
+  all.reserve(games_.size());
+  for (const model::Game& game : games_) all.push_back(HandOut(game));
+  return all;
 }
 
 std::optional<model::Game> GameStore::Find(const std::string& id) const {
   std::lock_guard lock(mutex_);
   const auto it = std::ranges::find(games_, id, &model::Game::id);
   if (it == games_.end()) return std::nullopt;
-  return *it;
+  return HandOut(*it);
 }
 
 bool GameStore::Contains(const std::string& id) const {
@@ -768,7 +776,7 @@ std::optional<model::Game> GameStore::FindByInstallPath(const std::string& insta
   std::lock_guard lock(mutex_);
   const auto it = std::ranges::find(games_, install_path, &model::Game::install_path);
   if (it == games_.end()) return std::nullopt;
-  return *it;
+  return HandOut(*it);
 }
 
 bool GameStore::HasInstallUnder(const std::string& dir) const {
@@ -952,7 +960,7 @@ Result<model::Game> GameStore::Update(const std::string& id,
   if (auto written = Transact([&] { return Write(updated); }); !written)
     return std::unexpected(written.error());
   *it = updated;
-  return updated;
+  return HandOut(std::move(updated));
 }
 
 Result<model::Game> GameStore::FinishSession(const PlaySession& session,
@@ -1034,6 +1042,7 @@ Result<std::vector<model::Game>> GameStore::UpdateMany(const std::vector<std::st
   if (!written) return std::unexpected(written.error());
   for (const model::Game& game : updated)
     *std::ranges::find(games_, game.id, &model::Game::id) = game;
+  for (model::Game& game : updated) game = HandOut(std::move(game));
   return updated;
 }
 

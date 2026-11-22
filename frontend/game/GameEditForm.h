@@ -151,6 +151,8 @@ class GameEditForm : public QWidget {
   std::string options_kind_;
   std::string default_runner_;  // what "Default runner" resolves to, from the game record
   std::map<std::string, std::string> runner_defaults_;  // runner option -> what applies unset
+  SettingRow* identity_row_ = nullptr;                  // which game it is (library::Identify)
+  QLabel* identity_text_ = nullptr;
   // Whether the runner has the game's protonfix, and a build that does when it doesn't.
   SettingRow* fix_row_ = nullptr;
   QLabel* fix_text_ = nullptr;

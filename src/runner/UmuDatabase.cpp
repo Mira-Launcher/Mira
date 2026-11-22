@@ -14,6 +14,7 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "library/GameIdentity.h"
 #include "runner/Curl.h"
 
 namespace mira::runner {
@@ -95,30 +96,6 @@ const Database& Load() {
   return db;
 }
 
-// The game's store as umu names it, and its id there.
-std::pair<std::string, std::string> StoreCode(const model::Game& game) {
-  if (const auto it = game.runner_config.find("store");
-      it != game.runner_config.end() && it->is_string()) {
-    return {it->get<std::string>(), game.source_ref.substr(0, game.source_ref.find(','))};
-  }
-  static const std::map<std::string, std::string, std::less<>> kStores = {{"epic", "egs"},
-                                                                          {"gog", "gog"},
-                                                                          {"amazon", "amazon"},
-                                                                          {"humble", "humble"},
-                                                                          {"itch", "itchio"}};
-  std::string source = game.source;
-  std::string ref = game.source_ref;
-  // Heroic's refs are "<store>:<id>".
-  if (source == "heroic") {
-    const auto colon = ref.find(':');
-    if (colon == std::string::npos) return {};
-    source = ref.substr(0, colon);
-    ref = ref.substr(colon + 1);
-  }
-  const auto it = kStores.find(source);
-  return it == kStores.end() ? std::pair<std::string, std::string>{} : std::pair{it->second, ref};
-}
-
 }  // namespace
 
 void RefreshUmuDatabase(const config::Config& config) {
@@ -129,23 +106,27 @@ void RefreshUmuDatabase(const config::Config& config) {
     log::Warn("could not download the umu database: {}", got.error().message);
 }
 
-std::optional<UmuMatch> FindUmu(const config::Config& config, const model::Game& game) {
-  if (!config.GetBool("umu.match") || game.platform != model::Platform::Windows) return {};
+std::optional<UmuRow> UmuRowFor(const config::Config& config, const std::string& store,
+                                const std::string& code) {
+  if (!config.GetBool("umu.match") || store.empty() || code.empty()) return std::nullopt;
   const std::lock_guard lock(DatabaseMutex());
   const Database& db = Load();
-  const auto [store, code] = StoreCode(game);
-  if (!store.empty()) {
-    if (const auto it = db.by_code.find({store, code}); it != db.by_code.end())
-      return UmuMatch{it->second.umu_id, store, it->second.title};
-  }
-  // A title only counts when every row with it is the same game. Apps aren't in it.
-  if (game.name.empty() || std::ranges::contains(game.tags, std::string("app"))) return {};
-  const auto it = db.by_title.find(strings::Slugify(game.name));
-  if (it == db.by_title.end()) return {};
+  const auto it = db.by_code.find({store, code});
+  if (it == db.by_code.end()) return std::nullopt;
+  return UmuRow{.umu_id = it->second.umu_id, .title = it->second.title};
+}
+
+std::optional<UmuRow> UmuRowByTitle(const config::Config& config, const std::string& title) {
+  if (!config.GetBool("umu.match") || title.empty()) return std::nullopt;
+  const std::lock_guard lock(DatabaseMutex());
+  const Database& db = Load();
+  const auto it = db.by_title.find(strings::Slugify(title));
+  if (it == db.by_title.end()) return std::nullopt;
+  // Only when every row with that title is the same game.
   const std::vector<Row>& rows = it->second;
   if (std::ranges::any_of(rows, [&](const Row& r) { return r.umu_id != rows[0].umu_id; }))
-    return {};
-  return UmuMatch{rows[0].umu_id, store.empty() ? "none" : store, rows[0].title};
+    return std::nullopt;
+  return UmuRow{.umu_id = rows[0].umu_id, .title = rows[0].title};
 }
 
 UmuMatch UmuIdentity(const config::Config& config, const model::Game& game) {
@@ -154,25 +135,24 @@ UmuMatch UmuIdentity(const config::Config& config, const model::Game& game) {
     return it != game.runner_config.end() && it->is_string() ? it->get<std::string>()
                                                              : std::string();
   };
-  UmuMatch identity{.gameid = text("gameid"), .store = text("store"), .title = {}};
-  if (identity.gameid.empty()) {
-    if (auto match = FindUmu(config, game)) {
-      if (identity.store.empty()) identity.store = match->store;
-      identity.gameid = match->gameid;
-      identity.title = match->title;
-    }
+  UmuMatch env{.gameid = text("gameid"), .store = text("store"), .title = {}};
+  const library::GameIdentity identity = library::Identify(config, game);
+  if (env.gameid.empty()) {
+    env.gameid = identity.umu_id;
+    env.title = identity.title;
   }
-  if (identity.store.empty()) identity.store = StoreCode(game).first;
+  // A Steam game's fixes are found by its GAMEID alone, as before.
+  if (env.store.empty() && identity.store != "steam") env.store = identity.store;
   // Without a GAMEID every game runs as umu-default, so Proton gives all of their windows the same
   // class (steam_app_default) and desktops group them as one app. umu only accepts letters, digits
   // and underscores after "umu-".
-  if (identity.gameid.empty() || identity.gameid == "none") {
-    identity.gameid = "umu-mira_";
+  if (env.gameid.empty() || env.gameid == "none") {
+    env.gameid = "umu-mira_";
     for (const char ch : game.id) {
-      if (std::isalnum(static_cast<unsigned char>(ch))) identity.gameid.push_back(ch);
+      if (std::isalnum(static_cast<unsigned char>(ch))) env.gameid.push_back(ch);
     }
   }
-  return identity;
+  return env;
 }
 
 bool HasProtonFix(const fs::path& build_dir, const UmuMatch& identity) {

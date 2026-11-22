@@ -11,8 +11,8 @@
 #include "core/Log.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "library/GameIdentity.h"
 #include "runner/Curl.h"
-#include "runner/UmuDatabase.h"
 
 namespace mira::runner {
 namespace {
@@ -81,17 +81,18 @@ void RefreshAntiCheatDatabase(const config::Config& config) {
 
 std::optional<AntiCheat> FindAntiCheat(const config::Config& config, const model::Game& game) {
   if (!config.GetBool("anticheat.check")) return std::nullopt;
-  const bool steam = game.runner_ref.starts_with("steam:");
-  if (!steam && game.platform != model::Platform::Windows) return std::nullopt;
-  const std::string appid =
-      steam ? game.runner_ref.substr(6) : SteamAppId(UmuIdentity(config, game).gameid);
+  if (!game.runner_ref.starts_with("steam:") && game.platform != model::Platform::Windows)
+    return std::nullopt;
+  const library::GameIdentity identity = library::Identify(config, game);
   const std::lock_guard lock(ListMutex());
   const List& list = Load();
-  if (!appid.empty()) {
-    if (const auto it = list.by_appid.find(appid); it != list.by_appid.end()) return it->second;
+  if (!identity.steam_appid.empty()) {
+    if (const auto it = list.by_appid.find(identity.steam_appid); it != list.by_appid.end())
+      return it->second;
   }
-  if (game.name.empty()) return std::nullopt;
-  const auto it = list.by_title.find(strings::Slugify(game.name));
+  const std::string& title = identity.title.empty() ? game.name : identity.title;
+  if (title.empty()) return std::nullopt;
+  const auto it = list.by_title.find(strings::Slugify(title));
   return it == list.by_title.end() ? std::nullopt : std::optional(it->second);
 }
 

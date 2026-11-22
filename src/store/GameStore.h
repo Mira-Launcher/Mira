@@ -211,6 +211,8 @@ class GameStore {
   mutable Database db_;  // mutable for reads; guarded by mutex_
   MetadataStore metadata_;
   std::vector<model::Game> games_;
+  // A copy of `game` to hand out, with what cache.db knows that the game record doesn't.
+  model::Game HandOut(model::Game game) const;
   std::set<std::string> hidden_titles_;
   // The database couldn't be opened: refuse changes rather than lose the library. Guarded by
   // mutex_.

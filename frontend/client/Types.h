@@ -589,9 +589,15 @@ struct GameDetail {
   std::string env_json;
   // What an empty runner_ref runs with ("proton:auto"), from GET /v1/games/{id} only.
   std::string default_runner;
-  // What the umu database matched it to ("umu-397540", "gog"), from GET /v1/games/{id} only.
-  std::string umu_gameid;
-  std::string umu_store;
+  // Which game it is (library::Identify), from GET /v1/games/{id} only; see docs/api.md.
+  struct Identity {
+    std::string store;
+    std::string store_id;
+    std::string steam_appid;
+    std::string steam_from;
+    std::string umu_id;
+    std::string title;
+  } identity;
   // Whether its Proton build has its protonfix; when not, an installed one that does
   // ("proton:...").
   bool protonfix_known = false;

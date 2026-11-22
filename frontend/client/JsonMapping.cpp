@@ -232,9 +232,14 @@ GameDetail ToGameDetail(const json& entry) {
   game.runner_config_json = entry.value("runner_config", json::object()).dump(2);
   game.env_json = entry.value("env", json::object()).dump(2);
   game.default_runner = entry.value("default_runner", std::string());
-  if (const auto umu = entry.find("umu_match"); umu != entry.end() && umu->is_object()) {
-    game.umu_gameid = umu->value("gameid", std::string());
-    game.umu_store = umu->value("store", std::string());
+  if (const auto identity = entry.find("identity");
+      identity != entry.end() && identity->is_object()) {
+    game.identity.store = identity->value("store", std::string());
+    game.identity.store_id = identity->value("store_id", std::string());
+    game.identity.steam_appid = identity->value("steam_appid", std::string());
+    game.identity.steam_from = identity->value("steam_from", std::string());
+    game.identity.umu_id = identity->value("umu_id", std::string());
+    game.identity.title = identity->value("title", std::string());
   }
   if (const auto fix = entry.find("protonfix"); fix != entry.end() && fix->is_object()) {
     game.protonfix_known = true;

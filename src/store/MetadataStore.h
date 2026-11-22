@@ -113,6 +113,9 @@ class MetadataStore {
   nlohmann::json ArtVersions(const std::string& id) const;
   // The id's ProtonDB tier, from memory, for a listing; empty when none is cached.
   std::string ProtonDbTier(const std::string& id) const;
+  // The Steam appid a fetch found by the game's exact name (info's "steam_match"), from memory;
+  // empty when it found none or didn't search.
+  std::string SteamMatch(const std::string& id) const;
 
   // Ids whose art was saved before downloads were shrunk, and marking one fitted.
   std::vector<std::string> PendingFits() const;
@@ -132,6 +135,7 @@ class MetadataStore {
   mutable Database db_;
   std::unordered_map<std::string, nlohmann::json> versions_;  // guarded by mutex_
   std::unordered_map<std::string, std::string> tiers_;        // guarded by mutex_
+  std::unordered_map<std::string, std::string> matches_;      // guarded by mutex_
   // The save index's rows reads use; a rebuild writes the next one. Guarded by mutex_.
   std::int64_t save_generation_ = 0;
   std::int64_t save_count_ = 0;

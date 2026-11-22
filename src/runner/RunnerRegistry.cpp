@@ -13,6 +13,7 @@
 
 #include "config/Schema.h"
 #include "core/Log.h"
+#include "library/GameIdentity.h"
 #include "runner/BrowserRunner.h"
 #include "runner/Downloader.h"
 #include "runner/EmulatorRunner.h"
@@ -60,8 +61,7 @@ struct GameFit {
 GameFit FitFor(const config::Config& config, const model::Game* game) {
   if (game == nullptr || !config.GetBool("runners.pick_per_game")) return {};
   GameFit fit{.identity = UmuIdentity(config, *game), .valve = std::nullopt};
-  const std::string appid = SteamAppId(fit.identity->gameid);
-  if (!appid.empty()) {
+  if (const std::string appid = library::Identify(config, *game).steam_appid; !appid.empty()) {
     if (const auto root = steam::FindSteamRoot(config))
       fit.valve = steam::ValveProtonFor(*root, appid);
   }

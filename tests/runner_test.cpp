@@ -12,6 +12,7 @@
 
 #include "config/Config.h"
 #include "config/Schema.h"
+#include "library/GameIdentity.h"
 #include "library/GamePatch.h"
 #include "runner/AntiCheat.h"
 #include "runner/Curl.h"
@@ -490,7 +491,7 @@ TEST_CASE("a game's umu GAMEID: its own setting, else the umu database, else its
   scanned.platform = model::Platform::Windows;
   id = runner::UmuIdentity(env.config, scanned);
   CHECK(id.gameid == "umu-61500");
-  CHECK(id.store == "none");
+  CHECK(id.store.empty());
   scanned.name = "Twin";
   CHECK(runner::UmuIdentity(env.config, scanned).gameid == "umu-mira_aow");
 
@@ -500,6 +501,51 @@ TEST_CASE("a game's umu GAMEID: its own setting, else the umu database, else its
   id = runner::UmuIdentity(env.config, gog);
   CHECK(id.gameid == "umu-mira_gogaow");
   CHECK(id.store == "gog");
+}
+
+TEST_CASE("which game it is: an offline GOG install's file, a chosen Steam game, its name") {
+  test::TestEnv env("game-identity");
+  REQUIRE(env.config.Set("umu.match", true));
+  WriteUmuDatabase(env.dir / "cache");
+
+  model::Game game;
+  game.id = "aow";
+  game.name = "aow-setup";
+  game.source = "scan";
+  game.platform = model::Platform::Windows;
+  game.install_path = (env.dir / "aow").string();
+  fs::create_directories(game.install_path);
+  std::ofstream(env.dir / "aow" / "goggame-1207658883.info")
+      << R"({"name": "Age of Wonders", "rootGameId": "1207658883"})";
+  library::GameIdentity id = library::Identify(env.config, game);
+  CHECK(id.store == "gog");
+  CHECK(id.store_id == "1207658883");
+  CHECK(id.umu_id == "umu-61500");
+  CHECK(id.steam_appid == "61500");
+  CHECK(id.steam_from == "umu");
+  CHECK(runner::UmuIdentity(env.config, game).store == "gog");
+
+  game.overrides["metadata.steam_appid"] = 1000;
+  id = library::Identify(env.config, game);
+  CHECK(id.steam_appid == "1000");
+  CHECK(id.steam_from == "override");
+  CHECK(id.umu_id == "umu-1000");
+
+  // Nothing else places it: a steam_appid.txt, else the Steam game of its name.
+  model::Game loose;
+  loose.id = "loose";
+  loose.name = "Loose";
+  loose.platform = model::Platform::Windows;
+  loose.steam_match = "4242";
+  REQUIRE(env.config.Set("metadata.steam_by_name", true));
+  id = library::Identify(env.config, loose);
+  CHECK(id.steam_appid == "4242");
+  CHECK(id.steam_from == "name");
+  CHECK(id.umu_id == "umu-4242");
+  loose.install_path = (env.dir / "loose").string();
+  fs::create_directories(loose.install_path);
+  std::ofstream(env.dir / "loose" / "steam_appid.txt") << "77\n";
+  CHECK(library::Identify(env.config, loose).steam_from == "file");
 }
 
 TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked game to it") {

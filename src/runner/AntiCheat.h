@@ -25,8 +25,8 @@ struct AntiCheat {
 // Downloads the AreWeAntiCheatYet list when Mira's copy is over a week old. Blocks; best effort.
 void RefreshAntiCheatDatabase(const config::Config& config);
 
-// `game` in the list, by its Steam appid (a Steam game's, or its umu GAMEID's), else its exact
-// title. nullopt when it isn't listed, or anticheat.check is off.
+// `game` in the list, by library::Identify's Steam appid, else its exact title. nullopt when it
+// isn't listed, or anticheat.check is off.
 std::optional<AntiCheat> FindAntiCheat(const config::Config& config, const model::Game& game);
 
 }  // namespace mira::runner

@@ -112,6 +112,10 @@ struct Game {
   // is a convention the API/CLI treat specially (excluded from the default
   // GET /v1/games list; see docs/api.md), not a separate field.
   std::vector<std::string> tags;
+
+  // The Steam appid metadata found for its exact name, from cache.db. GameStore fills it in as it
+  // hands a game out and never saves it; library::Identify reads it.
+  std::string steam_match;
 };
 
 // An installed runner build, e.g. GE-Proton11-7. Rediscovered at startup and
