@@ -57,6 +57,8 @@ QString DownloadTracker::KeyFor(Kind kind, const QString& source, const QString&
       return "job:" + ref;
     case Kind::Link:
       return "link:" + ref;
+    case Kind::Notice:
+      return "notice:" + ref;
   }
   return QString();
 }
@@ -75,6 +77,7 @@ QString DownloadTracker::LogChannelFor(const Entry& entry) {
       return "runner:" + entry.source + ":" + entry.ref;
     case Kind::Job:
     case Kind::Link:
+    case Kind::Notice:
       return "daemon";
   }
   return "daemon";
@@ -104,6 +107,7 @@ QString DownloadTracker::JobFor(const Entry& entry) const {
       break;
     case Kind::Job:
     case Kind::Link:
+    case Kind::Notice:
       return {};
   }
   const auto found = job_by_target_.find(target);
@@ -265,6 +269,17 @@ void DownloadTracker::RemoveLink(const QString& id) {
   const QString key = KeyFor(Kind::Link, QString(), id);
   if (std::erase_if(entries_, [&key](const Entry& e) { return e.key == key; }) > 0)
     emit Changed(key);
+}
+
+void DownloadTracker::AddNotice(const QString& text, const QString& detail, bool error,
+                                const ApiError& cause) {
+  // The key is the text alone, so a warning repeated as an error is still one row.
+  Entry& entry = Upsert(Kind::Notice, QString(), text);
+  entry.source = error ? "error" : "warning";
+  entry.state = State::Failed;
+  entry.message = detail;
+  entry.error = cause;
+  emit Changed(entry.key);
 }
 
 void DownloadTracker::LoadPaused() {
@@ -480,6 +495,8 @@ QString DownloadTracker::NameFor(const Entry& entry) const {
       const QString label = titles_.value("link:" + entry.ref);
       return label.isEmpty() ? entry.ref : label;
     }
+    case Kind::Notice:
+      return entry.ref;
   }
   return entry.ref;
 }

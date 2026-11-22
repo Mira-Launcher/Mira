@@ -31,7 +31,9 @@ class DownloadTracker : public QObject {
   Q_OBJECT
 
  public:
-  enum class Kind { Game, Title, Launcher, Tool, Runner, Job, Link };
+  // Notice: a failure or warning the desktop's notification service didn't take (none running, or
+  // rate-limiting Mira), kept here instead of interrupting with a popup.
+  enum class Kind { Game, Title, Launcher, Tool, Runner, Job, Link, Notice };
   enum class State { Running, Paused, Finished, Failed };
 
   struct Entry {
@@ -89,6 +91,11 @@ class DownloadTracker : public QObject {
   static Entry FromLink(const DownloadInfo& download);
   void SetLink(const DownloadInfo& download);
   void RemoveLink(const QString& id);
+
+  // A Notice row, read as failed: `text` is its name, `detail` (if any) its status line and
+  // `cause`'s fix (ErrorHelp) its button. The same text again moves its row to the top instead of
+  // adding another.
+  void AddNotice(const QString& text, const QString& detail, bool error, const ApiError& cause);
 
   // Newest first.
   const std::vector<Entry>& Entries() const { return entries_; }

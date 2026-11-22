@@ -133,6 +133,30 @@ TEST_CASE("DownloadTracker keeps the newest activity first and tells kinds apart
   CHECK(tracker.Find("launcher:battlenet") == nullptr);
 }
 
+TEST_CASE("DownloadTracker keeps a repeated notice as one row, newest first, until cleared") {
+  DownloadTracker tracker;
+  ApiError cause;
+  cause.message = "not signed in";
+  cause.fix.kind = "source";
+  cause.fix.target = "gog";
+
+  tracker.AddNotice("Could not sync saves", "not signed in", /*error=*/true, cause);
+  tracker.HandleEvent("umu.setup.started", R"({})");
+  tracker.AddNotice("Could not sync saves", "not signed in", /*error=*/true, cause);
+
+  REQUIRE(tracker.Entries().size() == 2);
+  const DownloadTracker::Entry& notice = tracker.Entries()[0];
+  CHECK(notice.kind == DownloadTracker::Kind::Notice);
+  CHECK(notice.state == State::Failed);
+  CHECK(tracker.NameFor(notice).toStdString() == "Could not sync saves");
+  CHECK(notice.error.fix.target == "gog");  // its row offers the fix
+  CHECK(tracker.RunningCount() == 1);
+
+  tracker.ClearFinished();
+  REQUIRE(tracker.Entries().size() == 1);
+  CHECK(tracker.Entries()[0].kind == DownloadTracker::Kind::Tool);
+}
+
 TEST_CASE("DownloadTracker shows a store install once, under the game's name") {
   DownloadTracker tracker;
   tracker.NoteTitle("gog", "1207658924", "Alan Wake");

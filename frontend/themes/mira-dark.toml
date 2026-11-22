@@ -41,7 +41,6 @@ scrim_alpha = 225
 radius_panel = 8
 radius_control = 6
 radius_tile = 6
-radius_toast = 8
 
 # Grid layout. Settings can override both per user, which wins over whatever
 # a theme sets here.

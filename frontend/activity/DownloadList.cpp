@@ -73,6 +73,7 @@ QString Origin(const DownloadTracker& tracker, const DownloadTracker::Entry& ent
     case Kind::Game:
     case Kind::Job:
     case Kind::Link:
+    case Kind::Notice:
       return QString();
     case Kind::Runner:
       return entry.source.isEmpty() ? QString()
@@ -239,6 +240,8 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
       if (entry.source == "saves") glyph = icons::Glyph::Layers;  // as the game card's saves line
       if (entry.source == "delete" || entry.source == "remove_source") glyph = icons::Glyph::Trash;
     }
+    if (entry.kind == Kind::Notice)
+      glyph = entry.source == "error" ? icons::Glyph::CircleX : icons::Glyph::Warning;
     icons::Follow(cover, glyph, 22);
   }
   layout->addWidget(cover);
@@ -247,8 +250,16 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   text->setSpacing(3);
   text->addStretch(1);
   // Elided, and the status below free to shrink: the panel is a fixed width, and a long name or
-  // an unbreakable path would otherwise push the buttons past its right edge.
-  auto* title = new ElidedLabel(name, row);
+  // an unbreakable path would otherwise push the buttons past its right edge. A notice's name is
+  // the whole message, so it wraps instead.
+  QLabel* title = nullptr;
+  if (entry.kind == Kind::Notice) {
+    title = new QLabel(name, row);
+    title->setWordWrap(true);
+    title->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  } else {
+    title = new ElidedLabel(name, row);
+  }
   title->setObjectName("download_title");
   title->setStyleSheet("font-weight: 600;");
   title->setToolTip(name);
@@ -265,6 +276,10 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
                                 : QString("Paused");
   } else if (entry.state == State::Finished) {
     state = FinishedText(entry);
+  } else if (entry.kind == Kind::Notice) {
+    state =
+        entry.message.isEmpty() ? QString("Not shown as a desktop notification") : entry.message;
+    if (entry.source == "error") role = "error";
   } else {
     state = "Failed";
     if (!entry.error.empty()) state += ": " + error_help::Describe(entry.error);
@@ -291,8 +306,8 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   layout->addLayout(text, /*stretch=*/1);
 
   // Every row, whatever its state: what it did, or is doing. A link's goes to the daemon's log, so
-  // its row keeps to its progress and one button.
-  if (entry.kind != Kind::Link) {
+  // its row keeps to its progress and one button. A notice is no work of its own.
+  if (entry.kind != Kind::Link && entry.kind != Kind::Notice) {
     auto* log = new QPushButton("Log", row);
     log->setObjectName("text_button");
     log->setToolTip("Open its live log in a window");
