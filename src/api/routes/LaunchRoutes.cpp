@@ -240,11 +240,12 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
   if (game.runner_ref.empty() && resolved->build && s.config.GetBool("launch.pin_runner")) {
     const std::string pinned =
         std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
+    const bool automatic = registry.ResolveRef(game).ends_with(":auto");
     game.runner_ref = pinned;
-    game.runner_config[runner::kAutoPicked] = true;
+    if (automatic) game.runner_config[runner::kAutoPicked] = true;
     [[maybe_unused]] auto _ = s.games.Update(game.id, [&](model::Game& g) {
       g.runner_ref = pinned;
-      g.runner_config[runner::kAutoPicked] = true;
+      if (automatic) g.runner_config[runner::kAutoPicked] = true;
     });
   }
 

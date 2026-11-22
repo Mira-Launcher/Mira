@@ -313,8 +313,8 @@ model::Game RunnerRegistry::ProvisionGame(model::Game game) const {
 
   // Pin the concrete build, not "latest". A Proton update afterwards must
   // not silently change a working game's runtime.
-  if (resolved->build && (game.runner_ref.empty() || ref.ends_with(":auto")))
-    game.runner_config[kAutoPicked] = true;
+  // Picked by "auto", not by a default naming a build.
+  if (resolved->build && ref.ends_with(":auto")) game.runner_config[kAutoPicked] = true;
   game.runner_ref =
       resolved->build ? std::format("{}:{}", resolved->runner->kind(), resolved->build->name) : ref;
 

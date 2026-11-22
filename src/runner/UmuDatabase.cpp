@@ -179,7 +179,9 @@ bool HasProtonFix(const fs::path& build_dir, const UmuMatch& identity) {
   const std::string& id = identity.gameid;
   if (id.empty() || id.starts_with("umu-mira_")) return false;
   // protonfixes' own lookup: a bare number is a Steam appid, else the store's folder.
-  std::string store = std::ranges::all_of(id, ::isdigit) ? "steam" : identity.store;
+  std::string store = std::ranges::all_of(id, [](unsigned char c) { return std::isdigit(c); })
+                          ? "steam"
+                          : identity.store;
   if (!std::ranges::contains(kFixStores, store)) store = "umu";
   std::error_code ec;
   return fs::exists(build_dir / "protonfixes" / ("gamefixes-" + store) / (id + ".py"), ec);
@@ -187,7 +189,9 @@ bool HasProtonFix(const fs::path& build_dir, const UmuMatch& identity) {
 
 std::string SteamAppId(const std::string& gameid) {
   const std::string digits = gameid.starts_with("umu-") ? gameid.substr(4) : gameid;
-  if (digits.empty() || !std::ranges::all_of(digits, ::isdigit)) return "";
+  if (digits.empty() ||
+      !std::ranges::all_of(digits, [](unsigned char c) { return std::isdigit(c); }))
+    return "";
   return digits;
 }
 

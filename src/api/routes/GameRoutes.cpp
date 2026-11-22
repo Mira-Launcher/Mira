@@ -53,8 +53,9 @@ std::optional<json> ProtonFixStatus(config::Config& config, const model::Game& g
   if (resolved && resolved->build && runner::HasProtonFix(resolved->build->path, identity)) {
     return json{{"gameid", identity.gameid}, {"applies", true}, {"build", resolved->build->name}};
   }
-  for (const model::RunnerBuild& build : registry.DiscoverAll()) {
-    if (build.kind == "proton" && runner::HasProtonFix(build.path, identity)) {
+  // Proton's alone: discovering Wine runs every build's `wine --version`.
+  for (const model::RunnerBuild& build : registry.FindByKind("proton")->Discover(config)) {
+    if (runner::HasProtonFix(build.path, identity)) {
       return json{{"gameid", identity.gameid}, {"applies", false}, {"fixed_in", build.Reference()}};
     }
   }
@@ -66,11 +67,12 @@ std::filesystem::path NewestFile(const std::filesystem::path& dir) {
   std::filesystem::path newest;
   std::filesystem::file_time_type newest_at{};
   std::error_code ec;
-  for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-    if (!entry.is_regular_file(ec)) continue;
-    const auto at = entry.last_write_time(ec);
-    if (!ec && (newest.empty() || at > newest_at)) {
-      newest = entry.path();
+  for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+    std::error_code file_ec;
+    if (!it->is_regular_file(file_ec)) continue;
+    const auto at = it->last_write_time(file_ec);
+    if (!file_ec && (newest.empty() || at > newest_at)) {
+      newest = it->path();
       newest_at = at;
     }
   }

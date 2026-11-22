@@ -641,7 +641,7 @@ void GameEditForm::BuildRunnerFields(const std::vector<RunnerOption>& options) {
 }
 
 void GameEditForm::ShowFixStatus() {
-  fix_row_->setVisible(fix_known_ && arranged_);
+  fix_row_->setVisible(fix_known_ && arranged_ && fix_row_->parentWidget() != this);
   fix_text_->setText(fix_applies_ ? "Applied by its Proton" : "Not in its Proton");
   // "proton:GE-Proton9-1" reads "Use GE-Proton9-1".
   fix_use_->setText("Use " + QString::fromStdString(fix_build_).section(':', 1));

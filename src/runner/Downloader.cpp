@@ -176,6 +176,8 @@ Result<std::vector<ReleaseAsset>> FetchReleases(const std::string& repo, const s
   for (int page = 1; page <= (every ? 5 : 1); ++page) {
     const Result<json> listed = CurlJson(std::format(
         "https://api.github.com/repos/{}/releases?per_page={}&page={}", repo, per_page, page));
+    // Older pages are extra: the newer ones still count without them.
+    if (!listed && page > 1) break;
     if (!listed)
       return Err("github_api_error",
                  std::format("couldn't list releases for {}: {}", repo, listed.error().message),
