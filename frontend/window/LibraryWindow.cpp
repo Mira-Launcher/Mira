@@ -208,6 +208,13 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
     return source != nullptr ? source->name : id;
   };
   connect(downloads_, &mira_gui::DownloadTracker::Changed, this, &LibraryWindow::DownloadChanged);
+  // A notification the desktop didn't take waits in Activity rather than interrupting.
+  mira_gui::notify::SetFallback([tracker = downloads_](mira_gui::notify::Level level,
+                                                       const QString& what, const QString& detail,
+                                                       const mira_gui::ApiError& cause) {
+    tracker->AddNotice(what, detail, level == mira_gui::notify::Level::Error, cause);
+  });
+  connect(downloads_, &QObject::destroyed, [] { mira_gui::notify::SetFallback({}); });
   downloads_panel_ = new mira_gui::DownloadsPanel(downloads_, artwork_, this);
   connect(downloads_panel_, &mira_gui::DownloadsPanel::LogRequested, this,
           [this](const QString& channel, const QString& title) {

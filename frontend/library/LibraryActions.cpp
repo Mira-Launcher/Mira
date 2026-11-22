@@ -7,7 +7,6 @@
 #include "../client/api/Artwork.h"
 #include "../client/api/Config.h"
 #include "../client/api/Library.h"
-#include "GamePresentation.h"
 
 namespace mira_gui::actions {
 
@@ -92,13 +91,10 @@ void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& i
 }
 
 void FetchMissingArtwork(QWidget* parent, std::function<void()> on_finished) {
-  // mirad decides what's missing, and Activity shows it going.
-  api::RefreshMissingArtworkAsync(parent, [parent, on_finished](MetadataBatchResult result) {
-    on_finished();
-    // Part of a refresh: said only when there was art to fetch.
-    if (result.ok && result.refreshed + result.failed > 0)
-      notify::Notice(parent, BatchRefreshSummary(result));
-  });
+  // mirad decides what's missing, Activity shows it going and the tiles show what arrived. No
+  // summary: games that found nothing find nothing again on every refresh.
+  api::RefreshMissingArtworkAsync(parent,
+                                  [on_finished](const MetadataBatchResult&) { on_finished(); });
 }
 
 }  // namespace mira_gui::actions

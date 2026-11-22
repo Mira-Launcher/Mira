@@ -136,7 +136,6 @@ Tokens ParseTokens(const std::string& text, Tokens tokens = {}) {
   number("radius_panel", tokens.radius_panel);
   number("radius_control", tokens.radius_control);
   number("radius_tile", tokens.radius_tile);
-  number("radius_toast", tokens.radius_toast);
   number("font_size_small", tokens.font_size_small);
   number("font_size_heading", tokens.font_size_heading);
   number("placeholder_saturation", tokens.placeholder_saturation);

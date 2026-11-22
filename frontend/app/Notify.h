@@ -12,9 +12,10 @@ namespace mira_gui::notify {
 
 // Failed/Warn: desktop notification that stays until dismissed. Notice: one
 // that times out; skip it when the result is already on screen. Popups are
-// only for questions (Confirm) and content (Info). With no notification
-// service running, Failed falls back to a popup and Warn/Notice to an
-// in-window card, so nothing is lost.
+// only for questions (Confirm) and content (Info). When the notification
+// service doesn't take one (none running, or rate-limiting Mira), Failed, Warn
+// and a warning or error Notice go to SetFallback's handler (a popup while
+// none is set); other Notices are dropped.
 
 enum class Level { Info, Success, Warning, Error };
 
@@ -22,11 +23,16 @@ enum class Level { Info, Success, Warning, Error };
 // An unknown string reads as Info rather than as an error.
 Level LevelFromString(const QString& text);
 
-// The theme color a level reads as. Shared by the fallback card and
-// PopupDialog.
+// The theme color a level reads as, for PopupDialog.
 QColor AccentFor(Level level);
 
 // --- Notifications -----------------------------------------------------------
+
+// Where an undelivered one goes: `what`, then its detail and hint joined, and the mirad error
+// behind it if any (empty otherwise). The library window points this at Activity.
+using Fallback = std::function<void(Level level, const QString& what, const QString& detail,
+                                    const ApiError& cause)>;
+void SetFallback(Fallback fallback);
 
 // The standard failure. `what` names what failed, as a sentence the user
 // could have said themselves; `detail` is mirad's own message, verbatim.
@@ -55,7 +61,7 @@ void Warn(QWidget* parent, const QString& text);
 // Same, for a warning an error is behind: its hint under `text`, and a button for its fix.
 void Warn(QWidget* parent, const QString& text, const ApiError& error);
 
-// A transient one-liner. `level` tints the in-window fallback card.
+// A transient one-liner. A Warning or Error `level` still shows as a popup without a notification.
 void Notice(QWidget* parent, const QString& text, Level level = Level::Info);
 
 // --- Popups ------------------------------------------------------------------
