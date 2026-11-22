@@ -23,11 +23,37 @@ void Paint(QWidget* widget) {
   painter.drawPath(path);
 }
 
-QPoint Place(const QRect& anchor, QSize size, bool beside) {
+namespace {
+
+QRect ScreenArea(const QRect& anchor, QSize size) {
   QScreen* screen = QGuiApplication::screenAt(anchor.center());
   if (screen == nullptr) screen = QGuiApplication::primaryScreen();
-  return Place(anchor, size, beside,
-               screen != nullptr ? screen->availableGeometry() : QRect(anchor.topLeft(), size));
+  return screen != nullptr ? screen->availableGeometry() : QRect(anchor.topLeft(), size);
+}
+
+QPoint Inside(QPoint pos, QSize size, const QRect& area) {
+  pos.setX(
+      std::clamp(pos.x(), area.left(), std::max(area.left(), area.right() + 1 - size.width())));
+  pos.setY(
+      std::clamp(pos.y(), area.top(), std::max(area.top(), area.bottom() + 1 - size.height())));
+  return pos;
+}
+
+}  // namespace
+
+QPoint Place(const QRect& anchor, QSize size, bool beside) {
+  return Place(anchor, size, beside, ScreenArea(anchor, size));
+}
+
+QPoint PlaceBelow(const QRect& anchor, QSize size, Align align, int gap, const QRect& area) {
+  QPoint pos(align == Align::Start ? anchor.left() : anchor.right() + 1 - size.width(),
+             anchor.bottom() + 1 + gap);
+  if (pos.y() + size.height() > area.bottom() + 1) pos.setY(anchor.top() - gap - size.height());
+  return Inside(pos, size, area);
+}
+
+QPoint PlaceBelow(const QRect& anchor, QSize size, Align align, int gap) {
+  return PlaceBelow(anchor, size, align, gap, ScreenArea(anchor, size));
 }
 
 QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area) {
@@ -39,11 +65,7 @@ QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area) {
     pos = QPoint(anchor.center().x() - size.width() / 2, anchor.bottom() + 1 + kGap);
     if (pos.y() + size.height() > area.bottom()) pos.setY(anchor.top() - kGap - size.height());
   }
-  pos.setX(
-      std::clamp(pos.x(), area.left(), std::max(area.left(), area.right() + 1 - size.width())));
-  pos.setY(
-      std::clamp(pos.y(), area.top(), std::max(area.top(), area.bottom() + 1 - size.height())));
-  return pos;
+  return Inside(pos, size, area);
 }
 
 }  // namespace mira_gui::popup

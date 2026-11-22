@@ -166,23 +166,15 @@ QWidget#filter_sort_button:hover {
   border-color: @accent;
 }
 
-QWidget#filter_sort_popover {
+/* components/Popover: a panel dropping down from a button. */
+mira_gui--Popover {
   background: @surface;
   border: 1px solid @border;
   border-radius: @radius_panel;
 }
 
-QWidget#downloads_popover,
-QWidget#updates_popover {
-  background: @surface;
-  border: 1px solid @border;
-  border-radius: @radius_panel;
-}
-
-QWidget#downloads_popover QScrollArea,
-QWidget#downloads_popover QScrollArea > QWidget > QWidget,
-QWidget#updates_popover QScrollArea,
-QWidget#updates_popover QScrollArea > QWidget > QWidget {
+mira_gui--Popover QScrollArea,
+mira_gui--Popover QScrollArea > QWidget > QWidget {
   background: transparent;
 }
 

@@ -15,9 +15,7 @@
 namespace mira_gui {
 
 PasswordPopup::PasswordPopup(LinkDownloads* downloads, QWidget* parent)
-    : QWidget(parent, Qt::Popup), downloads_(downloads) {
-  setObjectName("updates_popover");
-  setAttribute(Qt::WA_StyledBackground);
+    : Popover(parent), downloads_(downloads) {
   setFixedWidth(340);
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(18, 14, 18, 14);
@@ -67,9 +65,7 @@ void PasswordPopup::ShowBelow(QWidget* anchor, const std::string& id) {
   current_ = id;
   Refresh();
   if (current_.empty()) return;
-  const QPoint corner = anchor->mapToGlobal(QPoint(anchor->width(), anchor->height() + 4));
-  move(corner.x() - width(), corner.y());
-  show();
+  PopUpBelow(anchor, popup::Align::End);
   password_->setFocus();
 }
 

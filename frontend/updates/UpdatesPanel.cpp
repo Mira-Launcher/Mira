@@ -68,13 +68,7 @@ QLabel* ReleaseLink(QWidget* parent, const UpdateInfo& mira) {
 
 UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpdater* runners,
                            DownloadTracker* downloads, QWidget* parent)
-    : QWidget(parent, Qt::Popup),
-      checker_(checker),
-      mira_(mira),
-      runners_(runners),
-      downloads_(downloads) {
-  setObjectName("updates_popover");
-  setAttribute(Qt::WA_StyledBackground);
+    : Popover(parent), checker_(checker), mira_(mira), runners_(runners), downloads_(downloads) {
   setFixedWidth(380);
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 6);
@@ -149,9 +143,7 @@ UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpda
 void UpdatesPanel::ShowBelow(QWidget* anchor) {
   anchor_ = anchor;
   Rebuild();
-  const QPoint corner = anchor->mapToGlobal(QPoint(anchor->width(), anchor->height() + 4));
-  move(corner.x() - width(), corner.y());
-  show();
+  PopUpBelow(anchor, popup::Align::End);
 }
 
 void UpdatesPanel::StartMira(QWidget* anchor) {

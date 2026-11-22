@@ -13,6 +13,7 @@
 #include <QVBoxLayout>
 
 #include "../components/Labels.h"
+#include "../components/Popover.h"
 #include "../components/TabRow.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -156,10 +157,10 @@ FilterSortPill::~FilterSortPill() {
   delete popover_;
 }  // parentless; see BuildPopover
 
-QWidget* FilterSortPill::BuildPopover() {
+Popover* FilterSortPill::BuildPopover() {
   // No parent: as the pill's child it would sit inside the tab row, whose
   // checked-button style would then override the sort rows'.
-  auto* popover = new QWidget(nullptr, Qt::Popup);
+  auto* popover = new Popover();
   popover->setObjectName("filter_sort_popover");
   auto* layout = new QVBoxLayout(popover);
   layout->setContentsMargins(8, 8, 8, 8);
@@ -379,8 +380,7 @@ void FilterSortPill::OpenPopover() {
                         static_cast<QGridLayout*>(tags_box_->layout())->horizontalSpacing() +
                         margins.left() + margins.right();
   popover_->setFixedWidth(qMax(qMax(240, width()), qMin(fits_tags, kMaxWidth)));
-  popover_->move(mapToGlobal(QPoint(0, height() + 4)));
-  popover_->show();
+  popover_->PopUpBelow(this, popup::Align::Start);
   // The filters take the arrow keys, however the popover was opened.
   filters_->setFocus(Qt::PopupFocusReason);
 }

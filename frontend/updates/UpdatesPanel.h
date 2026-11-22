@@ -1,9 +1,10 @@
 #pragma once
 
 #include <QString>
-#include <QWidget>
 #include <set>
 #include <string>
+
+#include "../components/Popover.h"
 
 class QLabel;
 class QPushButton;
@@ -21,7 +22,7 @@ struct UpdateRow;
 // The top bar's updates popover, laid out like Activity: Mira, then the runner builds, emulators,
 // mod managers and tools Mira downloaded. A Qt::Popup, so it closes itself on an outside click or
 // Escape.
-class UpdatesPanel : public QWidget {
+class UpdatesPanel : public Popover {
   Q_OBJECT
 
  public:

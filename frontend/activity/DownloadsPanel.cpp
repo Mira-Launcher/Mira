@@ -14,9 +14,7 @@
 namespace mira_gui {
 
 DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, QWidget* parent)
-    : QWidget(parent, Qt::Popup), tracker_(tracker) {
-  setObjectName("downloads_popover");
-  setAttribute(Qt::WA_StyledBackground);
+    : Popover(parent), tracker_(tracker) {
   setFixedWidth(380);
   // Laid out as a settings card: titled header, then rows split by a line.
   auto* layout = new QVBoxLayout(this);
@@ -69,9 +67,7 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
 
 void DownloadsPanel::ShowBelow(QWidget* anchor) {
   list_->Rebuild();
-  const QPoint corner = anchor->mapToGlobal(QPoint(anchor->width(), anchor->height() + 4));
-  move(corner.x() - width(), corner.y());
-  show();
+  PopUpBelow(anchor, popup::Align::End);
 }
 
 void DownloadsPanel::Fit() {

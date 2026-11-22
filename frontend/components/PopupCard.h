@@ -22,4 +22,12 @@ QPoint Place(const QRect& anchor, QSize size, bool beside);
 // The same, kept inside `area` (global) instead of the screen.
 QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area);
 
+// Which edge of its anchor a popover lines up with: its left edge, or its right edge.
+enum class Align { Start, End };
+// Global top-left for a popover of `size` `gap` px under `anchor` (global), its `align` edge on
+// the anchor's, or above it when there's no room below. Kept inside `area` (global).
+QPoint PlaceBelow(const QRect& anchor, QSize size, Align align, int gap, const QRect& area);
+// The same, kept on the anchor's screen.
+QPoint PlaceBelow(const QRect& anchor, QSize size, Align align, int gap);
+
 }  // namespace mira_gui::popup
