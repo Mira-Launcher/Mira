@@ -12,10 +12,6 @@ class QTimer;
 
 namespace mira_gui {
 
-// What's left of `width` for tiles once a scrollbar shows, whether or not one does yet: one
-// showing up later then doesn't wrap the last tile of each row.
-int RoomBesideScrollbar(const QWidget* widget, int width);
-
 // A grid of cover tiles over any model, with the hover card dwell and
 // drag-to-select that every tile grid shares. Tiles fill their whole cell,
 // so Qt's own rubber band (empty-space presses only) has nowhere to start;
@@ -30,7 +26,7 @@ class TileView : public QListView {
   std::function<void(const QModelIndex&)> on_hover;
 
   // A pixel less: QListView wraps a tile that ends exactly at the row's edge.
-  TileRow Row() const { return {RoomBesideScrollbar(this, viewport()->width()) - 1, 0}; }
+  TileRow Row() const { return {viewport()->width() - 1, 0}; }
   // Background around the tiles, as viewport margins so the scrollbar stays at the edge.
   void SetPadding(int padding);
   void SetDragSelectEnabled(bool enabled);

@@ -1289,17 +1289,11 @@ void ArtPickerPanel::ShowUpload(const QString& name, const QPixmap& pixmap, QSiz
 }
 
 void ArtPickerPanel::UpdateGridSize() {
-  // Previews from the card's inset on the left to its inset on the right. QListView wraps them in
-  // the width less the style's whole scroll bar extent, shown or not, so that goes in the right
-  // inset. Viewport margins, not QSS padding: Qt takes padding as one width for both sides.
-  QStyle* style = grid_->style();
-  int extent = style->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, grid_->verticalScrollBar());
-  if (style->styleHint(QStyle::SH_ScrollView_FrameOnlyAroundContents, nullptr, grid_))
-    extent += 2 * style->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, grid_);
-  const int left = kCardInset - kInset;
-  const int right = std::max(0, left - extent);
-  static_cast<ThumbGrid*>(grid_)->setViewportMargins(left, 8, right, 8);
-  const int width = grid_->width() - left - right - extent;
+  // Previews from the card's inset on the left to its inset on the right. Viewport margins, not
+  // QSS padding: Qt takes padding as one width for both sides.
+  const int inset = kCardInset - kInset;
+  static_cast<ThumbGrid*>(grid_)->setViewportMargins(inset, 8, inset, 8);
+  const int width = grid_->width() - 2 * inset;
   // SteamGridDB heroes are 96:31, covers 2:3; logos vary, so a wide box, and icons are square.
   const bool hero = slot_ == "hero";
   const bool logo = slot_ == "logo";

@@ -13,7 +13,6 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QStackedWidget>
 #include <QStandardItemModel>
 #include <QTimer>
@@ -441,10 +440,7 @@ void SourcePage::FitSettingsModal() {
   modal_card_->setFixedWidth(width);
   const int wanted = modal_card_->heightForWidth(width) > 0 ? modal_card_->heightForWidth(width)
                                                             : modal_card_->sizeHint().height();
-  settings_scroll_->setFixedWidth(width +
-                                  (wanted > height() - 2 * kMargin
-                                       ? settings_scroll_->verticalScrollBar()->sizeHint().width()
-                                       : 0));
+  settings_scroll_->setFixedWidth(width);
   settings_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
 }
 

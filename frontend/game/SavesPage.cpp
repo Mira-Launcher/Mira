@@ -10,7 +10,6 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QStyle>
 #include <QToolButton>
 #include <QUrl>
@@ -161,7 +160,7 @@ void SavesPage::resizeEvent(QResizeEvent* event) {
 
 void SavesPage::Arrange() {
   // From the page's own width: the viewport's lags behind until the page has been shown.
-  const int room = width() - 36 - scroll_->verticalScrollBar()->sizeHint().width();
+  const int room = width() - 36;
   const int columns = room >= 2 * kColumnWidth + grid_->spacing() ? 2 : 1;
   if (columns == columns_) return;
   columns_ = columns;

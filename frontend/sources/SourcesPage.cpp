@@ -9,7 +9,6 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -359,9 +358,7 @@ void SourcesPage::FitSetup() {
   setup_card_->setFixedWidth(width);
   const int wanted = setup_card_->heightForWidth(width) > 0 ? setup_card_->heightForWidth(width)
                                                             : setup_card_->sizeHint().height();
-  setup_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin
-                                            ? setup_scroll_->verticalScrollBar()->sizeHint().width()
-                                            : 0));
+  setup_scroll_->setFixedWidth(width);
   setup_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
 }
 

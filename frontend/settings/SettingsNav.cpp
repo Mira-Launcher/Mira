@@ -113,14 +113,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   nav_layout_->addStretch(1);
   scroll->setWidget(nav_);
   column->addWidget(scroll, /*stretch=*/1);
-  const auto fit_rows = [this, scroll] {
-    const int bar = scroll->verticalScrollBar()->maximum() > 0
-                        ? scroll->verticalScrollBar()->sizeHint().width()
-                        : 0;
-    nav_layout_->setContentsMargins(0, 0, std::max(0, kRight - bar), 0);
-  };
-  connect(scroll->verticalScrollBar(), &QScrollBar::rangeChanged, this, fit_rows);
-  fit_rows();
+  nav_layout_->setContentsMargins(0, 0, kRight, 0);
   outer->addWidget(left_);
 
   buttons_ = new QButtonGroup(this);

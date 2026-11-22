@@ -2,7 +2,6 @@
 
 #include <QAbstractItemView>
 #include <QEvent>
-#include <QScrollBar>
 #include <QStyleOptionComboBox>
 #include <QStyledItemDelegate>
 
@@ -46,7 +45,6 @@ void FlatCombo::showPopup() {
   // box's width and every longer option shows as "…".
   QAbstractItemView* list = view();
   int width = list->sizeHintForColumn(0) + 2 * list->frameWidth();
-  if (count() > maxVisibleItems()) width += list->verticalScrollBar()->sizeHint().width();
   list->setMinimumWidth(width);
   QComboBox::showPopup();
 }

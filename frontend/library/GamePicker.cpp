@@ -178,7 +178,7 @@ bool GamePicker::eventFilter(QObject* watched, QEvent* event) {
 TileRow GamePicker::Row() const {
   for (const QWidget* grid : content_->findChildren<QWidget*>(Qt::FindDirectChildrenOnly)) {
     if (grid->isVisible() && dynamic_cast<const FlowLayout*>(grid->layout()) != nullptr) {
-      return {RoomBesideScrollbar(grid, grid->width()), kTileGap};
+      return {grid->width(), kTileGap};
     }
   }
   return {};

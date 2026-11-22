@@ -41,8 +41,8 @@ constexpr int kMaxPanelHeight = 360;
 constexpr QSize kShot(160, 90);
 constexpr int kMaxShots = 4;
 constexpr int kDescriptionLines = 4;
-// The body's text width: the card less the panel's and the body's margins and a scrollbar.
-constexpr int kTextWidth = kCardWidth - 40 - 48 - 12;
+// The body's text width: the card less the panel's and the body's margins.
+constexpr int kTextWidth = kCardWidth - 40 - 48;
 
 QString Join(const std::vector<std::string>& values) {
   QStringList list;

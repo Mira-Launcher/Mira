@@ -7,7 +7,6 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -115,11 +114,6 @@ void Card::SetScrollable() {
   layout->setStretchFactor(scroll_, 1);
   body_layout_->addStretch(1);
   SetUpScrolling(scroll_);
-  // A pinned row's columns stay over the rows' while the scroll bar takes room beside them.
-  connect(scroll_->verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int, int max) {
-    if (pinned_ != nullptr)
-      pinned_->setContentsMargins(0, 0, max > 0 ? scroll_->verticalScrollBar()->width() : 0, 0);
-  });
 }
 
 void Card::SetPinnedRow(QWidget* row) {

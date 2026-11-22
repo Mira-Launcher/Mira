@@ -592,34 +592,13 @@ QSlider::handle:horizontal:disabled {
 
 /* --- Scrollbars ---------------------------------------------------------- */
 
-QScrollBar:vertical, QScrollBar:horizontal {
-  background: transparent;
-  border: none;
-  margin: 0;
-}
-
-QScrollBar:vertical { width: 10px; }
-QScrollBar:horizontal { height: 10px; }
-
-QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
-  background: @border;
-  border-radius: 5px;
-  min-height: 32px;
-  min-width: 32px;
-}
-
-QScrollBar::handle:hover {
-  background: @text_muted;
-}
-
-QScrollBar::add-line, QScrollBar::sub-line {
-  width: 0;
-  height: 0;
-}
-
-QScrollBar::add-page, QScrollBar::sub-page {
-  background: transparent;
-}
+/* components/OverlayScrollBar draws every bar over its content. Qt's own keeps the position, 1 px
+   and undrawn: at 0 px Qt leaves it out of the accessibility tree. */
+QScrollBar { background: transparent; border: none; margin: 0; }
+QScrollBar:vertical { width: 1px; }
+QScrollBar:horizontal { height: 1px; }
+QScrollBar::handle, QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 
 /* --- Lists, tables, menus ------------------------------------------------ */
 

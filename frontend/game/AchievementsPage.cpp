@@ -9,7 +9,6 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -264,7 +263,7 @@ void AchievementsPage::resizeEvent(QResizeEvent* event) {
 
 void AchievementsPage::Arrange() {
   // From the page's own width: the viewport's lags behind until the page has been shown.
-  const int room = width() - 36 - scroll_->verticalScrollBar()->sizeHint().width();
+  const int room = width() - 36;
   const int columns = std::max(1, (room + grid_->spacing()) / (kTileWidth + grid_->spacing()));
   if (columns == columns_ && grid_->count() == static_cast<int>(tiles_.size())) return;
   columns_ = columns;

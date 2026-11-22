@@ -13,18 +13,6 @@
 
 namespace mira_gui {
 
-int RoomBesideScrollbar(const QWidget* widget, int width) {
-  // The bar's own width, which the style sheet sets: the style's generic one is wider, so the room
-  // would change by the difference as the bar comes and goes.
-  for (const QWidget* w = widget; w != nullptr; w = w->parentWidget()) {
-    const auto* area = qobject_cast<const QAbstractScrollArea*>(w);
-    if (area == nullptr || area->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOff) continue;
-    const QScrollBar* bar = area->verticalScrollBar();
-    return bar->isVisible() ? width : width - bar->sizeHint().width();
-  }
-  return width;
-}
-
 TileView::TileView(QWidget* parent) : QListView(parent) {
   setSelectionMode(QAbstractItemView::ExtendedSelection);
   setMouseTracking(true);
