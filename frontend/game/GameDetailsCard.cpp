@@ -18,14 +18,18 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Artwork.h"
+#include "../components/Badge.h"
+#include "../components/Button.h"
+#include "../components/FlowLayout.h"
+#include "../components/Scrolling.h"
+#include "../components/Text.h"
+#include "../components/WindowCards.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
+#include "../library/TitleRatings.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/WindowCards.h"
 
 namespace mira_gui {
 namespace {
@@ -37,8 +41,8 @@ constexpr int kMaxPanelHeight = 360;
 constexpr QSize kShot(160, 90);
 constexpr int kMaxShots = 4;
 constexpr int kDescriptionLines = 4;
-// The body's text width: the card less the panel's and the body's margins and a scrollbar.
-constexpr int kTextWidth = kCardWidth - 40 - 48 - 12;
+// The body's text width: the card less the panel's and the body's margins.
+constexpr int kTextWidth = kCardWidth - 40 - 48;
 
 QString Join(const std::vector<std::string>& values) {
   QStringList list;
@@ -60,23 +64,6 @@ QLabel* Text(QWidget* parent, const QString& text, Qt::TextFormat format = Qt::P
   label->setWordWrap(true);
   label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
   return label;
-}
-
-QString Anchor(const QString& href, const QString& text) {
-  return QString("<a href=\"%1\">%2</a>").arg(href.toHtmlEscaped(), text.toHtmlEscaped());
-}
-
-// Steam's review wording, colored as it is there.
-const char* ReviewState(const std::string& summary) {
-  if (summary.find("Positive") != std::string::npos) return "ok";
-  if (summary.find("Negative") != std::string::npos) return "error";
-  return "warning";
-}
-
-const char* TierState(const std::string& tier) {
-  if (tier == "platinum" || tier == "gold" || tier == "native") return "ok";
-  if (tier == "borked") return "error";
-  return "warning";
 }
 
 // A label that runs `clicked` on a left click, Enter or Space: a screenshot, or the large one over
@@ -126,9 +113,8 @@ GameDetailsCard::GameDetailsCard(const std::string& id, const GameMetadataResult
   auto* top = new QHBoxLayout();
   top->setContentsMargins(14, 12, 14, 0);
   top->addStretch(1);
-  // hero_action's text color in base.qss: the button is dark glass in every theme.
-  auto* close = new QPushButton(this);
-  close->setObjectName("hero_action");
+  // A Glass button's text color in base.qss: the button is dark glass in every theme.
+  auto* close = new Button(QString(), ButtonKind::Glass, this);
   close->setIcon(icons::For(icons::Glyph::Close, QColor(0xe6, 0xe8, 0xec)));
   close->setToolTip("Close");
   connect(close, &QPushButton::clicked, this, [this] { cards::Close(this); });
@@ -159,7 +145,7 @@ GameDetailsCard::GameDetailsCard(const std::string& id, const GameMetadataResult
   status_->setTextFormat(Qt::RichText);
   identity->addWidget(status_);
   header->addLayout(identity, 1);
-  play_ = new QPushButton(this);
+  play_ = new Button(QString(), ButtonKind::Primary, this);
   play_->setObjectName("game_play");
   connect(play_, &QPushButton::clicked, this, std::move(play));
   header->addWidget(play_, 0, Qt::AlignBottom);
@@ -229,11 +215,7 @@ void GameDetailsCard::UpdateIdentity() {
   play_->setDefault(!running);
   play_->setIcon(
       icons::For(running ? icons::Glyph::Stop : icons::Glyph::Play, theme::Current().on_accent));
-  if (play_->property("stop").toBool() != running) {
-    play_->setProperty("stop", running);
-    play_->style()->unpolish(play_);
-    play_->style()->polish(play_);
-  }
+  play_->SetKind(running ? ButtonKind::Danger : ButtonKind::Primary);
 }
 
 void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
@@ -241,7 +223,7 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
   if (!result.ok && !result.missing) {
     auto* error =
         Text(body, "Could not read its store info: " + error_help::Describe(result.error));
-    error->setProperty("role", "error");
+    SetTextStyle(error, text::kError);
     body_->addWidget(error);
     body_->addStretch(1);
     panel_->show();
@@ -266,7 +248,7 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
   QLabel* requirements_text = nullptr;
   if (!facts.isEmpty()) {
     auto* line = Text(body, facts.join("&nbsp;&nbsp;·&nbsp;&nbsp;"), Qt::RichText);
-    line->setProperty("role", "muted");
+    SetTextStyle(line, text::kDetail);
     body_->addWidget(line);
     if (requirements) {
       // Steam's HTML carries its own "Minimum:" / "Recommended:" headings.
@@ -310,7 +292,8 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
     }
   }
 
-  std::vector<std::pair<QString, const char*>> chips;
+  // Reviews and the ProtonDB tier in their own colors, as Steam and ProtonDB show them.
+  std::vector<std::pair<QString, QColor>> chips;
   if (!metadata.review_summary.empty()) {
     QString review = QString::fromStdString(metadata.review_summary);
     if (metadata.review_percent >= 0) {
@@ -318,26 +301,27 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
                     .arg(metadata.review_percent)
                     .arg(QLocale().toString(metadata.review_total));
     }
-    chips.emplace_back(review, ReviewState(metadata.review_summary));
+    chips.emplace_back(review, ReviewBucketColor(ReviewBucketOf(metadata.review_summary)));
   }
   if (!metadata.protondb_tier.empty()) {
     QString tier = QString::fromStdString(metadata.protondb_tier);
     tier[0] = tier[0].toUpper();
-    chips.emplace_back("ProtonDB " + tier, TierState(metadata.protondb_tier));
+    chips.emplace_back("ProtonDB " + tier, ProtonDbFilterTier(metadata.protondb_tier).empty()
+                                               ? QColor()
+                                               : ProtonDbTierColor(metadata.protondb_tier));
   }
   if (metadata.metacritic_score > 0)
-    chips.emplace_back(QString("Metacritic %1").arg(metadata.metacritic_score), "");
+    chips.emplace_back(QString("Metacritic %1").arg(metadata.metacritic_score), QColor());
   for (const std::string& descriptor : metadata.content_descriptors)
-    chips.emplace_back(QString::fromStdString(descriptor), "");
+    chips.emplace_back(QString::fromStdString(descriptor), QColor());
   if (!chips.empty()) {
     auto* row = new QWidget(body);
     auto* flow = new FlowLayout(row, 6);
     flow->setContentsMargins(0, 0, 0, 0);
-    for (const auto& [text, state] : chips) {
-      auto* chip = new QLabel(text, row);
-      chip->setObjectName("info_chip");
-      chip->setProperty("state", state);
-      flow->addWidget(chip);
+    for (const auto& [text, color] : chips) {
+      auto* badge = new Badge(text, Tone::Muted, row);
+      badge->SetColor(color);
+      flow->addWidget(badge);
     }
     body_->addWidget(row);
   }

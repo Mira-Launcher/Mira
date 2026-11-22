@@ -13,14 +13,19 @@
 #include "../client/EventHub.h"
 #include "../client/Events.h"
 #include "../client/api/Games.h"
+#include "../components/Button.h"
+#include "../components/Chip.h"
+#include "../components/FlowLayout.h"
+#include "../components/Labels.h"
+#include "../components/Metrics.h"
+#include "../components/PathField.h"
+#include "../components/ProgressRail.h"
+#include "../components/SearchField.h"
+#include "../components/SettingRow.h"
+#include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/Labels.h"
-#include "../widgets/PathField.h"
-#include "../widgets/ProgressRail.h"
-#include "../widgets/WindowCards.h"
 #include "CardParts.h"
 
 namespace mira_gui {
@@ -36,11 +41,11 @@ constexpr const char* kCommonVerbs[] = {
 
 // The button row, with a status line at its left and a rail over it that keeps its place while
 // hidden, so the card never changes height. Returns the row's layout for the buttons.
-QHBoxLayout* StatusButtonRow(SettingsCard* card, ProgressRail*& rail, QLabel*& status,
+QHBoxLayout* StatusButtonRow(Card* card, ProgressRail*& rail, QLabel*& status,
                              QPushButton** trailing = nullptr) {
   auto* row = new QWidget(card);
   auto* layout = new QVBoxLayout(row);
-  layout->setContentsMargins(18, 8, 18, 10);
+  layout->setContentsMargins(kRowPaddingX, 8, kRowPaddingX, 10);
   layout->setSpacing(8);
   rail = new ProgressRail(row);
   rail->SetProgress(-1);
@@ -50,7 +55,7 @@ QHBoxLayout* StatusButtonRow(SettingsCard* card, ProgressRail*& rail, QLabel*& s
   auto* line = new QHBoxLayout();
   line->setSpacing(8);
   status = new QLabel(row);
-  status->setProperty("role", "muted");
+  SetTextStyle(status, text::kDetail);
   status->setWordWrap(true);
   line->addWidget(status, 1);
   if (trailing != nullptr) {
@@ -67,12 +72,13 @@ QHBoxLayout* StatusButtonRow(SettingsCard* card, ProgressRail*& rail, QLabel*& s
 
 RunInPrefixCard::RunInPrefixCard(std::string game_id, std::string install_path, const QString& name,
                                  QWidget* parent)
-    : SettingsCard(QString(), parent),
+    : SheetCard(QString(), parent),
       game_id_(std::move(game_id)),
       install_path_(std::move(install_path)) {
   setFixedWidth(kWidth);
   SetProminentTitle();
-  AddCardHeading(this, "Run in " + name + "'s prefix", "Close", [this] { cards::Close(this); });
+  SetHeading("Run in " + name + "'s prefix");
+  SetClose("Close", [this] { cards::Close(this); });
 
   auto* program_row = new SettingRow("Program", QString(), this);
   program_ = new QLineEdit(program_row);
@@ -106,7 +112,7 @@ RunInPrefixCard::RunInPrefixCard(std::string game_id, std::string install_path, 
   auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, [this] { cards::Close(this); });
   buttons->addWidget(cancel);
-  run_ = new QPushButton("Run", this);
+  run_ = new Button("Run", ButtonKind::Primary, this);
   run_->setDefault(true);
   run_->setEnabled(false);  // nothing to run until a program is picked
   connect(run_, &QPushButton::clicked, this, &RunInPrefixCard::Run);
@@ -124,7 +130,7 @@ void RunInPrefixCard::Run() {
   for (QWidget* widget : std::initializer_list<QWidget*>{program_, args_, run_})
     widget->setEnabled(false);
   rail_->show();
-  theme::SetStyleProperty(status_, "role", "muted");
+  SetTextStyle(status_, text::kDetail);
   status_->setText("Starting it, and making the prefix first if there's none…");
   api::RunInPrefixAsync(
       this, game_id_, program, args_->text().toStdString(), [this](RunInPrefixResult result) {
@@ -132,24 +138,23 @@ void RunInPrefixCard::Run() {
         for (QWidget* widget : std::initializer_list<QWidget*>{program_, args_, run_})
           widget->setEnabled(true);
         rail_->hide();
-        theme::SetStyleProperty(status_, "role", "error");
+        SetTextStyle(status_, text::kError);
         status_->setText("Could not run it: " + error_help::Describe(result.error));
       });
 }
 
 WinetricksCard::WinetricksCard(std::string game_id, const QString& name, QWidget* parent)
-    : SettingsCard(QString(), parent), game_id_(std::move(game_id)), name_(name) {
+    : SheetCard(QString(), parent), game_id_(std::move(game_id)), name_(name) {
   setFixedWidth(kWidth);
   SetProminentTitle();
-  AddCardHeading(this, "Winetricks for " + name, "Close", [this] { cards::Close(this); });
+  SetHeading("Winetricks for " + name);
+  SetClose("Close", [this] { cards::Close(this); });
 
   auto* pick = new QWidget(this);
   auto* pick_layout = new QVBoxLayout(pick);
-  pick_layout->setContentsMargins(18, 10, 18, 10);
+  pick_layout->setContentsMargins(kRowPaddingX, 10, kRowPaddingX, 10);
   pick_layout->setSpacing(10);
-  verb_ = new QLineEdit(pick);
-  verb_->setPlaceholderText("Search or type a verb");
-  verb_->setClearButtonEnabled(true);
+  verb_ = new SearchField("Search or type a verb", pick);
   pick_layout->addWidget(verb_);
   chips_ = new QWidget(pick);
   chips_layout_ = new FlowLayout(chips_);
@@ -165,7 +170,7 @@ WinetricksCard::WinetricksCard(std::string game_id, const QString& name, QWidget
   auto* close = new QPushButton("Close", this);
   connect(close, &QPushButton::clicked, this, [this] { cards::Close(this); });
   buttons->addWidget(close);
-  run_ = new QPushButton("Run", this);
+  run_ = new Button("Run", ButtonKind::Primary, this);
   run_->setDefault(true);
   run_->setEnabled(false);
   connect(run_, &QPushButton::clicked, this, &WinetricksCard::Run);
@@ -212,15 +217,14 @@ void WinetricksCard::RebuildChips() {
   for (const std::string& verb : verbs) {
     const QString text = QString::fromStdString(verb);
     if (!typed.isEmpty() && !text.contains(typed, Qt::CaseInsensitive)) continue;
-    auto* chip = new QPushButton(text, chips_);
-    chip->setObjectName("chip");
+    auto* chip = new Chip(text, chips_);
     chip->setCheckable(true);
     chip->setChecked(text == typed);
     if (installed_.contains(verb)) {
       icons::Follow(chip, icons::Glyph::CheckCircle, &theme::Tokens::success);
       chip->setToolTip("Already in the prefix; runs it again");
     }
-    connect(chip, &QPushButton::clicked, this, [this, text] { verb_->setText(text); });
+    connect(chip, &Chip::clicked, this, [this, text] { verb_->setText(text); });
     chips_layout_->addWidget(chip);
   }
 }
@@ -235,7 +239,7 @@ void WinetricksCard::SetRunning(bool running) {
 
 void WinetricksCard::SetStatus(const QString& text, bool error) {
   status_->setText(text);
-  theme::SetStyleProperty(status_, "role", error ? "error" : "muted");
+  SetTextStyle(status_, error ? text::kError : text::kDetail);
 }
 
 void WinetricksCard::Run() {

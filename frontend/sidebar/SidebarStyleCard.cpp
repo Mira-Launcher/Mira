@@ -6,16 +6,17 @@
 #include <QLabel>
 #include <QPainter>
 #include <QSpinBox>
-#include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <functional>
 #include <utility>
 
+#include "../components/Card.h"
+#include "../components/Metrics.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GamePresentation.h"
-#include "../settings/SettingsCard.h"
-#include "../theme/Icons.h"
 #include "../theme/Theme.h"
 
 namespace mira_gui {
@@ -194,14 +195,9 @@ SettingRow* SidebarStyleChoices::MakeStyleRow(const QString& label, bool recent)
 SidebarStyleCard::SidebarStyleCard(const Choices& choices, std::vector<GameSummary> pinned,
                                    std::vector<GameSummary> recent, ArtworkStore* artwork,
                                    QWidget* parent)
-    : SettingsCard("Pinned and recently played", parent) {
+    : SheetCard("Pinned and recently played", parent) {
   SetProminentTitle();
-  auto* close = new QToolButton(this);
-  close->setAutoRaise(true);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Close");
-  connect(close, &QToolButton::clicked, this, &SidebarStyleCard::CloseRequested);
-  Header()->addWidget(close);
+  SetClose("Close", [this] { emit CloseRequested(); });
 
   auto* content =
       new SidebarStyleChoices(choices, std::move(pinned), std::move(recent), artwork, this);

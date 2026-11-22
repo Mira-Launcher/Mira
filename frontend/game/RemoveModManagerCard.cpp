@@ -5,9 +5,12 @@
 #include <QPushButton>
 #include <QStringList>
 
+#include "../components/Button.h"
+#include "../components/Format.h"
+#include "../components/Labels.h"
+#include "../components/SettingRow.h"
+#include "../components/WindowCards.h"
 #include "../sources/Sources.h"
-#include "../widgets/Labels.h"
-#include "../widgets/WindowCards.h"
 
 namespace mira_gui {
 namespace {
@@ -18,9 +21,7 @@ constexpr int kBadge = 40;
 
 RemoveModManagerCard::RemoveModManagerCard(const QString& game_name, const SourceInfo& manager,
                                            QWidget* parent)
-    : SettingsCard(QString(), parent),
-      manager_name_(manager.name),
-      vortex_(manager.id == "vortex") {
+    : SheetCard(QString(), parent), manager_name_(manager.name), vortex_(manager.id == "vortex") {
   setFixedWidth(520);
   SetLeading(MakeSourceBadge(manager, kBadge, this));
   SetTitle("Remove " + manager_name_ + " from " + game_name);
@@ -55,22 +56,17 @@ RemoveModManagerCard::RemoveModManagerCard(const QString& game_name, const Sourc
         return folders.join('\n');
       });
 
-  auto* buttons = new QWidget(this);
-  auto* buttons_layout = new QHBoxLayout(buttons);
-  buttons_layout->setContentsMargins(18, 12, 18, 10);
-  buttons_layout->setSpacing(8);
+  QHBoxLayout* buttons = ButtonRow();
   // Why Remove is off, in the same place whichever reason, so nothing moves when it appears.
-  note_ = MakeLabel(buttons, QString(), "subtle", /*wrap=*/false);
-  buttons_layout->addWidget(note_, 1);
-  auto* cancel = new QPushButton("Cancel", buttons);
+  note_ = MakeLabel(this, QString(), text::kSubtle, /*wrap=*/false);
+  buttons->insertWidget(0, note_, 1);
+  auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, [this] { cards::Close(this); });
-  buttons_layout->addWidget(cancel);
-  confirm_ = new QPushButton("Remove", buttons);
-  confirm_->setProperty("tone", "danger");
+  buttons->addWidget(cancel);
+  confirm_ = new Button("Remove", ButtonKind::Danger, this);
   confirm_->setEnabled(false);
   connect(confirm_, &QPushButton::clicked, this, &RemoveModManagerCard::Confirmed);
-  buttons_layout->addWidget(confirm_);
-  AddFooterRow(buttons);
+  buttons->addWidget(confirm_);
   cancel->setFocus();
 }
 
@@ -87,7 +83,7 @@ void RemoveModManagerCard::AddInfoRow(const QString& label, std::function<QStrin
                                       std::function<QString()> tooltip) {
   auto* row = new SettingRow(label, QString(), this);
   auto* value = new ElidedLabel(text(), row);
-  value->setProperty("role", "subtle");
+  SetTextStyle(value, text::kSubtle);
   value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   row->AddControl(value, 1);
   AddRow(row);

@@ -10,10 +10,13 @@
 #include <algorithm>
 
 #include "../app/ErrorHelp.h"
+#include "../components/Button.h"
+#include "../components/Format.h"
+#include "../components/Labels.h"
+#include "../components/SettingRow.h"
+#include "../components/WindowCards.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/WindowCards.h"
 #include "CardParts.h"
 
 namespace mira_gui {
@@ -78,9 +81,9 @@ QString Unmoved(const RelocationPlan& plan) {
   return "Already in Mira's folders";
 }
 
-QLabel* Line(QWidget* parent, const QString& text, const char* role) {
+QLabel* Line(QWidget* parent, const QString& text, TextStyle style) {
   auto* label = new QLabel(text, parent);
-  label->setProperty("role", role);
+  SetTextStyle(label, style);
   label->setWordWrap(true);
   label->setTextInteractionFlags(Qt::TextSelectableByMouse);
   return label;
@@ -122,7 +125,7 @@ bool MoveGamesCard::Moves(const RelocationPlan& plan) {
 }
 
 MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
-    : SettingsCard(QString(), parent), plans_(std::move(plans)) {
+    : SheetCard(QString(), parent), plans_(std::move(plans)) {
   setFixedWidth(kWidth);
   SetProminentTitle();
   std::vector<std::string> moving;
@@ -130,24 +133,24 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
     if (Moves(plan)) moving.push_back(plan.id);
   }
   const bool one = plans_.size() == 1;
-  AddCardHeading(this,
-                 one ? "Move " + QString::fromStdString(plans_.front().name)
-                     : QString("Move %1 games").arg(plans_.size()),
-                 "Cancel", [this] { cards::Close(this); });
+  SetHeading(one ? "Move " + QString::fromStdString(plans_.front().name)
+                 : QString("Move %1 games").arg(plans_.size()));
+  SetClose("Cancel", [this] { cards::Close(this); });
 
   if (one) {
     const RelocationPlan& plan = plans_.front();
     if (!plan.ok) {
       auto* row = new SettingRow("Can't move it", QString(), this);
-      row->SetBelow(Line(row, error_help::Describe(plan.error), "error"));
+      row->SetBelow(Line(row, error_help::Describe(plan.error), text::kError));
       AddRow(row);
     }
     for (const auto& [part, files] : {std::pair{&plan.files, true}, {&plan.prefix, false}}) {
       if (!plan.ok || part->action == "none") continue;
       auto* row = new SettingRow(files ? "Game files" : "Prefix", QString(), this);
-      row->SetBelow(Line(row, PartLine(*part, files), part->copies ? "warning" : "muted"));
+      row->SetBelow(
+          Line(row, PartLine(*part, files), part->copies ? text::kWarning : text::kDetail));
       if (part->action == "move") {
-        auto* size = Line(row, QString(), part->copies ? "warning" : "subtle");
+        auto* size = Line(row, QString(), part->copies ? text::kWarning : text::kSubtle);
         size->setWordWrap(false);
         row->AddControl(size);
         refresh_.push_back([this, size, id = plan.id, files, copies = part->copies] {
@@ -176,7 +179,7 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
         below_layout->setContentsMargins(0, 0, 0, 0);
         below_layout->setSpacing(6);
         // What moves, in a word, until the row opens to the lines that say it in full.
-        QLabel* summary = Line(below, Summary(plan), "muted");
+        QLabel* summary = Line(below, Summary(plan), text::kDetail);
         below_layout->addWidget(summary);
         auto* detail = new QWidget(below);
         auto* detail_layout = new QVBoxLayout(detail);
@@ -186,7 +189,7 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
         detail->hide();
         below_layout->addWidget(detail);
         row->SetBelow(below);
-        auto* size = Line(row, QString(), AnyCopies(plan) ? "warning" : "subtle");
+        auto* size = Line(row, QString(), AnyCopies(plan) ? text::kWarning : text::kSubtle);
         size->setWordWrap(false);
         row->AddControl(size);
         refresh_.push_back([this, size, plan] { size->setText(MovingSize(plan)); });
@@ -222,16 +225,16 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
       auto* list = new ElidedLabel(names.join(", "), lines);
       list->setToolTip(names.join("\n"));
       layout->addWidget(list);
-      layout->addWidget(Line(lines, why, why.startsWith("Can't") ? "error" : "muted"));
+      layout->addWidget(Line(lines, why, why.startsWith("Can't") ? text::kError : text::kDetail));
       row->AddWideControl(lines);
       AddRow(row);
     }
     if (static_cast<int>(moving.size() + unmoved.size()) > 6) SetScrollable();
   }
 
-  QHBoxLayout* buttons = AddButtonRow(this);
+  QHBoxLayout* buttons = ButtonRow();
   if (!one) {
-    auto* total = Line(this, QString(), "subtle");
+    auto* total = Line(this, QString(), text::kSubtle);
     total->setWordWrap(false);
     buttons->insertWidget(0, total);
     refresh_.push_back([this, total] {
@@ -249,9 +252,9 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
   auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, [this] { cards::Close(this); });
   buttons->addWidget(cancel);
-  auto* move = new QPushButton(
+  auto* move = new Button(
       moving.size() <= 1 || one ? QString("Move") : QString("Move %1 games").arg(moving.size()),
-      this);
+      ButtonKind::Primary, this);
   move->setDefault(true);
   move->setEnabled(!moving.empty());
   connect(move, &QPushButton::clicked, this, [this, moving] { emit Confirmed(moving); });
@@ -262,9 +265,9 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
 void MoveGamesCard::AddPartLines(QWidget* parent, const RelocationPlan& plan) {
   for (const auto& [part, files] : {std::pair{&plan.files, true}, {&plan.prefix, false}}) {
     if (part->action == "none") continue;
-    parent->layout()->addWidget(Line(parent, files ? "Game files" : "Prefix", "subtle"));
+    parent->layout()->addWidget(Line(parent, files ? "Game files" : "Prefix", text::kSubtle));
     parent->layout()->addWidget(
-        Line(parent, PartLine(*part, files), part->copies ? "warning" : "muted"));
+        Line(parent, PartLine(*part, files), part->copies ? text::kWarning : text::kDetail));
   }
 }
 

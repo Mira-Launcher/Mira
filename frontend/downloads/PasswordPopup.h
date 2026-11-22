@@ -1,7 +1,8 @@
 #pragma once
 
-#include <QWidget>
 #include <string>
+
+#include "../components/Popover.h"
 
 class QLabel;
 class QLineEdit;
@@ -12,7 +13,7 @@ namespace mira_gui {
 class LinkDownloads;
 
 // Asks for the password of the downloads waiting on one, one at a time, under the top bar's notice.
-class PasswordPopup : public QWidget {
+class PasswordPopup : public Popover {
   Q_OBJECT
 
  public:

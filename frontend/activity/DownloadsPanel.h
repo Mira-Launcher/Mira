@@ -1,7 +1,8 @@
 #pragma once
 
 #include <QString>
-#include <QWidget>
+
+#include "../components/Popover.h"
 
 class QLabel;
 class QPushButton;
@@ -14,7 +15,7 @@ class DownloadTracker;
 
 // The top bar's downloads popover: what DownloadTracker knows, newest
 // first. A Qt::Popup, so it closes itself on an outside click or Escape.
-class DownloadsPanel : public QWidget {
+class DownloadsPanel : public Popover {
   Q_OBJECT
 
  public:

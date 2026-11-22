@@ -7,6 +7,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 
+#include "../components/Text.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "ArtworkStore.h"
@@ -29,7 +30,7 @@ ContinueRow::ContinueRow(ArtworkStore* artwork, QWidget* parent)
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
   auto* heading = new QLabel("Continue playing", this);
-  heading->setProperty("role", "section");
+  SetTextStyle(heading, text::kSection);
   layout->addWidget(heading);
   cards_ = new QHBoxLayout();
   cards_->setSpacing(kCardSpacing);
@@ -98,7 +99,7 @@ QWidget* ContinueRow::MakeCard(const GameSummary& game, bool running) {
   auto* text = new QVBoxLayout();
   text->setSpacing(2);
   auto* name = new QLabel(QString::fromStdString(game.name), card);
-  name->setProperty("role", "section");
+  SetTextStyle(name, text::kSection);
   name->setWordWrap(true);
   text->addWidget(name);
   const QString tools = QString::fromStdString(OpenToolsLabel(game));
@@ -107,7 +108,7 @@ QWidget* ContinueRow::MakeCard(const GameSummary& game, bool running) {
                                           : FormatPlayedAgo(game.last_played_at);
   auto* meta = new QLabel(
       IsApp(game) ? when : QString("%1 · %2").arg(when, FormatPlaytime(game.play_seconds)), card);
-  meta->setProperty("role", "muted");
+  SetTextStyle(meta, text::kDetail);
   text->addWidget(meta);
   text->addStretch(1);
 

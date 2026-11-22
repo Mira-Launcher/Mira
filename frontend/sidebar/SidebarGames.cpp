@@ -10,10 +10,11 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "../components/Labels.h"
+#include "../components/NavRow.h"
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
 
 namespace mira_gui::sidebar {
 namespace {
@@ -383,8 +384,7 @@ QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const 
   // The button only draws the background; the cover, name and trailing text
   // are labels, so a long name elides short of the trailing text.
   const QString name = QString::fromStdString(game.name);
-  auto* row = new QPushButton(parent);
-  row->setFlat(true);
+  auto* row = new NavRow({}, parent);
   row->setAccessibleName(name);
   row->setMinimumHeight(kThumb.height() + 8);
   // Only hover and press take the cover's color; at rest the rows stay plain.
@@ -406,7 +406,7 @@ QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const 
   layout->addWidget(name_label, /*stretch=*/1);
   if (!trailing.isEmpty()) {
     auto* label = new QLabel(trailing, row);
-    label->setProperty("role", "muted");
+    SetTextStyle(label, text::kDetail);
     // Small, so the name keeps as much of a narrow sidebar as it can.
     QString style = QString("font-size: %1px;").arg(theme::Current().font_size_small);
     if (game.running) style += QString(" color: %1;").arg(theme::Current().running.name());

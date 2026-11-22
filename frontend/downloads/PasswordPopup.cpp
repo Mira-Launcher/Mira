@@ -9,47 +9,45 @@
 #include <utility>
 
 #include "../client/Types.h"
-#include "../widgets/Labels.h"
+#include "../components/Button.h"
+#include "../components/Labels.h"
+#include "../components/Metrics.h"
 #include "LinkDownloads.h"
 
 namespace mira_gui {
 
 PasswordPopup::PasswordPopup(LinkDownloads* downloads, QWidget* parent)
-    : QWidget(parent, Qt::Popup), downloads_(downloads) {
-  setObjectName("updates_popover");
-  setAttribute(Qt::WA_StyledBackground);
+    : Popover(parent), downloads_(downloads) {
   setFixedWidth(340);
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(18, 14, 18, 14);
+  layout->setContentsMargins(kRowPaddingX, 14, kRowPaddingX, 14);
   layout->setSpacing(8);
 
   name_ = new ElidedLabel(QString(), this);
-  name_->setStyleSheet("font-weight: 600;");
+  SetTextStyle(name_, text::kSection);
   layout->addWidget(name_);
   auto* note = MakeLabel(
       this, "The saved passwords didn't open this archive. Mira keeps the one that works.",
-      "muted");
+      text::kDetail);
   note->setWordWrap(true);
   layout->addWidget(note);
 
   password_ = new QLineEdit(this);
   password_->setPlaceholderText("Password");
   layout->addWidget(password_);
-  error_ = MakeLabel(this, "That password didn't open it", "error");
+  error_ = MakeLabel(this, "That password didn't open it", text::kError);
   layout->addWidget(error_);
 
   auto* buttons = new QHBoxLayout();
-  count_ = MakeLabel(this, QString(), "muted");
+  count_ = MakeLabel(this, QString(), text::kDetail);
   buttons->addWidget(count_);
   buttons->addStretch(1);
-  auto* skip = new QPushButton("Skip", this);
-  skip->setObjectName("text_button");
-  skip->setProperty("tone", "muted");
+  auto* skip = new Button("Skip", ButtonKind::Text, this);
   connect(skip, &QPushButton::clicked, this, [this] {
     if (!current_.empty()) downloads_->Skip(current_);
   });
   buttons->addWidget(skip);
-  extract_ = new QPushButton("Extract", this);
+  extract_ = new Button("Extract", ButtonKind::Primary, this);
   extract_->setDefault(true);
   connect(extract_, &QPushButton::clicked, this, &PasswordPopup::Submit);
   connect(password_, &QLineEdit::returnPressed, this, &PasswordPopup::Submit);
@@ -67,9 +65,7 @@ void PasswordPopup::ShowBelow(QWidget* anchor, const std::string& id) {
   current_ = id;
   Refresh();
   if (current_.empty()) return;
-  const QPoint corner = anchor->mapToGlobal(QPoint(anchor->width(), anchor->height() + 4));
-  move(corner.x() - width(), corner.y());
-  show();
+  PopUpBelow(anchor, popup::Align::End);
   password_->setFocus();
 }
 

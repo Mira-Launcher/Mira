@@ -17,13 +17,17 @@
 #include "../client/api/ModManagers.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
+#include "../components/Labels.h"
+#include "../components/ListRow.h"
+#include "../components/Metrics.h"
+#include "../components/ProgressRail.h"
+#include "../components/Scrolling.h"
+#include "../components/Text.h"
 #include "../runners/RunnerUpdater.h"
 #include "../system/Distro.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ProgressRail.h"
-#include "../widgets/Scrolling.h"
 #include "MiraUpdater.h"
 #include "UpdateChecker.h"
 #include "UpdateRows.h"
@@ -44,21 +48,13 @@ std::pair<std::string, std::string> SplitReference(const std::string& reference)
   return {reference.substr(0, colon), reference.substr(colon + 1)};
 }
 
-QFrame* NewRow(bool first) {
-  auto* row = new QFrame();
-  row->setObjectName("download_row");
-  row->setProperty("first", first);
-  return row;
-}
-
 QLabel* ReleaseLink(QWidget* parent, const UpdateInfo& mira) {
-  auto* label = new QLabel(
-      QString("%1 → %2  ·  <a href=\"%3\" style=\"color: %4; text-decoration: none;\">What's "
-              "new</a>")
-          .arg(QString::fromStdString(mira.installed), QString::fromStdString(mira.latest),
-               QString::fromStdString(mira.url), theme::Current().accent.name()),
-      parent);
-  label->setProperty("role", "muted");
+  auto* label = new QLabel(QString("%1 → %2  ·  %3")
+                               .arg(QString::fromStdString(mira.installed).toHtmlEscaped(),
+                                    QString::fromStdString(mira.latest).toHtmlEscaped(),
+                                    Anchor(QString::fromStdString(mira.url), "What's new")),
+                           parent);
+  SetTextStyle(label, text::kDetail);
   label->setTextFormat(Qt::RichText);
   label->setOpenExternalLinks(true);
   return label;
@@ -68,39 +64,30 @@ QLabel* ReleaseLink(QWidget* parent, const UpdateInfo& mira) {
 
 UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpdater* runners,
                            DownloadTracker* downloads, QWidget* parent)
-    : QWidget(parent, Qt::Popup),
-      checker_(checker),
-      mira_(mira),
-      runners_(runners),
-      downloads_(downloads) {
-  setObjectName("updates_popover");
-  setAttribute(Qt::WA_StyledBackground);
+    : Popover(parent), checker_(checker), mira_(mira), runners_(runners), downloads_(downloads) {
   setFixedWidth(380);
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 6);
   layout->setSpacing(0);
 
   auto* header = new QHBoxLayout();
-  header->setContentsMargins(18, 12, 10, 6);
+  header->setContentsMargins(kRowPaddingX, 12, 10, 6);
   auto* title = new QLabel("Updates", this);
-  title->setProperty("role", "section");
+  SetTextStyle(title, text::kSection);
   header->addWidget(title);
   header->addStretch(1);
-  auto* check = new QPushButton("Check again", this);
-  check->setObjectName("text_button");
-  check->setProperty("tone", "muted");
+  auto* check = new Button("Check again", ButtonKind::Text, this);
   connect(check, &QPushButton::clicked, this, [this] { checker_->Check(/*refresh=*/true); });
   header->addWidget(check);
-  update_all_ = new QPushButton("Update all", this);
-  update_all_->setObjectName("text_button");
+  update_all_ = new Button("Update all", ButtonKind::Link, this);
   connect(update_all_, &QPushButton::clicked, this, &UpdatesPanel::UpdateAll);
   header->addWidget(update_all_);
   layout->addLayout(header);
 
   empty_ = new QLabel("Mira and everything it downloaded are up to date", this);
-  empty_->setProperty("role", "subtle");
+  SetTextStyle(empty_, text::kSubtle);
   empty_->setWordWrap(true);
-  empty_->setContentsMargins(18, 6, 18, 10);
+  empty_->setContentsMargins(kRowPaddingX, 6, kRowPaddingX, 10);
   layout->addWidget(empty_);
 
   auto* scroll = new QScrollArea(this);
@@ -149,9 +136,7 @@ UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpda
 void UpdatesPanel::ShowBelow(QWidget* anchor) {
   anchor_ = anchor;
   Rebuild();
-  const QPoint corner = anchor->mapToGlobal(QPoint(anchor->width(), anchor->height() + 4));
-  move(corner.x() - width(), corner.y());
-  show();
+  PopUpBelow(anchor, popup::Align::End);
 }
 
 void UpdatesPanel::StartMira(QWidget* anchor) {
@@ -198,9 +183,9 @@ void UpdatesPanel::Rebuild() {
   }
   bool idle_row = false;
   for (const UpdateGroup& group : GroupUpdates(checker_->Updates())) {
-    auto* heading = NewRow(first);
+    auto* heading = new ListRow(first);
     auto* heading_layout = new QVBoxLayout(heading);
-    heading_layout->setContentsMargins(18, 10, 18, 2);
+    heading_layout->setContentsMargins(kRowPaddingX, 10, kRowPaddingX, 2);
     heading_layout->addWidget(MakeGroupHeading(heading, group.heading));
     rows_->addWidget(heading);
     first = false;
@@ -230,9 +215,9 @@ void UpdatesPanel::Rebuild() {
 
 QWidget* UpdatesPanel::BuildMiraRow() {
   const UpdateInfo entry = *MiraEntry(checker_->Updates());
-  auto* row = NewRow(/*first=*/true);
+  auto* row = new ListRow(/*first=*/true);
   auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(18, 10, 18, 10);
+  layout->setContentsMargins(kRowPaddingX, 10, kRowPaddingX, 10);
   layout->setSpacing(12);
 
   auto* badge = new QLabel("M", row);
@@ -247,11 +232,11 @@ QWidget* UpdatesPanel::BuildMiraRow() {
   auto* text = new QVBoxLayout();
   text->setSpacing(3);
   auto* title = new QLabel("Mira", row);
-  title->setStyleSheet("font-weight: 600;");
+  SetTextStyle(title, text::kSection);
   text->addWidget(title);
 
-  const auto line = [row, text](const QString& message, const char* role = "muted") {
-    auto* label = MakeLabel(row, message, role);
+  const auto line = [row, text](const QString& message, TextStyle style = text::kDetail) {
+    auto* label = MakeLabel(row, message, style);
     text->addWidget(label);
     return label;
   };
@@ -276,7 +261,7 @@ QWidget* UpdatesPanel::BuildMiraRow() {
       line("Restarting Mira…");
       break;
     case MiraUpdater::State::Failed:
-      line("Failed: " + mira_->Error(), "error");
+      line("Failed: " + mira_->Error(), text::kError);
       [[fallthrough]];
     case MiraUpdater::State::Idle: {
       if (mira_->Current() == MiraUpdater::State::Idle) text->addWidget(ReleaseLink(row, entry));
@@ -292,7 +277,8 @@ QWidget* UpdatesPanel::BuildMiraRow() {
         line(entry.install == "appimage" ? QString("Restarts Mira when it's done")
                                          : QString("Asks for your password, then restarts Mira"));
       }
-      action = new QPushButton(failed ? "Retry" : "Update", row);
+      action = new Button(failed ? "Retry" : "Update",
+                          failed ? ButtonKind::Secondary : ButtonKind::Primary, row);
       action->setDefault(!failed);
       action->setToolTip("Update Mira to " + QString::fromStdString(entry.latest));
       connect(action, &QPushButton::clicked, this,
@@ -317,9 +303,9 @@ bool UpdatesPanel::Updating(const UpdateRow& update) const {
 }
 
 QWidget* UpdatesPanel::BuildRow(const UpdateRow& update, bool first) {
-  auto* row = NewRow(first);
+  auto* row = new ListRow(first);
   auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(18, 8, 18, 8);
+  layout->setContentsMargins(kRowPaddingX, 8, kRowPaddingX, 8);
   layout->setSpacing(12);
 
   auto* icon = new QLabel(row);
@@ -331,15 +317,15 @@ QWidget* UpdatesPanel::BuildRow(const UpdateRow& update, bool first) {
   auto* text = new QVBoxLayout();
   text->setSpacing(3);
   auto* title = new ElidedLabel(update.name, row);
-  title->setStyleSheet("font-weight: 600;");
+  SetTextStyle(title, text::kSection);
   title->setToolTip(update.name);
   text->addWidget(title);
   const bool updating = Updating(update);
-  text->addWidget(MakeLabel(row, updating ? QString("Updating…") : update.detail, "muted"));
+  text->addWidget(MakeLabel(row, updating ? QString("Updating…") : update.detail, text::kDetail));
   layout->addLayout(text, /*stretch=*/1);
 
   if (!updating) {
-    auto* button = new QPushButton("Update", row);
+    auto* button = new Button("Update", ButtonKind::Primary, row);
     button->setDefault(true);
     button->setToolTip("Update " + update.name);
     connect(button, &QPushButton::clicked, this, [this, update] { Update(update); });

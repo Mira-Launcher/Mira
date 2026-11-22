@@ -11,7 +11,7 @@
 #include "../client/JsonMapping.h"
 #include "../client/api/Games.h"
 #include "../client/api/Stores.h"
-#include "../widgets/Labels.h"
+#include "../components/Format.h"
 
 namespace mira_gui {
 namespace {

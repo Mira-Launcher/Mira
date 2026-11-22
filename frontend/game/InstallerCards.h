@@ -6,13 +6,15 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../settings/SettingsCard.h"
+#include "../components/SheetCard.h"
 
 class QComboBox;
 class QLabel;
 class QPushButton;
 
 namespace mira_gui {
+
+class Button;
 
 class ArtworkStore;
 struct GameSummary;
@@ -21,7 +23,7 @@ struct GameSummary;
 // found, Change… to pick another, the library root to install into for one on a disc, and
 // whether to run it quietly or with its window. An in-window card over the library, asked
 // when one is found, from "Install…" and from an install error's fix.
-class InstallerCard : public SettingsCard {
+class InstallerCard : public SheetCard {
   Q_OBJECT
 
  public:
@@ -47,13 +49,13 @@ class InstallerCard : public SettingsCard {
   QComboBox* target_ = nullptr;  // only for an installer outside the library roots
   QLabel* file_ = nullptr;
   QLabel* error_ = nullptr;
-  QPushButton* shown_ = nullptr;
-  QPushButton* quiet_ = nullptr;
+  Button* shown_ = nullptr;
+  Button* quiet_ = nullptr;
 };
 
 // After an install left its installer folder behind (game.installer_leftover): delete it
 // (DELETE /v1/games/{id}/installer) or keep it.
-class InstallerLeftoverCard : public SettingsCard {
+class InstallerLeftoverCard : public SheetCard {
   Q_OBJECT
 
  public:
@@ -70,7 +72,7 @@ class InstallerLeftoverCard : public SettingsCard {
 };
 
 // Offers the programs a run in the game's prefix installed as its launch options, a row each.
-class ProgramsFoundCard : public SettingsCard {
+class ProgramsFoundCard : public SheetCard {
   Q_OBJECT
 
  public:

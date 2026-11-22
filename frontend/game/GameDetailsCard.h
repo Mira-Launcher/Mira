@@ -15,6 +15,8 @@ class QVBoxLayout;
 
 namespace mira_gui {
 
+class Button;
+
 class GameLibraryModel;
 
 // What a game is, from its store's cached info (GET /v1/games/{id}/metadata), as an in-window
@@ -45,7 +47,7 @@ class GameDetailsCard : public HeroBackdrop {
   GameLibraryModel* library_ = nullptr;
   QLabel* title_ = nullptr;
   QLabel* status_ = nullptr;
-  QPushButton* play_ = nullptr;
+  Button* play_ = nullptr;
   QWidget* panel_ = nullptr;
   // Whether the info has More or the requirements to open.
   bool expandable_ = false;

@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../settings/SettingsCard.h"
+#include "../components/SheetCard.h"
 
 class QLabel;
 class QPushButton;
@@ -20,7 +20,7 @@ struct SourceInfo;
 // /v1/games/{id}/mod-managers/{manager}): Vortex's files deployed into the game's folders, the
 // game files it set aside, and its mods, downloads and settings for the game. Remove stays off
 // until that's known, and while the manager is open. An in-window card (cards::Show).
-class RemoveModManagerCard : public SettingsCard {
+class RemoveModManagerCard : public SheetCard {
   Q_OBJECT
 
  public:

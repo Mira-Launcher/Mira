@@ -10,6 +10,9 @@
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
 #include "../client/api/Hidden.h"
+#include "../components/Button.h"
+#include "../components/SettingRow.h"
+#include "../components/Text.h"
 
 namespace mira_gui {
 namespace {
@@ -22,7 +25,7 @@ QLineEdit* PasswordField(QWidget* parent) {
 
 QLabel* ErrorLabel(QWidget* parent) {
   auto* error = new QLabel(parent);
-  error->setProperty("role", "error");
+  SetTextStyle(error, text::kError);
   error->setWordWrap(true);
   error->hide();
   return error;
@@ -34,7 +37,7 @@ QString Problem(const ApiError& error, const QString& wrong) {
 
 }  // namespace
 
-HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : SettingsCard("Unlock hidden games", parent) {
+HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : SheetCard("Unlock hidden games", parent) {
   setFixedWidth(440);
   auto* row = new SettingRow("Password", QString(), this);
   password_ = PasswordField(row);
@@ -42,29 +45,22 @@ HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : SettingsCard("Unlock hidde
   row->AddControl(password_, 1);
   AddRow(row);
 
-  error_ = ErrorLabel(this);
-  error_->setContentsMargins(18, 4, 18, 0);
-  AddRow(error_);
+  error_ = ErrorLine();
 
-  auto* buttons = new QWidget(this);
-  auto* layout = new QHBoxLayout(buttons);
-  layout->setContentsMargins(18, 12, 18, 10);
-  layout->setSpacing(8);
-  layout->addStretch(1);
-  auto* cancel = new QPushButton("Cancel", buttons);
+  QHBoxLayout* buttons = ButtonRow();
+  auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, &HiddenUnlockCard::CloseRequested);
-  layout->addWidget(cancel);
-  unlock_ = new QPushButton("Unlock", buttons);
+  buttons->addWidget(cancel);
+  unlock_ = new Button("Unlock", ButtonKind::Primary, this);
   unlock_->setDefault(true);
   connect(unlock_, &QPushButton::clicked, this, &HiddenUnlockCard::Unlock);
-  layout->addWidget(unlock_);
-  AddRow(buttons);
+  buttons->addWidget(unlock_);
 
   connect(password_, &QLineEdit::returnPressed, this, &HiddenUnlockCard::Unlock);
 }
 
 void HiddenUnlockCard::showEvent(QShowEvent* event) {
-  SettingsCard::showEvent(event);
+  SheetCard::showEvent(event);
   // After the overlay has taken focus for itself.
   QTimer::singleShot(0, password_, [this] { password_->setFocus(); });
 }
@@ -120,7 +116,7 @@ HiddenPasswordRow::HiddenPasswordRow(QWidget* parent)
   auto* cancel = new QPushButton("Cancel", fields_);
   connect(cancel, &QPushButton::clicked, this, [this] { Open(Form::None); });
   buttons->addWidget(cancel);
-  submit_ = new QPushButton(fields_);
+  submit_ = new Button(QString(), ButtonKind::Primary, fields_);
   submit_->setDefault(true);
   connect(submit_, &QPushButton::clicked, this, &HiddenPasswordRow::Submit);
   buttons->addWidget(submit_);

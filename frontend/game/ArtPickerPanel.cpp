@@ -41,9 +41,13 @@
 #include "../client/EventHub.h"
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
+#include "../components/Chip.h"
+#include "../components/FlowLayout.h"
+#include "../components/Scrolling.h"
+#include "../components/SearchField.h"
+#include "../components/TabRow.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/TabRow.h"
 #include "HeroBackdrop.h"
 
 namespace mira_gui {
@@ -292,12 +296,10 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   chips_ = new QButtonGroup(this);
   chips_->setExclusive(true);
   // Narrows any style down to what SteamGridDB marks adult.
-  adult_chip_ = new QPushButton(chips);
-  adult_chip_->setObjectName("chip");
+  adult_chip_ = new Chip("Adult", chips);
   adult_chip_->setCheckable(true);
-  adult_chip_->setCursor(Qt::PointingHandCursor);
   adult_chip_->hide();
-  connect(adult_chip_, &QPushButton::toggled, this, [this](bool checked) {
+  connect(adult_chip_, &Chip::toggled, this, [this](bool checked) {
     adult_only_ = checked;
     ApplyFilter(filter_, filter_style_);
   });
@@ -312,15 +314,13 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   match_layout->setContentsMargins(0, 0, 0, 0);
   match_layout->setSpacing(6);
   auto* match_label = new QLabel("Art from", match_row_);
-  match_label->setProperty("role", "muted");
+  SetTextStyle(match_label, text::kDetail);
   match_layout->addWidget(match_label);
   match_ = new QComboBox(match_row_);
   match_->setMinimumWidth(180);
   connect(match_, &QComboBox::activated, this, &ArtPickerPanel::ChooseMatch);
   match_layout->addWidget(match_);
-  match_search_ = new QLineEdit(match_row_);
-  match_search_->setPlaceholderText("Game name, then Enter");
-  match_search_->setClearButtonEnabled(true);
+  match_search_ = new SearchField("Game name, then Enter", match_row_);
   match_search_->setMinimumWidth(180);
   match_search_->hide();
   connect(match_search_, &QLineEdit::returnPressed, this, [this] {
@@ -345,7 +345,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   bar_layout->addWidget(url_button_);
   url_field_ = new QLineEdit(bar);
   url_field_->setPlaceholderText("Image URL, then Enter");
-  url_field_->setClearButtonEnabled(true);
+  AddClearButton(url_field_);
   url_field_->setMinimumWidth(240);
   url_field_->hide();
   bar_layout->addWidget(url_field_);
@@ -396,8 +396,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   grid_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   grid_->setFrameShape(QFrame::NoFrame);
   grid_->setMouseTracking(true);
-  grid_->setStyleSheet("QListWidget { background: transparent; border: none; }");
-  grid_->viewport()->setAutoFillBackground(false);
+  SeeThrough(grid_, SeeThroughPart::Viewport);
   FadeTop(grid_);  // covers scrolling up under the bar dissolve rather than ending on a line
   delegate_ = new ThumbDelegate(pulse_, grid_);
   grid_->setItemDelegate(delegate_);
@@ -422,7 +421,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   message_ = new QLabel(message_page_);
   message_->setAlignment(Qt::AlignCenter);
   message_->setWordWrap(true);
-  message_->setProperty("role", "muted");
+  SetTextStyle(message_, text::kDetail);
   message_layout->addWidget(message_);
   fetch_button_ = new QPushButton("Look again on SteamGridDB", message_page_);
   connect(fetch_button_, &QPushButton::clicked, this, [this] {
@@ -852,16 +851,16 @@ void ArtPickerPanel::RebuildChips() {
     return;
   }
   // Art from elsewhere is counted here; SteamGridDB's own list from its counts, when they came.
-  struct Chip {
+  struct StyleCount {
     QString label;
     std::string style;  // SteamGridDB's, for its pages
     int count = 0;
   };
-  std::vector<Chip> styles;
+  std::vector<StyleCount> styles;
   for (const ArtCandidate& candidate : candidates_) {
     if (counts_known_ && !IsLocal(candidate)) continue;
     const QString label = StyleLabel(candidate);
-    auto found = std::ranges::find(styles, label, &Chip::label);
+    auto found = std::ranges::find(styles, label, &StyleCount::label);
     if (found == styles.end()) {
       styles.push_back({label, {}, 1});
     } else {
@@ -873,22 +872,20 @@ void ArtPickerPanel::RebuildChips() {
   const int adult = counts_known_
                         ? adult_count_
                         : static_cast<int>(std::ranges::count_if(candidates_, &ArtCandidate::nsfw));
-  adult_chip_->setText(QString("Adult  %1").arg(adult));
+  adult_chip_->SetCount(adult);
   adult_chip_->setVisible(adult > 0);
   if (adult == 0 && adult_only_) adult_chip_->setChecked(false);  // shows the rest again
   // One style is nothing to filter by.
   if (styles.size() < 2) return;
   int all = 0;
-  for (const Chip& chip : styles) all += chip.count;
+  for (const StyleCount& style : styles) all += style.count;
   styles.insert(styles.begin(), {QString(), {}, all});
   for (const auto& [label, style, count] : styles) {
-    auto* chip = new QPushButton(QString("%1  %2").arg(label.isEmpty() ? "All" : label).arg(count),
-                                 adult_chip_->parentWidget());
-    chip->setObjectName("chip");
+    auto* chip = new Chip(label.isEmpty() ? "All" : label, adult_chip_->parentWidget());
+    chip->SetCount(count);
     chip->setCheckable(true);
     chip->setChecked(label == filter_);
-    chip->setCursor(Qt::PointingHandCursor);
-    connect(chip, &QPushButton::clicked, this, [this, label, style] { ApplyFilter(label, style); });
+    connect(chip, &Chip::clicked, this, [this, label, style] { ApplyFilter(label, style); });
     chips_->addButton(chip);
     chips_layout_->addWidget(chip);
   }
@@ -1292,17 +1289,11 @@ void ArtPickerPanel::ShowUpload(const QString& name, const QPixmap& pixmap, QSiz
 }
 
 void ArtPickerPanel::UpdateGridSize() {
-  // Previews from the card's inset on the left to its inset on the right. QListView wraps them in
-  // the width less the style's whole scroll bar extent, shown or not, so that goes in the right
-  // inset. Viewport margins, not QSS padding: Qt takes padding as one width for both sides.
-  QStyle* style = grid_->style();
-  int extent = style->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, grid_->verticalScrollBar());
-  if (style->styleHint(QStyle::SH_ScrollView_FrameOnlyAroundContents, nullptr, grid_))
-    extent += 2 * style->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, grid_);
-  const int left = kCardInset - kInset;
-  const int right = std::max(0, left - extent);
-  static_cast<ThumbGrid*>(grid_)->setViewportMargins(left, 8, right, 8);
-  const int width = grid_->width() - left - right - extent;
+  // Previews from the card's inset on the left to its inset on the right. Viewport margins, not
+  // QSS padding: Qt takes padding as one width for both sides.
+  const int inset = kCardInset - kInset;
+  static_cast<ThumbGrid*>(grid_)->setViewportMargins(inset, 8, inset, 8);
+  const int width = grid_->width() - 2 * inset;
   // SteamGridDB heroes are 96:31, covers 2:3; logos vary, so a wide box, and icons are square.
   const bool hero = slot_ == "hero";
   const bool logo = slot_ == "logo";

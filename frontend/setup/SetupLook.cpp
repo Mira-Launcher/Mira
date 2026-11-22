@@ -16,15 +16,15 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../components/Labels.h"
+#include "../components/Segmented.h"
+#include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
-#include "../settings/SettingsCard.h"
 #include "../sidebar/SidebarGames.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/Segmented.h"
 #include "SetupWork.h"
 
 namespace mira_gui {
@@ -675,7 +675,7 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
 
   QFrame* card = SetupCard(this);
   auto* grid = new QGridLayout(card);
-  grid->setContentsMargins(14, 4, 14, 4);
+  grid->setContentsMargins(kSetupListMargins);
   grid->setHorizontalSpacing(14);
   grid->setVerticalSpacing(0);
   corners_ =
@@ -827,7 +827,7 @@ SidebarPage::SidebarPage(const SetupContext& context) : context_(context) {
   left->setSpacing(10);
   QFrame* card = SetupCard(this);
   auto* rows = new QVBoxLayout(card);
-  rows->setContentsMargins(14, 4, 14, 4);
+  rows->setContentsMargins(kSetupListMargins);
   rows->setSpacing(0);
   const std::vector<std::pair<QString, QString>> styles = {
       {"covers", "Covers"}, {"hero", "Banners"}, {"shelf", "Shelf"}};
@@ -850,7 +850,7 @@ SidebarPage::SidebarPage(const SetupContext& context) : context_(context) {
   rows->addWidget(
       SetupRow(card, "Covers on sources", "A few of each source's games beside its name", covers_));
   left->addWidget(card);
-  hint_ = MakeLabel(this, QString(), "muted");
+  hint_ = MakeLabel(this, QString(), text::kDetail);
   left->addWidget(hint_);
   left->addStretch(1);
   columns->addLayout(left, /*stretch=*/1);

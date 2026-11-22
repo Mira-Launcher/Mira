@@ -19,11 +19,13 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Stores.h"
+#include "../components/Scrolling.h"
+#include "../components/SearchField.h"
+#include "../components/TabRow.h"
+#include "../components/Text.h"
+#include "../components/TileView.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/TabRow.h"
-#include "../widgets/TileView.h"
 #include "ArtworkStore.h"
 #include "ContinueRow.h"
 #include "FilterSortPill.h"
@@ -145,7 +147,7 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
   content_layout->addWidget(grid_, /*stretch=*/1);
   empty_hint_ = new QLabel(content);
   empty_hint_->setAlignment(Qt::AlignCenter);
-  empty_hint_->setProperty("role", "muted");
+  SetTextStyle(empty_hint_, text::kDetail);
   empty_hint_->setVisible(false);
   content_layout->addWidget(empty_hint_);
   content_layout->addWidget(BuildOwnedSection());
@@ -206,10 +208,8 @@ QWidget* LibraryPage::BuildHeader(const std::string& sort_key, bool sort_descend
   connect(pill_, &FilterSortPill::HiddenToggled, this,
           [this] { library_->SetShowingHidden(!library_->ShowingHidden()); });
   tabs_->SetTrailing(pill_);
-  search_ = new QLineEdit(top);
+  search_ = new SearchField("Search…", top);
   search_->setObjectName("library_search");
-  search_->setPlaceholderText("Search…");
-  search_->setClearButtonEnabled(true);
   search_timer_ = new QTimer(this);
   search_timer_->setSingleShot(true);
   search_timer_->setInterval(150);
@@ -465,7 +465,7 @@ QWidget* LibraryPage::BuildOwnedSection() {
   layout->setContentsMargins(margin, 8, margin, margin);
   layout->setSpacing(6);
   owned_heading_ = new QLabel(owned_section_);
-  owned_heading_->setProperty("role", "heading");
+  SetTextStyle(owned_heading_, text::kHeading);
   layout->addWidget(owned_heading_);
 
   owned_model_ = new QStandardItemModel(this);

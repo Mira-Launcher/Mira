@@ -13,11 +13,14 @@
 #include <QWheelEvent>
 #include <algorithm>
 
+#include "../components/Button.h"
+#include "../components/FlowLayout.h"
+#include "../components/IconButton.h"
+#include "../components/Labels.h"
+#include "../components/Scrolling.h"
+#include "../components/SearchField.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/Labels.h"
-#include "../widgets/Scrolling.h"
 #include "ArtworkStore.h"
 #include "ZoomSettle.h"
 
@@ -107,11 +110,7 @@ GamePicker::GamePicker(ArtworkStore* artwork, const QString& back_label, QWidget
   header_->setContentsMargins(24, 20, 32, 10);
   header_->setSpacing(8);
   // As Settings' own back arrow.
-  auto* back = new QToolButton(header_box_);
-  back->setAutoRaise(true);
-  icons::Follow(back, icons::Glyph::ArrowLeft);
-  back->setToolTip(back_label);
-  back->setAccessibleName(back_label);
+  auto* back = new IconButton(icons::Glyph::ArrowLeft, back_label, header_box_);
   connect(back, &QToolButton::clicked, this, &GamePicker::Closed);
   header_->addWidget(back);
   title_ = new QLabel(header_box_);
@@ -119,10 +118,8 @@ GamePicker::GamePicker(ArtworkStore* artwork, const QString& back_label, QWidget
   header_->addWidget(title_);
   header_->addSpacing(4);
   header_->addStretch(1);
-  search_ = new QLineEdit(header_box_);
+  search_ = new SearchField("Search games", header_box_);
   search_->setObjectName("library_search");
-  search_->setPlaceholderText("Search games");
-  search_->setClearButtonEnabled(true);
   search_->setFixedWidth(240);
   connect(search_, &QLineEdit::textChanged, this, &GamePicker::Filter);
   header_->addWidget(search_);
@@ -152,7 +149,7 @@ GamePicker::GamePicker(ArtworkStore* artwork, const QString& back_label, QWidget
   auto* cancel = new QPushButton("Cancel", bar_);
   connect(cancel, &QPushButton::clicked, this, &GamePicker::Closed);
   bar_layout_->addWidget(cancel);
-  apply_ = new QPushButton(bar_);
+  apply_ = new Button(QString(), ButtonKind::Primary, bar_);
   apply_->setDefault(true);
   connect(apply_, &QPushButton::clicked, this, [this] { Apply(); });
   bar_layout_->addWidget(apply_);
@@ -181,7 +178,7 @@ bool GamePicker::eventFilter(QObject* watched, QEvent* event) {
 TileRow GamePicker::Row() const {
   for (const QWidget* grid : content_->findChildren<QWidget*>(Qt::FindDirectChildrenOnly)) {
     if (grid->isVisible() && dynamic_cast<const FlowLayout*>(grid->layout()) != nullptr) {
-      return {RoomBesideScrollbar(grid, grid->width()), kTileGap};
+      return {grid->width(), kTileGap};
     }
   }
   return {};

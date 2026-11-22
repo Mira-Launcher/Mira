@@ -33,15 +33,20 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/Card.h"
+#include "../components/ChangeBar.h"
+#include "../components/Format.h"
+#include "../components/ListEdit.h"
+#include "../components/Metrics.h"
+#include "../components/SettingRow.h"
+#include "../components/SettingsPage.h"
+#include "../components/ShortcutEdit.h"
+#include "../components/Text.h"
 #include "../library/HiddenLock.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ListEdit.h"
-#include "../widgets/ShortcutEdit.h"
 #include "AppearancePreviews.h"
-#include "SettingsCard.h"
 #include "SettingsNav.h"
 
 namespace mira_gui {
@@ -58,6 +63,7 @@ SettingsPanel::SettingsPanel(Previews previews, QWidget* parent)
   change_bar_ = new ChangeBar(nav_->ContentArea());
   connect(change_bar_, &ChangeBar::DiscardClicked, this, &SettingsPanel::DiscardChanges);
   connect(change_bar_, &ChangeBar::SaveClicked, this, &SettingsPanel::Save);
+  connect(change_bar_, &ChangeBar::RoomChanged, nav_, &SettingsNavWidget::SetBottomRoom);
 
   BuildInterfacePage();
   BuildBigScreenPage();
@@ -227,7 +233,7 @@ void SettingsPanel::BuildSchemaPages() {
     // Which sources the sidebar shows, and in what order, sits with the sources themselves.
     if (category == "Sources" && sources_card_ != nullptr) page->AddWidget(sources_card_);
     if (category == "Library") AddMiraFoldersCard(page);
-    SettingsCard* card = nullptr;
+    Card* card = nullptr;
     ExpanderRow* expander = nullptr;
     int group = -1;
     std::vector<size_t> card_rows;
@@ -269,10 +275,10 @@ void SettingsPanel::BuildSchemaPages() {
     finish_card();
 
     if (category == "Launching") {
-      SettingsCard* first = page->findChild<SettingsCard*>();
+      Card* first = page->findChild<Card*>();
       auto* row = new SettingRow("GameMode", {});
       gamemode_status_ = new QLabel("Checking…", row);
-      theme::SetStyleProperty(gamemode_status_, "role", "subtle");
+      SetTextStyle(gamemode_status_, text::kSubtle);
       row->AddControl(gamemode_status_);
       first->AddRow(row);
       nav_->RegisterRow(row, "gamemode feral daemon status");
@@ -312,7 +318,7 @@ void SettingsPanel::DescribeSourceItems() {
 void SettingsPanel::DescribeEmulatorItems() {
   api::GetEmulatorsAsync(this, [this](EmulatorsResult result) {
     if (!result.ok) return;
-    std::map<SettingsCard*, std::pair<int, int>> counts;  // emulators, installed
+    std::map<Card*, std::pair<int, int>> counts;  // emulators, installed
     for (const EmulatorInfo& emulator : result.emulators) {
       const auto it = items_.find({"Emulators", QString::fromStdString(emulator.id)});
       if (it == items_.end()) continue;
@@ -323,11 +329,11 @@ void SettingsPanel::DescribeEmulatorItems() {
                             .startsWith(QDir::homePath() + "/.local/share/mira/");
       if (emulator.installed) {
         expander->SetSummary(mine || !emulator.version.empty() ? "Installed" : "Your copy",
-                             "success");
+                             Tone::Success);
       } else {
         expander->SetSummary(emulator.package.empty() ? "Not installed" : "From system packages");
       }
-      auto* card = qobject_cast<SettingsCard*>(expander->parentWidget()->parentWidget());
+      auto* card = qobject_cast<Card*>(expander->parentWidget()->parentWidget());
       if (card == nullptr) continue;
       auto& [all, installed] = counts[card];
       ++all;
@@ -356,7 +362,7 @@ void SettingsPanel::DescribeDownloadItems() {
   }
 }
 
-SettingRow* SettingsPanel::AddSchemaRow(SettingsCard* card, size_t index, ExpanderRow* expander) {
+SettingRow* SettingsPanel::AddSchemaRow(Card* card, size_t index, ExpanderRow* expander) {
   SettingEditor& field = fields_[index];
   const auto find = [this](const std::string& key) -> SettingEditor* {
     const auto it =
@@ -434,10 +440,10 @@ void SettingsPanel::AddSectionAction(const QString& category, const QString& car
 void SettingsPanel::AppendSectionAction(const SectionAction& action) {
   SettingsPage* page = pages_.value(action.category);
   if (page == nullptr) return;
-  const QList<SettingsCard*> cards = page->findChildren<SettingsCard*>();
+  const QList<Card*> cards = page->findChildren<Card*>();
   if (cards.isEmpty()) return;
-  const auto titled = std::ranges::find(cards, action.card, &SettingsCard::Title);
-  SettingsCard* card = titled != cards.end() ? *titled : cards.back();
+  const auto titled = std::ranges::find(cards, action.card, &Card::Title);
+  Card* card = titled != cards.end() ? *titled : cards.back();
   auto* row = new SettingRow(action.label, action.doc);
   auto* button = new QPushButton(action.button_text, row);
   connect(button, &QPushButton::clicked, this, action.activated);
@@ -464,7 +470,7 @@ void SettingsPanel::LoadGameModeStatus() {
       text = "Installed and running";
     }
     gamemode_status_->setText(text);
-    theme::SetStyleProperty(gamemode_status_, "role", error ? "error" : "subtle");
+    SetTextStyle(gamemode_status_, error ? text::kError : text::kSubtle);
   });
 }
 
@@ -687,7 +693,8 @@ void SettingsPanel::ShowMiraFolders(const ConfigResult& config) {
   if (mira_folders_card_ == nullptr) return;
   mira_folders_card_->ClearRows();
   const QStringList folders = ListValue(config, "mira_folders");
-  // As a folder list's rows (widgets/ListEdit): under the row that adds one, each with its space.
+  // As a folder list's rows (components/ListEdit): under the row that adds one, each with its
+  // space.
   auto* add_row = new SettingRow(
       "Folders",
       "Pick a folder on another disk: Mira makes Games and Applications in it and watches it. "
@@ -711,7 +718,7 @@ void SettingsPanel::ShowMiraFolders(const ConfigResult& config) {
     path->setMinimumHeight(kControlHeight);
     line->addWidget(path, /*stretch=*/1);
     auto* free = new QLabel(space, row);
-    free->setProperty("role", "subtle");
+    SetTextStyle(free, text::kSubtle);
     line->addWidget(free);
     items_layout->addWidget(row);
     if (folders.size() > 1) {

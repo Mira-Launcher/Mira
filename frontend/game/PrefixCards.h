@@ -4,7 +4,7 @@
 #include <set>
 #include <string>
 
-#include "../settings/SettingsCard.h"
+#include "../components/SheetCard.h"
 
 class QLabel;
 class QLineEdit;
@@ -17,7 +17,7 @@ class ProgressRail;
 
 // Runs a program in a game's prefix (POST /v1/games/{id}/run), making the prefix first when it
 // has none. An in-window card (cards::Show) that closes once the program has started.
-class RunInPrefixCard : public SettingsCard {
+class RunInPrefixCard : public SheetCard {
   Q_OBJECT
 
  public:
@@ -39,7 +39,7 @@ class RunInPrefixCard : public SettingsCard {
 // Runs winetricks verbs in a game's prefix (POST /v1/games/{id}/tricks), one at a time: common
 // verbs as chips, those already in the prefix ticked (GET .../tricks), and a field that searches
 // them or takes any other verb. Stays open after a verb finishes, for the next one.
-class WinetricksCard : public SettingsCard {
+class WinetricksCard : public SheetCard {
   Q_OBJECT
 
  public:

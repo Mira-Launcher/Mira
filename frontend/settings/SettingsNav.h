@@ -20,7 +20,7 @@ class QVBoxLayout;
 namespace mira_gui {
 
 class ExpanderRow;
-class SettingsCard;
+class Card;
 class SettingsPage;
 
 // Row indices grouped by category, in first-seen order. Never sorted: the
@@ -102,7 +102,7 @@ class SettingsNavWidget : public QWidget {
 
   struct RowEntry {
     QWidget* row_widget = nullptr;
-    SettingsCard* card = nullptr;
+    Card* card = nullptr;
     ExpanderRow* expander = nullptr;  // the row it's inside, if any
     QString search_text;              // settings_search::Normalize'd
     bool gate_visible = true;
@@ -144,7 +144,7 @@ class SettingsNavWidget : public QWidget {
   std::vector<Category> categories_;
   std::vector<RowEntry> rows_;
   QHash<QWidget*, int> row_index_by_widget_;  // row_widget -> index into rows_
-  QHash<SettingsCard*, bool> folded_before_search_;
+  QHash<Card*, bool> folded_before_search_;
   QHash<ExpanderRow*, bool> closed_before_search_;
 };
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QWidget>
+#include "../components/WindowChrome.h"
 
 class QLabel;
 class QSlider;
@@ -8,11 +8,9 @@ class QToolButton;
 
 namespace mira_gui {
 
-// The custom title bar in place of a native one: brand, tile size, Activity,
-// Refresh, Shortcuts, About, then the window's own minimize/maximize/close.
-// Its background (and the labels on it, which pass clicks up) moves the
-// window; a double click maximizes it.
-class TopBar : public QWidget {
+// The library window's title bar: brand, tile size, Activity, Refresh, Shortcuts, About, then the
+// window's own buttons.
+class TopBar : public TitleBar {
   Q_OBJECT
 
  public:
@@ -26,13 +24,10 @@ class TopBar : public QWidget {
   QToolButton* updates_button() const { return updates_; }
   // What has a newer release, shown beside the Updates icon.
   void SetUpdatesCount(int pending);
-  // The button for Mira's own update: empty `text` hides it, and `busy` is one already running.
   // The one notice the bar has room for, the most important at the moment; empty text hides it.
   // `busy` keeps it quiet, for what's only reporting progress.
   void SetNotice(const QString& text, bool busy, const QString& tooltip, bool lock = false);
   QWidget* notice_button() const;
-  // The window's maximized state changed: the button's icon and tooltip follow.
-  void SyncMaximized();
   // Hidden mode's note in the middle of the bar, naming `shortcut` as the way out; none for empty.
   void SetHiddenShortcut(const QString& shortcut);
 
@@ -46,17 +41,11 @@ class TopBar : public QWidget {
   void AboutClicked();
 
  protected:
-  void mousePressEvent(QMouseEvent* event) override;
-  void mouseDoubleClickEvent(QMouseEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 
  private:
   // Centered on the bar, and left out where it would run into the brand or the tools.
   void PlaceHiddenNote();
-  // Redrawn rather than stored: each glyph is painted in the theme's text
-  // color, so a theme change has to regenerate them.
-  void ApplyIcons();
-  void ToggleMaximize();
 
   QLabel* brand_ = nullptr;
   QLabel* hidden_note_ = nullptr;
@@ -68,9 +57,6 @@ class TopBar : public QWidget {
   QToolButton* refresh_ = nullptr;
   QToolButton* shortcuts_ = nullptr;
   QToolButton* about_ = nullptr;
-  QToolButton* minimize_ = nullptr;
-  QToolButton* maximize_ = nullptr;
-  QToolButton* close_ = nullptr;
 };
 
 }  // namespace mira_gui

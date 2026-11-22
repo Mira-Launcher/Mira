@@ -27,11 +27,17 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
+#include "../components/Dot.h"
+#include "../components/HoverDwell.h"
+#include "../components/Labels.h"
+#include "../components/NavRow.h"
+#include "../components/Scrolling.h"
+#include "../components/TabRow.h"
+#include "../components/WindowCards.h"
 #include "../library/AddGamesCard.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
-#include "../library/HoverCard.h"
 #include "../library/OwnedTitles.h"
 #include "../settings/SettingsPanel.h"
 #include "../sources/SourceRemoval.h"
@@ -40,10 +46,6 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "../updates/UpdateChecker.h"
-#include "../widgets/Labels.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/TabRow.h"
-#include "../widgets/WindowCards.h"
 
 namespace mira_gui {
 namespace {
@@ -92,23 +94,20 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
 
   // Always visible (not just a "back" affordance): checked exactly when the
   // grid is the current content.
-  library_nav_ = new QPushButton("Library", this);
+  library_nav_ = new NavRow("Library", this);
   library_nav_->setObjectName("library_nav");
-  library_nav_->setFlat(true);
   library_nav_->setCheckable(true);
   library_nav_->setChecked(true);
   connect(library_nav_, &QPushButton::clicked, this, &Sidebar::LibraryClicked);
   layout->addWidget(library_nav_);
 
-  runners_nav_ = new QPushButton("Runners", this);
-  runners_nav_->setFlat(true);
+  runners_nav_ = new NavRow("Runners", this);
   runners_nav_->setCheckable(true);
   connect(runners_nav_, &QPushButton::clicked, this, &Sidebar::RunnersClicked);
   layout->addWidget(runners_nav_);
 
-  settings_button_ = new QPushButton("Settings", this);
+  settings_button_ = new NavRow("Settings", this);
   settings_button_->setObjectName("sidebar_settings");
-  settings_button_->setFlat(true);
   connect(settings_button_, &QPushButton::clicked, this,
           [this] { emit SettingsRequested(QString()); });
   layout->addWidget(settings_button_);
@@ -143,9 +142,8 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
   connect(manage_sources_button_, &QToolButton::clicked, this, &Sidebar::ManageSourcesRequested);
   sources_heading_layout->addWidget(manage_sources_button_, 0, Qt::AlignVCenter);
   nav_layout->addWidget(sources_heading_);
-  add_source_button_ = new QPushButton("Add source", nav_content);
+  add_source_button_ = new NavRow("Add source", nav_content);
   add_source_button_->setObjectName("add_source");
-  add_source_button_->setFlat(true);
   connect(add_source_button_, &QPushButton::clicked, this, &Sidebar::ManageSourcesRequested);
   nav_layout->addWidget(add_source_button_);
 
@@ -162,7 +160,7 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
   source_drop_line_->hide();
   source_rows_.resize(AllSources().size());
   nav_layout->addLayout(source_nav_layout_);
-  sources_empty_ = MakeLabel(nav_content, "No sources currently enabled", "muted");
+  sources_empty_ = MakeLabel(nav_content, "No sources currently enabled", text::kDetail);
   sources_empty_->setContentsMargins(8, 2, 8, 2);
   nav_layout->addWidget(sources_empty_);
 
@@ -203,10 +201,19 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
   footer_row->setContentsMargins(0, 6, 0, 0);
   footer_row->setSpacing(6);
   footer_ = new QLabel(this);
-  footer_->setProperty("role", "muted");
+  SetTextStyle(footer_, text::kDetail);
   footer_->setContentsMargins(6, 0, 6, 0);
   footer_->setWordWrap(true);
-  footer_row->addWidget(footer_, /*stretch=*/1);
+  offline_ = new StatusLine(this);
+  SetTextStyle(offline_->Label(), text::kDetail);
+  offline_->setContentsMargins(6, 0, 6, 0);
+  offline_->Set(Tone::Danger, "mirad isn't running");
+  offline_->hide();
+  auto* footer_lines = new QVBoxLayout();
+  footer_lines->setSpacing(0);
+  footer_lines->addWidget(footer_);
+  footer_lines->addWidget(offline_);
+  footer_row->addLayout(footer_lines, /*stretch=*/1);
   tags_ = new QToolButton(this);
   tags_->setObjectName("sidebar_square");
   tags_->setCheckable(true);
@@ -281,8 +288,7 @@ Sidebar::SourceRow& Sidebar::BuildSourceRow(int index) {
   if (built.nav != nullptr) return built;
   const SourceInfo& source = AllSources()[index];
   // Its parts are labels, so the name can elide and carry a second line.
-  auto* nav = new QPushButton(source_nav_container_);
-  nav->setFlat(true);
+  auto* nav = new NavRow({}, source_nav_container_);
   nav->setCheckable(true);
   nav->setObjectName("source_nav");
   nav->setAccessibleName(source.name);
@@ -301,7 +307,10 @@ Sidebar::SourceRow& Sidebar::BuildSourceRow(int index) {
   lines->addStretch(1);
   row->addLayout(lines, /*stretch=*/1);
   auto* count = new QLabel(nav);
-  count->setProperty("role", "muted");
+  SetTextStyle(count, text::kDetail);
+  auto* signed_out = new Dot(Tone::Warning, nav, count);
+  signed_out->hide();
+  row->addWidget(signed_out);
   row->addWidget(count);
   for (QLabel* label : nav->findChildren<QLabel*>())
     label->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -312,7 +321,12 @@ Sidebar::SourceRow& Sidebar::BuildSourceRow(int index) {
   });
   nav->installEventFilter(this);
   source_nav_layout_->addWidget(nav);
-  built = {.nav = nav, .deck = deck, .name = name, .detail = detail, .count = count};
+  built = {.nav = nav,
+           .deck = deck,
+           .name = name,
+           .detail = detail,
+           .count = count,
+           .signed_out = signed_out};
   return built;
 }
 
@@ -366,11 +380,8 @@ void Sidebar::ShowActive() {
 
 void Sidebar::SetFooter(const QString& shown, bool mirad_reachable) {
   // The connection only earns a line when it's gone.
-  QString text = shown + " shown";
-  if (!mirad_reachable) {
-    text += "<br>" + StatusDot(theme::Current().error) + "mirad isn't running";
-  }
-  footer_->setText(text);
+  footer_->setText(shown + " shown");
+  offline_->setVisible(!mirad_reachable);
 }
 
 void Sidebar::SetActionsEnabled(bool enabled) {
@@ -484,7 +495,7 @@ bool Sidebar::eventFilter(QObject* watched, QEvent* event) {
       if (hover_timer_ == nullptr) {
         hover_timer_ = new QTimer(this);
         hover_timer_->setSingleShot(true);
-        hover_timer_->setInterval(card::kDwellMs);
+        hover_timer_->setInterval(kHoverDwellMs);
         connect(hover_timer_, &QTimer::timeout, this, [this] {
           if (hover_row_ == nullptr) return;
           const GameSummary* game =
@@ -654,6 +665,7 @@ void Sidebar::UpdateSources() {
       source_row.detail->setText(detail);
       source_row.detail->setVisible(!detail.isEmpty());
       source_row.count->hide();
+      source_row.signed_out->hide();
     } else {
       source_row.nav->setFixedHeight(38);
       row->setContentsMargins(10, 0, 10, 0);
@@ -662,7 +674,7 @@ void Sidebar::UpdateSources() {
       source_row.detail->hide();
       QString label = show_source_counts_ ? counted : QString();
       if (off) label = "Off";
-      if (signed_out && !off) label = StatusDot(theme::Current().warning) + label;
+      source_row.signed_out->setVisible(signed_out && !off);
       source_row.count->setText(label);
       source_row.count->show();
     }
@@ -1053,7 +1065,7 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
   // Empty places up to `places` show as faded sketches, so the section keeps its size.
   heading->setVisible(!games.empty() || placeholders > 0 || !empty_text.isEmpty());
   if (games.empty() && placeholders == 0 && !empty_text.isEmpty()) {
-    QLabel* empty = MakeLabel(parent, empty_text, "muted");
+    QLabel* empty = MakeLabel(parent, empty_text, text::kDetail);
     empty->setContentsMargins(8, 2, 8, 2);
     layout->addWidget(empty);
   } else if (shelf) {

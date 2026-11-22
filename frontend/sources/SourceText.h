@@ -4,6 +4,7 @@
 #include <string>
 
 #include "../client/ApiError.h"
+#include "../components/Text.h"
 
 class QLabel;
 
@@ -20,7 +21,7 @@ struct SourceCopy {
 SourceCopy CopyFor(const std::string& id);
 
 // Sets `label` to `text` in base.qss's `role`, hidden while empty.
-void ShowLine(QLabel* label, const QString& text, const char* role);
+void ShowLine(QLabel* label, const QString& text, TextStyle style);
 // "<what> <mirad's message and hint>" as an error line. mirad's messages
 // start lowercase; this one follows a sentence.
 void ShowError(QLabel* label, const QString& what, const ApiError& error);

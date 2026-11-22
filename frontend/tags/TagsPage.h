@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../widgets/TileView.h"
+#include "../components/TileView.h"
 
 class QGridLayout;
 class QLabel;
@@ -26,7 +26,7 @@ class CountPill;
 class ElidedLabel;
 class RowColumns;
 class SettingRow;
-class SettingsCard;
+class Card;
 class SteamTagRow;
 class Switch;
 class TagPicker;
@@ -148,9 +148,9 @@ class TagsPage : public QWidget {
   QWidget* overview_ = nullptr;
   QGridLayout* grid_ = nullptr;
   QWidget* left_ = nullptr;  // Your tags over the tag settings
-  SettingsCard* mine_ = nullptr;
-  SettingsCard* steam_ = nullptr;
-  SettingsCard* settings_card_ = nullptr;
+  Card* mine_ = nullptr;
+  Card* steam_ = nullptr;
+  Card* settings_card_ = nullptr;
   std::map<std::string, MineRow> mine_rows_;
   SettingRow* mine_note_ = nullptr;
   // Only the rows shown now; see FilterSteam.

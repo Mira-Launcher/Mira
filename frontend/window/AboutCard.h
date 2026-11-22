@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../settings/SettingsCard.h"
+#include "../components/SheetCard.h"
 
 class QLabel;
 
@@ -9,7 +9,7 @@ namespace mira_gui {
 // About Mira, as an in-window card (cards::Show): the logo, name and version (with a button that
 // copies the version details for a bug report), then where the code lives, where to report a
 // problem, who made it, its license and the service's log.
-class AboutCard : public SettingsCard {
+class AboutCard : public SheetCard {
   Q_OBJECT
 
  public:

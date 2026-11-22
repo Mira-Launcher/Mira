@@ -17,13 +17,18 @@
 #include "../app/Display.h"
 #include "../app/KeyBindings.h"
 #include "../bigscreen/Choices.h"
+#include "../components/Card.h"
+#include "../components/FlatCombo.h"
+#include "../components/FlowLayout.h"
+#include "../components/Metrics.h"
+#include "../components/SettingRow.h"
+#include "../components/SettingsPage.h"
+#include "../components/ShortcutEdit.h"
+#include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/ShortcutEdit.h"
 #include "AppearancePreviews.h"
-#include "SettingsCard.h"
 #include "SettingsNav.h"
 #include "SettingsPanel.h"
 
@@ -90,9 +95,9 @@ size_t SettingsPanel::AddPrefField(PrefField field) {
   return pref_fields_.size() - 1;
 }
 
-void SettingsPanel::AddCardReset(SettingsCard* card, std::vector<size_t> prefs,
+void SettingsPanel::AddCardReset(Card* card, std::vector<size_t> prefs,
                                  std::vector<size_t> schema) {
-  connect(card, &SettingsCard::ResetClicked, this, [this, prefs, schema] {
+  connect(card, &Card::ResetClicked, this, [this, prefs, schema] {
     for (const size_t i : prefs) pref_fields_[i].reset();
     {
       const QScopedValueRollback quiet(setting_values_, true);
@@ -103,7 +108,7 @@ void SettingsPanel::AddCardReset(SettingsCard* card, std::vector<size_t> prefs,
   card_resets_.push_back({card, std::move(prefs), std::move(schema)});
 }
 
-Switch* SettingsPanel::AddToggle(SettingsCard* card, const QString& label, const QString& doc,
+Switch* SettingsPanel::AddToggle(Card* card, const QString& label, const QString& doc,
                                  const QString& search, std::optional<bool> FrontendPrefs::* member,
                                  bool fallback) {
   auto* row = new SettingRow(label, doc);
@@ -131,8 +136,8 @@ Switch* SettingsPanel::AddToggle(SettingsCard* card, const QString& label, const
   return toggle;
 }
 
-QDoubleSpinBox* SettingsPanel::AddSeconds(SettingsCard* card, const QString& label,
-                                          const QString& doc, const QString& search,
+QDoubleSpinBox* SettingsPanel::AddSeconds(Card* card, const QString& label, const QString& doc,
+                                          const QString& search,
                                           std::optional<int> FrontendPrefs::* member,
                                           int fallback_ms, double maximum) {
   auto* row = new SettingRow(label, doc);
@@ -170,7 +175,7 @@ QDoubleSpinBox* SettingsPanel::AddSeconds(SettingsCard* card, const QString& lab
 }
 
 // Both take a restart: Qt reads them before it opens a window.
-void SettingsPanel::AddDisplayRows(SettingsCard* card) {
+void SettingsPanel::AddDisplayRows(Card* card) {
   const auto add_combo = [this, card](const QString& label, const QString& doc,
                                       const QString& search,
                                       const std::vector<std::pair<QString, QVariant>>& choices,
@@ -229,7 +234,7 @@ void SettingsPanel::AddDisplayRows(SettingsCard* card) {
   if (const QString hint = display::StretchHint(); !hint.isEmpty()) {
     auto* label = new QLabel(hint, server);
     label->setWordWrap(true);
-    theme::SetStyleProperty(label, "role", "error");
+    SetTextStyle(label, text::kError);
     server->SetBelow(label);
   }
 }
@@ -240,7 +245,7 @@ void SettingsPanel::BuildInterfacePage() {
   pages_["Interface"] = page;
   const std::vector<GameSummary> games = PreviewGames(previews_);
 
-  SettingsCard* appearance = page->AddCard("Appearance");
+  Card* appearance = page->AddCard("Appearance");
   auto* theme_row =
       new SettingRow("Theme",
                      "The built-in themes take their colors from the desktop's color scheme. "
@@ -284,7 +289,7 @@ void SettingsPanel::BuildInterfacePage() {
             "the covers.",
             "font text size points larger smaller", &FrontendPrefs::text_size, text_sizes, 0);
 
-  SettingsCard* general = page->AddCard("General");
+  Card* general = page->AddCard("General");
   AddToggle(general, "Start Mira when you log in",
             "Opens Mira in the tray when you log in, or in big screen if that's set to open at "
             "start.",
@@ -308,7 +313,7 @@ void SettingsPanel::BuildInterfacePage() {
             "sudo pkexec terminal package install root polkit", &FrontendPrefs::copy_commands,
             false);
 
-  SettingsCard* library = page->AddCard("Library");
+  Card* library = page->AddCard("Library");
   tile_preview_ = new TilePreview(TilePreviewGames(games), previews_.artwork);
   auto* preview_holder = new QWidget();
   auto* preview_layout = new QHBoxLayout(preview_holder);
@@ -362,7 +367,7 @@ void SettingsPanel::BuildInterfacePage() {
             "on the right instead of at the bottom.",
             "tile size zoom rows columns height", &FrontendPrefs::zoom_by_rows, false);
 
-  SettingsCard* layout = page->AddCard("Layout");
+  Card* layout = page->AddCard("Layout");
   layout_preview_ = new LayoutPreview(games, previews_.artwork);
   auto* layout_holder = new QWidget();
   auto* layout_holder_layout = new QHBoxLayout(layout_holder);
@@ -420,7 +425,7 @@ QWidget* SettingsPanel::MakeSlider(ShapeField& field, int maximum) {
   layout->setSpacing(10);
   // The value before the slider, so the slider ends at the row's right edge like other controls.
   field.value = new QLabel(box);
-  field.value->setProperty("role", "subtle");
+  SetTextStyle(field.value, text::kSubtle);
   field.value->setMinimumWidth(130);
   field.value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   layout->addWidget(field.value);
@@ -489,7 +494,7 @@ void SettingsPanel::SelectTheme(const QString& name) {
 }
 
 template <typename T>
-QComboBox* SettingsPanel::AddChoice(SettingsCard* card, const QString& label, const QString& doc,
+QComboBox* SettingsPanel::AddChoice(Card* card, const QString& label, const QString& doc,
                                     const QString& search, std::optional<T> FrontendPrefs::* member,
                                     const std::vector<std::pair<T, QString>>& options,
                                     const T& fallback) {
@@ -547,14 +552,14 @@ void SettingsPanel::BuildBigScreenPage() {
       nav_->AddCategory("Big screen", CategoryGlyph("Big screen"), CategoryNavGroup("Big screen"));
   pages_["Big screen"] = page;
 
-  SettingsCard* starting = page->AddCard("Starting");
+  Card* starting = page->AddCard("Starting");
   AddToggle(starting, "Open in big screen when Mira starts",
             "Mira opens straight into big screen, also when it starts at login (Interface › "
             "General). The same as starting it with mira-gui --big-screen.",
             "big screen start launch login boot tv couch", &FrontendPrefs::big_screen_at_start,
             false);
 
-  SettingsCard* screen = page->AddCard("Screen and sound");
+  Card* screen = page->AddCard("Screen and sound");
   AddToggle(screen, "Large text", "Scales big screen up by 15%, for a TV across the room",
             "big screen text size font tv", &FrontendPrefs::big_screen_large_text, false);
   AddToggle(screen, "Sounds", "Short sounds as you move around and pick things",
@@ -572,7 +577,7 @@ void SettingsPanel::BuildBigScreenPage() {
             "big screen suspend idle sleep power", &FrontendPrefs::big_screen_idle_suspend,
             bigscreen::kIdle, 0);
 
-  SettingsCard* controller = page->AddCard("Controller");
+  Card* controller = page->AddCard("Controller");
   AddChoice(controller, "Button labels",
             "Which names the button hints use. Match controller reads them from the controller.",
             "big screen controller gamepad xbox playstation nintendo",
@@ -595,7 +600,7 @@ void SettingsPanel::BuildBigScreenPage() {
             "big screen controller rumble vibration", &FrontendPrefs::big_screen_rumble,
             bigscreen::kRumble, std::string("light"));
 
-  SettingsCard* trailers = page->AddCard("Trailers");
+  Card* trailers = page->AddCard("Trailers");
   AddToggle(trailers, "Trailers", "A trailer plays behind the game you rest on",
             "big screen trailer video", &FrontendPrefs::big_screen_trailers, true);
   AddSeconds(trailers, "Start after", "How long to rest on a game before its trailer starts",
@@ -637,7 +642,7 @@ void SettingsPanel::BuildSidebarPage() {
       nav_->AddCategory("Sidebar", CategoryGlyph("Sidebar"), CategoryNavGroup("Sidebar"));
   pages_["Sidebar"] = page;
 
-  SettingsCard* style = page->AddCard("Pinned and recently played");
+  Card* style = page->AddCard("Pinned and recently played");
   sidebar_style_ =
       new SidebarStyleChoices({}, previews_.pinned, previews_.recent, previews_.artwork, this);
   const QStringList searches = {
@@ -704,7 +709,7 @@ void SettingsPanel::BuildShortcutsPage() {
   SettingsPage* page =
       nav_->AddCategory("Shortcuts", CategoryGlyph("Shortcuts"), CategoryNavGroup("Shortcuts"));
   pages_["Shortcuts"] = page;
-  std::vector<std::pair<SettingsCard*, std::vector<size_t>>> cards;  // in the order first seen
+  std::vector<std::pair<Card*, std::vector<size_t>>> cards;  // in the order first seen
   for (const keybindings::Binding& binding : keybindings::All()) {
     const QString group = ShortcutGroup(binding.id);
     auto in_card =
@@ -713,7 +718,7 @@ void SettingsPanel::BuildShortcutsPage() {
       cards.emplace_back(page->AddCard(group), std::vector<size_t>{});
       in_card = cards.end() - 1;
     }
-    SettingsCard* card = in_card->first;
+    Card* card = in_card->first;
 
     const QKeySequence current = keybindings::Override(binding.id).value_or(binding.default_keys);
     auto* row = new SettingRow(binding.label, {});
@@ -722,7 +727,7 @@ void SettingsPanel::BuildShortcutsPage() {
       for (const QKeySequence& alias : binding.extra_aliases)
         aliases << alias.toString(QKeySequence::NativeText);
       auto* also = new QLabel("also " + aliases.join(", "), row);
-      also->setProperty("role", "subtle");
+      SetTextStyle(also, text::kSubtle);
       also->setToolTip("Always works too and can't be changed");
       row->AddControl(also);
     }

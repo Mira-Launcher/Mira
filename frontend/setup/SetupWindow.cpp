@@ -18,11 +18,12 @@
 #include "../app/Appearance.h"
 #include "../app/Notify.h"
 #include "../client/api/Config.h"
+#include "../components/Button.h"
+#include "../components/Labels.h"
+#include "../components/Scrolling.h"
 #include "../library/GameLibraryModel.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/Scrolling.h"
 #include "SetupLook.h"
 #include "SetupPages.h"
 #include "SetupWork.h"
@@ -72,8 +73,8 @@ class StepDots : public QWidget {
 QVBoxLayout* SetupPageLayout(SetupStep* page, icons::Glyph glyph, const QString& eyebrow,
                              const QString& title, const QString& lead) {
   auto* layout = new QVBoxLayout(page);
-  layout->setContentsMargins(36, 14, 36, 22);
-  layout->setSpacing(12);
+  layout->setContentsMargins(kSetupPageMargins);
+  layout->setSpacing(kSetupPageSpacing);
   auto* head = new QHBoxLayout();
   head->setSpacing(14);
   auto* badge = new QLabel(page);
@@ -85,13 +86,13 @@ QVBoxLayout* SetupPageLayout(SetupStep* page, icons::Glyph glyph, const QString&
   auto* text = new QVBoxLayout();
   text->setSpacing(2);
   auto* small = new QLabel(eyebrow.toUpper(), page);
-  small->setProperty("role", "group_heading");
+  SetTextStyle(small, text::kGroup);
   text->addWidget(small);
   auto* heading = new QLabel(title, page);
   heading->setObjectName("setup_title");
   heading->setWordWrap(true);
   text->addWidget(heading);
-  auto* lead_label = MakeLabel(page, lead, "muted");
+  auto* lead_label = MakeLabel(page, lead, text::kDetail);
   lead_label->setObjectName("setup_lead");
   text->addWidget(lead_label);
   head->addLayout(text, /*stretch=*/1);
@@ -108,7 +109,7 @@ QWidget* SetupLaterLine(QWidget* parent, const QString& text) {
   auto* clock = new QLabel(row);
   icons::Follow(clock, icons::Glyph::Clock, 15);
   line->addWidget(clock, 0, Qt::AlignTop);
-  auto* label = MakeLabel(row, text, "muted");
+  auto* label = MakeLabel(row, text, text::kDetail);
   label->setTextFormat(Qt::RichText);
   line->addWidget(label, /*stretch=*/1);
   return row;
@@ -218,8 +219,7 @@ SetupWindow::SetupWindow(LibraryServices services, SetupWork* work, const Fronte
   auto* foot = new QHBoxLayout(foot_box);
   foot->setContentsMargins(16, 12, 16, 12);
   foot->setSpacing(8);
-  back_ = new QPushButton("Back", foot_box);
-  back_->setObjectName("text_button");
+  back_ = new Button("Back", ButtonKind::Text, foot_box);
   connect(back_, &QPushButton::clicked, this, [this] {
     // Back from Skip setup goes back to where it was pressed, with nothing dropped.
     if (choices_.skipped_all) {
@@ -231,11 +231,10 @@ SetupWindow::SetupWindow(LibraryServices services, SetupWork* work, const Fronte
   foot->addWidget(back_);
   dots_ = new StepDots(foot_box);
   foot->addWidget(dots_, /*stretch=*/1);
-  skip_ = new QPushButton("Skip", foot_box);
-  skip_->setObjectName("text_button");
+  skip_ = new Button("Skip", ButtonKind::Text, foot_box);
   connect(skip_, &QPushButton::clicked, this, &SetupWindow::Skip);
   foot->addWidget(skip_);
-  next_ = new QPushButton("Next", foot_box);
+  next_ = new Button("Next", ButtonKind::Primary, foot_box);
   next_->setDefault(true);
   next_->setMinimumWidth(110);
   connect(next_, &QPushButton::clicked, this, &SetupWindow::Next);

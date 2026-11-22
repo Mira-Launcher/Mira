@@ -5,8 +5,10 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include "../widgets/Labels.h"
-#include "../widgets/TileGridLayout.h"
+#include "../components/Button.h"
+#include "../components/Chip.h"
+#include "../components/Labels.h"
+#include "../components/TileGridLayout.h"
 #include "SourceText.h"
 #include "SourceTile.h"
 
@@ -62,27 +64,26 @@ SourceCatalog::SourceCatalog(QWidget* parent) : QWidget(parent) {
   auto* chips = new QHBoxLayout();
   chips->setContentsMargins(0, 0, 0, 4);
   chips->setSpacing(6);
-  all_ = new QPushButton(this);
+  all_ = new Chip(QString(), this);
   for (const QString& name : kGroups) {
     Group& group = groups_.emplace_back();
     group.name = name;
-    group.chip = new QPushButton(this);
+    group.chip = new Chip(QString(), this);
     group.heading = MakeGroupHeading(this, name);
     group.heading->setContentsMargins(0, 8, 0, 0);
     group.grid = new QWidget(this);
     new TileGridLayout(group.grid, kTileWidth);
   }
-  QList<QPushButton*> buttons{all_};
+  QList<Chip*> buttons{all_};
   for (const Group& group : groups_) buttons << group.chip;
-  for (QPushButton* chip : buttons) {
-    chip->setObjectName("chip");
+  for (Chip* chip : buttons) {
     chip->setCheckable(true);
     chip->setAutoExclusive(true);
     chips->addWidget(chip);
   }
   all_->setChecked(true);
   // Connected once checked, so the filter never runs before the tiles exist.
-  for (QPushButton* chip : buttons)
+  for (Chip* chip : buttons)
     connect(chip, &QPushButton::toggled, this, &SourceCatalog::ApplyFilter);
   chips->addStretch(1);
   layout->addLayout(chips);
@@ -91,7 +92,7 @@ SourceCatalog::SourceCatalog(QWidget* parent) : QWidget(parent) {
     layout->addWidget(group.heading);
     layout->addWidget(group.grid);
   }
-  empty_ = MakeLabel(this, QString(), "subtle");
+  empty_ = MakeLabel(this, QString(), text::kSubtle);
   empty_->hide();
   layout->addWidget(empty_);
   layout->addStretch(1);
@@ -114,12 +115,12 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     ++counts[group];
     auto* tile = new SourceTile(source, groups_[group].grid);
     tile->Line()->setText(Needs(source));
-    QLabel* blurb = MakeLabel(tile, copy.blurb, "subtle");
+    QLabel* blurb = MakeLabel(tile, copy.blurb, text::kSubtle);
     blurb->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     tile->Body()->addWidget(blurb, 1);
     // Lutris and Heroic have nothing to set up: their button imports right away.
     const bool imports = id == "lutris" || id == "heroic";
-    auto* button = new QPushButton(imports ? "Import games" : "Set up…", tile);
+    auto* button = new Button(imports ? "Import games" : "Set up…", ButtonKind::Primary, tile);
     button->setDefault(true);
     button->setAccessibleName((imports ? "Import games from " : "Set up ") + source.name);
     button->setToolTip(
@@ -140,11 +141,13 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
   }
   int total = 0;
   for (size_t i = 0; i < groups_.size(); ++i) {
-    groups_[i].chip->setText(QString("%1  %2").arg(groups_[i].name).arg(counts[i]));
+    groups_[i].chip->setText(groups_[i].name);
+    groups_[i].chip->SetCount(counts[i]);
     groups_[i].chip->setVisible(counts[i] > 0);
     total += counts[i];
   }
-  all_->setText(QString("All  %1").arg(total));
+  all_->setText("All");
+  all_->SetCount(total);
   if (!all_->isChecked() && std::ranges::none_of(groups_, [](const Group& g) {
         return g.chip->isChecked() && g.chip->isVisible();
       })) {

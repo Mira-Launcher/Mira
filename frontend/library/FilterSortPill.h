@@ -13,6 +13,8 @@ class QToolButton;
 
 namespace mira_gui {
 
+class Popover;
+
 // The library's filter and sort in one pill: "Ready | Name ↑ ⌄". A click
 // opens a popover with the filter list (each with a live count) and the
 // sort rows. The popover is a Qt::Popup, so it closes itself on an outside
@@ -64,7 +66,7 @@ class FilterSortPill : public QWidget {
 
  private:
   void OpenPopover();
-  QWidget* BuildPopover();
+  Popover* BuildPopover();
   // The pill's text and icons, and the popover's rows, in the theme's colors.
   void UpdateSummary();
   void RestyleFilterRows();
@@ -77,7 +79,7 @@ class FilterSortPill : public QWidget {
   QLabel* sort_icon_ = nullptr;
   QLabel* sort_label_ = nullptr;
   QLabel* chevron_ = nullptr;
-  QWidget* popover_ = nullptr;
+  Popover* popover_ = nullptr;
   QListWidget* filters_ = nullptr;
   QPushButton* hidden_ = nullptr;
   QToolButton* sort_direction_ = nullptr;

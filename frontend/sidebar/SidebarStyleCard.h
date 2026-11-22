@@ -2,7 +2,9 @@
 
 #include <optional>
 
-#include "../settings/SettingsCard.h"
+#include "../components/SettingRow.h"
+#include "../components/SheetCard.h"
+#include "../components/Switch.h"
 #include "SidebarGames.h"
 
 class QAbstractButton;
@@ -63,7 +65,7 @@ class SidebarStyleChoices : public QObject {
 // The in-window card for the same choices, opened from the sidebar. Every
 // choice applies at once (the sidebar beside it shows the result), so there is
 // no Save; the window stores each one as it's made.
-class SidebarStyleCard : public SettingsCard {
+class SidebarStyleCard : public SheetCard {
   Q_OBJECT
 
  public:

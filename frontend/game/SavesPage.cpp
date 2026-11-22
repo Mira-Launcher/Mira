@@ -10,7 +10,6 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QStyle>
 #include <QToolButton>
 #include <QUrl>
@@ -21,13 +20,18 @@
 #include "../app/Notify.h"
 #include "../client/JsonMapping.h"
 #include "../client/api/Games.h"
+#include "../components/Button.h"
+#include "../components/Card.h"
+#include "../components/Dot.h"
+#include "../components/Format.h"
+#include "../components/IconButton.h"
+#include "../components/Labels.h"
+#include "../components/LaidOutButton.h"
+#include "../components/Metrics.h"
+#include "../components/Scrolling.h"
 #include "../library/GamePresentation.h"
-#include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/LaidOutButton.h"
-#include "../widgets/Scrolling.h"
 #include "HeroBackdrop.h"
 #include "SavesConflictCard.h"
 #include "SavesText.h"
@@ -47,9 +51,8 @@ QWidget* Row(QWidget* parent, QHBoxLayout** layout) {
 }
 
 QPushButton* TextButton(QWidget* parent, const QString& text, bool muted = false) {
-  auto* button = new QPushButton(text, parent);
-  button->setObjectName("text_button");
-  if (muted) button->setProperty("tone", "muted");
+  auto* button = new Button(text, ButtonKind::Link, parent);
+  if (muted) button->SetKind(ButtonKind::Text);
   button->setCursor(Qt::PointingHandCursor);
   return button;
 }
@@ -68,14 +71,10 @@ QWidget* TwoLines(QWidget* parent, const QString& top, const QString& bottom, bo
     first->setTextInteractionFlags(Qt::TextSelectableByMouse);
   }
   lines->addWidget(first);
-  if (!bottom.isEmpty()) lines->addWidget(MakeLabel(box, bottom, "muted"));
+  if (!bottom.isEmpty()) lines->addWidget(MakeLabel(box, bottom, text::kDetail));
   return box;
 }
 
-QString Files(int files, std::int64_t bytes) {
-  return (files == 1 ? QString("1 file") : QString("%1 files").arg(files)) + " · " +
-         SizeText(bytes);
-}
 }  // namespace
 
 SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std::move(id)) {
@@ -86,13 +85,10 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   auto* header = new QHBoxLayout();
   header->setContentsMargins(kPageHeaderMargins);
   header->setSpacing(12);
-  auto* back = new QToolButton(this);
-  back->setAutoRaise(true);
-  back->setToolTip("Back");
-  icons::Follow(back, icons::Glyph::ArrowLeft);
+  auto* back = new IconButton(icons::Glyph::ArrowLeft, "Back", this);
   connect(back, &QToolButton::clicked, this, &SavesPage::BackClicked);
   auto* title = new QLabel("Saves", this);
-  title->setProperty("role", "heading");
+  SetTextStyle(title, text::kHeading);
   back_up_ = new QPushButton("Back up now", this);
   connect(back_up_, &QPushButton::clicked, this, &SavesPage::BackUp);
   header->addWidget(back);
@@ -105,9 +101,7 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   scroll_->setWidgetResizable(true);
   scroll_->setFrameShape(QFrame::NoFrame);
   scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  scroll_->setStyleSheet(
-      "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
-  scroll_->viewport()->setAutoFillBackground(false);
+  SeeThrough(scroll_);
   SetUpScrolling(scroll_, this);
   auto* content = new QWidget();
   auto* content_layout = new QVBoxLayout(content);
@@ -119,10 +113,10 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   scroll_->setWidget(content);
   layout->addWidget(scroll_, 1);
 
-  backups_ = new SettingsCard("Backups", content);
-  where_ = new SettingsCard("Where they are", content);
-  cloud_ = new SettingsCard("Cloud saves", content);
-  settings_ = new SettingsCard("Settings", content);
+  backups_ = new Card("Backups", content);
+  where_ = new Card("Where they are", content);
+  cloud_ = new Card("Cloud saves", content);
+  settings_ = new Card("Settings", content);
   cloud_->hide();
   // Rebuilt on a theme change: the newest backup's tint and the state dots are drawn colors.
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] {
@@ -166,7 +160,7 @@ void SavesPage::resizeEvent(QResizeEvent* event) {
 
 void SavesPage::Arrange() {
   // From the page's own width: the viewport's lags behind until the page has been shown.
-  const int room = width() - 36 - scroll_->verticalScrollBar()->sizeHint().width();
+  const int room = width() - 36;
   const int columns = room >= 2 * kColumnWidth + grid_->spacing() ? 2 : 1;
   if (columns == columns_) return;
   columns_ = columns;
@@ -220,13 +214,13 @@ void SavesPage::FillBackups() {
                              "The last backup after playing failed: " +
                                  QString::fromStdString(saves_.last_error->message),
                              QString::fromStdString(saves_.last_error->hint));
-    if (auto* first = text->findChild<QLabel*>()) first->setProperty("role", "warning");
+    if (auto* first = text->findChild<QLabel*>()) SetTextStyle(first, text::kWarning);
     line->addWidget(text, 1);
     backups_->AddRow(row);
   }
   if (saves_.snapshots.empty()) {
     QWidget* row = Row(backups_, &line);
-    line->addWidget(MakeLabel(row, "No backups yet", "muted"), 1);
+    line->addWidget(MakeLabel(row, "No backups yet", text::kDetail), 1);
     backups_->AddRow(row);
     return;
   }
@@ -282,9 +276,10 @@ void SavesPage::FillWhere() {
                             : location.problem == "unknown_placeholder"
                                 ? QString("Not backed up: this game doesn't have that folder")
                                 : QString();
-    QWidget* text = TwoLines(row, saves_text::Path(location.path, home),
-                             problem.isEmpty() ? Files(location.files, location.bytes) : problem,
-                             /*mono=*/true);
+    QWidget* text =
+        TwoLines(row, saves_text::Path(location.path, home),
+                 problem.isEmpty() ? saves_text::Files(location.files, location.bytes) : problem,
+                 /*mono=*/true);
     text->setToolTip(QString::fromStdString(location.path));
     line->addWidget(text, 1);
     if (location.extra) {
@@ -327,7 +322,7 @@ void SavesPage::FillWhere() {
     notes << "From the save locations list: " + QString::fromStdString(saves_.entry);
   for (const QString& note : notes) {
     QWidget* row = Row(where_, &line);
-    line->addWidget(MakeLabel(row, note, "muted"), 1);
+    line->addWidget(MakeLabel(row, note, text::kDetail), 1);
     where_->AddRow(row);
   }
 }
@@ -337,7 +332,6 @@ void SavesPage::FillCloud() {
   cloud_->setVisible(saves_.cloud.has_value());
   if (!saves_.cloud) return;
   const CloudSaves& cloud = *saves_.cloud;
-  const theme::Tokens& tokens = theme::Current();
   const QDateTime now = QDateTime::currentDateTime();
   QHBoxLayout* line = nullptr;
 
@@ -346,13 +340,13 @@ void SavesPage::FillCloud() {
   // is about to change, so the work is what the line says.
   const bool working = !doing_.empty();
   const bool conflict = !working && cloud.state == "conflict";
-  const QColor dot = working                   ? tokens.info
-                     : conflict                ? tokens.warning
-                     : cloud.state == "synced" ? tokens.success
-                                               : tokens.text_muted;
-  auto* state = MakeLabel(state_row, StatusDot(dot) + (working ? SavesDoingLabel(doing_)
-                                                               : saves_text::CloudState(cloud)));
-  state->setTextFormat(Qt::RichText);
+  const Tone tone = working                   ? Tone::Info
+                    : conflict                ? Tone::Warning
+                    : cloud.state == "synced" ? Tone::Success
+                                              : Tone::Muted;
+  auto* state = new StatusLine(state_row);
+  state->Label()->setWordWrap(true);
+  state->Set(tone, working ? SavesDoingLabel(doing_) : saves_text::CloudState(cloud));
   QWidget* text = new QWidget(state_row);
   auto* lines = new QVBoxLayout(text);
   lines->setContentsMargins(0, 0, 0, 0);
@@ -362,7 +356,7 @@ void SavesPage::FillCloud() {
                              cloud.synced_at > 0
                                  ? "Last synced " + saves_text::When(cloud.synced_at, now, true)
                                  : QString("Never synced"),
-                             "muted"));
+                             text::kDetail));
   line->addWidget(text, 1);
   const bool can_sync = cloud.state != "unsupported" && cloud.state != "off";
   if (!conflict && can_sync) {
@@ -385,7 +379,7 @@ void SavesPage::FillCloud() {
   };
   choice("Keep this computer's",
          cloud.local_at > 0 ? "Saved " + saves_text::When(cloud.local_at, now, true) + " · " +
-                                  Files(cloud.files, cloud.bytes)
+                                  saves_text::Files(cloud.files, cloud.bytes)
                             : QString(),
          "Uploads them over the cloud's", "upload");
   choice("Use the cloud's",
@@ -446,7 +440,7 @@ void SavesPage::SetBusy(bool busy) {
   back_up_->setText(!doing_.empty() ? SavesDoingLabel(doing_)
                     : busy          ? QString("Working…")
                                     : QString("Back up now"));
-  for (SettingsCard* card : {backups_, where_, cloud_})
+  for (Card* card : {backups_, where_, cloud_})
     for (QAbstractButton* button : card->findChildren<QAbstractButton*>())
       if (!button->property("idle_only").isValid() || button->property("idle_only").toBool())
         button->setEnabled(!Busy());

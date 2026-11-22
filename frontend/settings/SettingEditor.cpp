@@ -20,15 +20,19 @@
 
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
+#include "../components/ChipGroup.h"
+#include "../components/FlatCombo.h"
+#include "../components/Format.h"
+#include "../components/IconButton.h"
+#include "../components/Labels.h"
+#include "../components/ListEdit.h"
+#include "../components/Metrics.h"
+#include "../components/PathField.h"
+#include "../components/Segmented.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/ChipToggles.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ListEdit.h"
-#include "../widgets/PathField.h"
-#include "../widgets/Segmented.h"
-#include "SettingsCard.h"
 
 namespace mira_gui {
 namespace {
@@ -59,7 +63,7 @@ void AskDisplay(const ConfigSchemaEntry& entry, SettingRow* row, Switch* toggle,
       note = QString("%1, your main monitor, can't do HDR")
                  .arg(QString::fromStdString(display.output));
     }
-    if (!note.isEmpty()) row->SetBelow(MakeLabel(row, note, "subtle"));
+    if (!note.isEmpty()) row->SetBelow(MakeLabel(row, note, text::kSubtle));
     if (toggle != nullptr && display.ok && display.supported && !display.hdr &&
         !toggle->isChecked())
       toggle->setEnabled(false);
@@ -129,8 +133,8 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     combo->addItem("Default runner", QString());  // the runners come later (FillRunnerCombo)
     row->AddControl(combo);
   } else if (entry.type == "an array of strings" && !entry.choices.empty()) {
-    chips = new ChipToggles(row);
-    std::vector<ChipToggles::Choice> choices;
+    chips = new ChipGroup(row);
+    std::vector<ChipGroup::Choice> choices;
     for (const ConfigSchemaEntry::Choice& choice : entry.choices) {
       choices.push_back({QString::fromStdString(choice.value), QString::fromStdString(choice.label),
                          QString::fromStdString(choice.doc), QString::fromStdString(choice.pair),
@@ -182,10 +186,8 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     }
     if (!entry.link.empty()) {
       const QUrl url(QString::fromStdString(entry.link));
-      auto* link = new QToolButton(row);
-      link->setAutoRaise(true);
-      icons::Follow(link, icons::Glyph::External, &theme::Tokens::accent);
-      link->setToolTip(QString("Open %1").arg(url.host()));
+      auto* link = new IconButton(icons::Glyph::External, QString("Open %1").arg(url.host()), row,
+                                  &theme::Tokens::accent);
       link->setCursor(Qt::PointingHandCursor);
       QObject::connect(link, &QToolButton::clicked, link,
                        [url] { QDesktopServices::openUrl(url); });
@@ -299,7 +301,7 @@ void SettingEditor::OnEdited(QObject* context, std::function<void()> edited) con
   if (line) QObject::connect(line, &QLineEdit::textChanged, context, edited);
   if (clear_secret) QObject::connect(clear_secret, &QAction::triggered, context, edited);
   if (list) QObject::connect(list, &ListEdit::Changed, context, edited);
-  if (chips) QObject::connect(chips, &ChipToggles::Changed, context, edited);
+  if (chips) QObject::connect(chips, &ChipGroup::Changed, context, edited);
 }
 
 void SettingEditor::Embed(SettingEditor& shown) {
@@ -324,15 +326,15 @@ void SettingEditor::Embed(SettingEditor& shown) {
 }
 
 void PairChoices(const SettingEditor& first, const SettingEditor& second) {
-  ChipToggles* from = first.chips;
-  ChipToggles* to = second.chips;
+  ChipGroup* from = first.chips;
+  ChipGroup* to = second.chips;
   if (from == nullptr || to == nullptr) return;
-  QObject::connect(from, &ChipToggles::Clicked, to, [from, to](const QString& value, bool on) {
+  QObject::connect(from, &ChipGroup::Clicked, to, [from, to](const QString& value, bool on) {
     const auto& choices = from->Choices();
-    const auto it = std::ranges::find(choices, value, &ChipToggles::Choice::value);
+    const auto it = std::ranges::find(choices, value, &ChipGroup::Choice::value);
     if (it != choices.end() && !it->pair.isEmpty()) to->SetOn(it->pair, on);
   });
-  QObject::connect(from, &ChipToggles::Changed, to,
+  QObject::connect(from, &ChipGroup::Changed, to,
                    [from, to] { to->SetPairValues(from->Values()); });
   to->SetPairValues(from->Values());
 }

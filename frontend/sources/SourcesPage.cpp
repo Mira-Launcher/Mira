@@ -9,7 +9,6 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -19,15 +18,19 @@
 #include "../client/api/Library.h"
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
-#include "../settings/SettingsCard.h"
+#include "../components/Format.h"
+#include "../components/IconButton.h"
+#include "../components/Labels.h"
+#include "../components/ModalOverlay.h"
+#include "../components/PopupDialog.h"
+#include "../components/Scrolling.h"
+#include "../components/SearchField.h"
+#include "../components/Segmented.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ModalOverlay.h"
-#include "../widgets/PopupDialog.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/Segmented.h"
 #include "SourceCatalog.h"
 #include "SourceSetupCard.h"
 #include "Sources.h"
@@ -56,26 +59,19 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   titles->setSpacing(2);
   auto* title = new QLabel("Sources", this);
   title->setObjectName("page_title");
-  hint_ = MakeLabel(this, kAddedHint, "subtle");
+  hint_ = MakeLabel(this, kAddedHint, text::kSubtle);
   titles->addWidget(title);
   titles->addWidget(hint_);
   header->addLayout(titles, /*stretch=*/1);
 
-  search_ = new QLineEdit(this);
-  search_->setPlaceholderText("Search sources");
-  search_->setClearButtonEnabled(true);
+  search_ = new SearchField("Search sources", this);
   search_->setFixedWidth(220);
-  icons::Follow(search_->addAction(QIcon(), QLineEdit::LeadingPosition), icons::Glyph::Search,
-                &theme::Tokens::text_muted);
   header->addWidget(search_, 0, Qt::AlignTop);
 
   views_ = new Segmented({{"added", "Added"}, {"catalog", "Add source"}}, this);
   header->addWidget(views_, 0, Qt::AlignTop);
 
-  auto* close = new QToolButton(this);
-  close->setAutoRaise(true);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Close (Esc)");
+  auto* close = new IconButton(icons::Glyph::Close, "Close (Esc)", this);
   close->setAccessibleName("Close Sources");
   connect(close, &QToolButton::clicked, this, &SourcesPage::CloseRequested);
   header->addWidget(close, 0, Qt::AlignTop);
@@ -83,7 +79,7 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   outer->addWidget(MakeDivider(this, Qt::Horizontal));
 
   auto* scroll = new QScrollArea(this);
-  scroll->setObjectName("card_scroll");
+  SeeThrough(scroll);
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -212,13 +208,10 @@ void SourcesPage::OfferExistingGames(QWidget* window, const QString& id, const Q
         if (!r.ok || (r.dirs.empty() && r.shortcuts.empty())) return;
         QStringList lines;
         for (const auto& [path, games] : r.dirs)
-          lines << QString("%1 (%2 game%3)")
-                       .arg(QString::fromStdString(path))
-                       .arg(games)
-                       .arg(games == 1 ? "" : "s");
+          lines << QString("%1 (%2)").arg(QString::fromStdString(path), Counted(games, "game"));
         for (const std::string& shortcut : r.shortcuts)
           lines << QString::fromStdString(shortcut) + " (desktop entry)";
-        PopupDialog dialog(window, notify::Level::Info, "Games " + name + " already has");
+        PopupDialog dialog(window, Tone::Info, "Games " + name + " already has");
         dialog.SetMessage("Mira found these. Move them into " + name +
                           "'s folder, or play them from where they are?");
         dialog.SetDetail(lines.join('\n'));
@@ -307,7 +300,6 @@ void SourcesPage::OpenSetup(const QString& id) {
 
   if (setup_overlay_ == nullptr) {
     setup_overlay_ = new ModalOverlay(this);
-    setup_overlay_->scrim = QColor(0, 0, 0, 150);
     setup_overlay_->setFocusPolicy(Qt::StrongFocus);
     setup_overlay_->on_backdrop_clicked = [this] { CloseSetup(); };
     setup_scroll_ = new QScrollArea(setup_overlay_);
@@ -316,7 +308,7 @@ void SourcesPage::OpenSetup(const QString& id) {
     setup_scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     SetUpScrolling(setup_scroll_, setup_overlay_);  // set up after the page's, so it's asked first
     // Only the viewport: the card keeps its own background.
-    setup_scroll_->setStyleSheet("QScrollArea, QScrollArea > QWidget { background: transparent; }");
+    SeeThrough(setup_scroll_, SeeThroughPart::Viewport);
     auto* column = new QVBoxLayout(setup_overlay_);
     column->setContentsMargins(32, 32, 32, 32);
     column->addStretch(1);
@@ -327,12 +319,7 @@ void SourcesPage::OpenSetup(const QString& id) {
   setup_card_ = new SourceSetupCard(source, this);
   setup_card_->setFixedWidth(560);
   setup_card_->SetLeading(MakeSourceBadge(source, 24, setup_card_));
-  auto* close = new QToolButton(setup_card_);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Close");
-  close->setAutoRaise(true);
-  connect(close, &QToolButton::clicked, this, &SourcesPage::CloseSetup);
-  setup_card_->Header()->addWidget(close);
+  setup_card_->SetClose("Close", [this] { CloseSetup(); });
   if (source.kind == SourceInfo::Kind::Launcher) {
     LauncherInfo launcher;
     launcher.id = id.toStdString();
@@ -371,9 +358,7 @@ void SourcesPage::FitSetup() {
   setup_card_->setFixedWidth(width);
   const int wanted = setup_card_->heightForWidth(width) > 0 ? setup_card_->heightForWidth(width)
                                                             : setup_card_->sizeHint().height();
-  setup_scroll_->setFixedWidth(width + (wanted > height() - 2 * kMargin
-                                            ? setup_scroll_->verticalScrollBar()->sizeHint().width()
-                                            : 0));
+  setup_scroll_->setFixedWidth(width);
   setup_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
 }
 

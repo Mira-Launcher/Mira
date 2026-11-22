@@ -7,10 +7,14 @@
 #include <QPushButton>
 #include <algorithm>
 
+#include "../components/Button.h"
+#include "../components/Format.h"
+#include "../components/Labels.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
 
 namespace mira_gui {
 namespace {
@@ -75,7 +79,7 @@ QString RemoveGamesCard::ActionText(const std::vector<RemovalPlan>& plans) {
 
 RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<RemovalPlan> plans,
                                  ArtworkStore* artwork, QWidget* parent)
-    : SettingsCard(QString(), parent), games_(std::move(games)), plans_(std::move(plans)) {
+    : SheetCard(QString(), parent), games_(std::move(games)), plans_(std::move(plans)) {
   setFixedWidth(520);
   const bool one = plans_.size() == 1;
 
@@ -104,7 +108,7 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
           one ? FindSourceInfo(QString::fromStdString(games_.front().source)) : nullptr) {
     QLabel* badge = MakeSourceBadge(*source, kSourceBadge, this);
     badge->setToolTip(source->name);
-    Header()->addWidget(badge, 0, Qt::AlignVCenter);
+    AddHeaderWidget(badge);
   }
 
   if (one) {
@@ -157,24 +161,19 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
   AddPrefixRow();
   AddSavesRow();
 
-  auto* buttons = new QWidget(this);
-  auto* buttons_layout = new QHBoxLayout(buttons);
-  buttons_layout->setContentsMargins(18, 12, 18, 10);
-  buttons_layout->setSpacing(8);
-  buttons_layout->addStretch(1);
-  auto* cancel = new QPushButton("Cancel", buttons);
+  QHBoxLayout* buttons_layout = ButtonRow();
+  auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, &RemoveGamesCard::CloseRequested);
   buttons_layout->addWidget(cancel);
-  auto* confirm = new QPushButton(action, buttons);
+  auto* confirm = new Button(action, ButtonKind::Secondary, this);
   // Red when it deletes anything; a plain remove only forgets the game.
   const bool deletes = std::ranges::any_of(plans_, DeletesFiles);
-  if (deletes) confirm->setProperty("tone", "danger");
+  if (deletes) confirm->SetKind(ButtonKind::Danger);
   connect(confirm, &QPushButton::clicked, this, [this] {
     emit Confirmed(prefix_ != nullptr && prefix_->isChecked(),
                    saves_ != nullptr && saves_->isChecked());
   });
   buttons_layout->addWidget(confirm);
-  AddFooterRow(buttons);
   // Reached by a click or the Delete key, so Return mustn't confirm it a second time.
   cancel->setFocus();
 }
@@ -183,7 +182,7 @@ void RemoveGamesCard::AddInfoRow(const QString& label, std::function<QString()> 
   auto* row = new SettingRow(label, QString(), this);
   // One line, cut short with the whole of it as the tooltip: the size leads, so it always shows.
   auto* value = new ElidedLabel(text(), row);
-  value->setProperty("role", "subtle");
+  SetTextStyle(value, text::kSubtle);
   value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   row->AddControl(value, 1);
   AddRow(row);
@@ -198,7 +197,7 @@ void RemoveGamesCard::AddGameRow(const QString& name, std::function<QString()> t
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(12);
   layout->addWidget(new ElidedLabel(name, line), 1);
-  auto* value = MakeLabel(line, text(), "subtle");
+  auto* value = MakeLabel(line, text(), text::kSubtle);
   layout->addWidget(value);
   row->AddWideControl(line);
   AddRow(row);
@@ -217,7 +216,7 @@ void RemoveGamesCard::AddPrefixRow() {
                         : rest ? "Delete the rest of its prefix"
                                : "Delete its prefix";
   auto* row = new SettingRow(label, QString(), this);
-  auto* size = MakeLabel(row, QString(), "subtle");
+  auto* size = MakeLabel(row, QString(), text::kSubtle);
   row->AddControl(size);
   prefix_ = new Switch(row);
   prefix_->setAccessibleName(label);
@@ -245,7 +244,7 @@ void RemoveGamesCard::AddSavesRow() {
   const bool one = plans_.size() == 1;
   const QString label = one ? "Delete its save backups" : "Delete their save backups";
   auto* row = new SettingRow(label, QString(), this);
-  auto* size = MakeLabel(row, QString(), "subtle");
+  auto* size = MakeLabel(row, QString(), text::kSubtle);
   row->AddControl(size);
   saves_ = new Switch(row);
   saves_->setAccessibleName(label);

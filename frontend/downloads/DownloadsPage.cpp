@@ -12,14 +12,17 @@
 #include "../activity/DownloadTracker.h"
 #include "../app/Notify.h"
 #include "../client/api/Downloads.h"
-#include "../settings/SettingsCard.h"
+#include "../components/Button.h"
+#include "../components/Card.h"
+#include "../components/Format.h"
+#include "../components/IconButton.h"
+#include "../components/Labels.h"
+#include "../components/ListEdit.h"
+#include "../components/PageHeader.h"
+#include "../components/PopupDialog.h"
+#include "../components/Scrolling.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ListEdit.h"
-#include "../widgets/PageHeader.h"
-#include "../widgets/PopupDialog.h"
-#include "../widgets/Scrolling.h"
 #include "LinkDownloads.h"
 
 namespace mira_gui {
@@ -72,10 +75,8 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
   passwords->setToolTip("The archive passwords Mira tries on what it downloads");
   connect(passwords, &QPushButton::clicked, this, &DownloadsPage::EditPasswords);
   header_->AddControl(passwords);
-  auto* settings = new QToolButton(this);
-  settings->setAutoRaise(true);
-  icons::Follow(settings, icons::Glyph::Settings);
-  settings->setToolTip("Download settings: speed limit, how many at once");
+  auto* settings = new IconButton(icons::Glyph::Settings,
+                                  "Download settings: speed limit, how many at once", this);
   connect(settings, &QToolButton::clicked, this, &DownloadsPage::SettingsRequested);
   header_->AddControl(settings);
   outer->addWidget(header_);
@@ -94,14 +95,14 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
   empty_ = MakeLabel(body,
                      "Nothing is downloading or installing. Add games from links with Add "
                      "games › Download from links.",
-                     "subtle");
+                     text::kSubtle);
   empty_->setWordWrap(true);
   body_layout->addWidget(empty_);
 
   const auto add_section = [&](const QString& heading,
                                std::function<bool(const Entry&)> filter) -> Section& {
     Section section;
-    section.card = new SettingsCard(heading, body);
+    section.card = new Card(heading, body);
     section.list = new DownloadList(tracker_, artwork, DownloadList::Style::Full, section.card);
     section.list->SetFilter(std::move(filter));
     section.card->AddRow(section.list);
@@ -145,13 +146,12 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
   });
   Section& finished =
       add_section("Finished", [](const Entry& entry) { return entry.state == State::Finished; });
-  auto* clear = new QPushButton("Clear", finished.card);
-  clear->setObjectName("text_button");
+  auto* clear = new Button("Clear", ButtonKind::Link, finished.card);
   connect(clear, &QPushButton::clicked, this, [this] {
     tracker_->ClearFinished();
     links_->ClearFinished();
   });
-  finished.card->Header()->addWidget(clear);
+  finished.card->AddHeaderWidget(clear);
   body_layout->addStretch(1);
   scroll->setWidget(body);
   outer->addWidget(scroll, /*stretch=*/1);
@@ -204,7 +204,7 @@ void DownloadsPage::EditPasswords() {
   api::GetDownloadPasswordsAsync(this, [this](DownloadPasswordsResult result) {
     if (!result.ok)
       return notify::FailedRequest(this, "Could not read the saved passwords", result.error);
-    PopupDialog dialog(this, notify::Level::Info, "Saved passwords");
+    PopupDialog dialog(this, Tone::Info, "Saved passwords");
     dialog.SetMessage("Tried on every encrypted archive, most recently working first.");
     dialog.SetWidth(460);
     auto* list = new ListEdit(ListEdit::Kind::Text, "Add password", &dialog);

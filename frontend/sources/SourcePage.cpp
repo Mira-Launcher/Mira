@@ -13,7 +13,6 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QStackedWidget>
 #include <QStandardItemModel>
 #include <QTimer>
@@ -35,6 +34,19 @@
 #include "../client/api/Library.h"
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
+#include "../components/Dot.h"
+#include "../components/FlatCombo.h"
+#include "../components/Format.h"
+#include "../components/IconButton.h"
+#include "../components/Labels.h"
+#include "../components/ModalOverlay.h"
+#include "../components/PopupDialog.h"
+#include "../components/ProgressRail.h"
+#include "../components/Scrolling.h"
+#include "../components/SearchField.h"
+#include "../components/TabRow.h"
+#include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
 #include "../library/AddGamesCard.h"
 #include "../library/ArtworkStore.h"
@@ -48,14 +60,6 @@
 #include "../library/ZoomSettle.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ModalOverlay.h"
-#include "../widgets/PopupDialog.h"
-#include "../widgets/ProgressRail.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/TabRow.h"
-#include "../widgets/WindowCards.h"
 #include "ItchCollectionsCard.h"
 #include "ModManagerPicker.h"
 #include "SourceRemoval.h"
@@ -251,9 +255,8 @@ QWidget* SourcePage::BuildTopRow() {
   tabs_ = new TabRow(this);
   tabs_->SetTabsVisible(false);
 
-  status_line_ = new QLabel(tabs_);
-  status_line_->setObjectName("page_status");
-  status_line_->setTextFormat(Qt::RichText);
+  status_line_ = new StatusLine(tabs_);
+  status_line_->Label()->setObjectName("page_status");
   status_line_->setToolTip(CopyFor(id_).blurb);
   tabs_->SetTrailing(status_line_);
 
@@ -322,19 +325,13 @@ QWidget* SourcePage::BuildTopRow() {
   });
   tabs_->SetTrailing(import_button_);
 
-  settings_button_ = new QToolButton(tabs_);
-  icons::Follow(settings_button_, icons::Glyph::Settings);
-  settings_button_->setToolTip(source_.name + " settings");
-  settings_button_->setAutoRaise(true);
+  settings_button_ = new IconButton(icons::Glyph::Settings, source_.name + " settings", tabs_);
   connect(settings_button_, &QToolButton::clicked, this, &SourcePage::OpenSettingsModal);
   tabs_->SetTrailing(settings_button_);
   // Local has no settings of its own, and nothing to remove; a mod manager has no settings.
   settings_button_->setVisible(id_ != "local" && !IsModManager());
 
-  more_button_ = new QToolButton(tabs_);
-  icons::Follow(more_button_, icons::Glyph::More);
-  more_button_->setToolTip("More");
-  more_button_->setAutoRaise(true);
+  more_button_ = new IconButton(icons::Glyph::More, "More", tabs_);
   more_button_->setPopupMode(QToolButton::InstantPopup);
   auto* more_menu = new QMenu(more_button_);
   connect(more_menu, &QMenu::aboutToShow, this, [this, more_menu] { FillMoreMenu(more_menu); });
@@ -342,9 +339,7 @@ QWidget* SourcePage::BuildTopRow() {
   tabs_->SetTrailing(more_button_);
   more_button_->setVisible(id_ != "local");
 
-  filter_ = new QLineEdit(tabs_);
-  filter_->setPlaceholderText("Filter…");
-  filter_->setClearButtonEnabled(true);
+  filter_ = new SearchField("Filter…", tabs_);
   connect(filter_, &QLineEdit::textChanged, this, &SourcePage::ApplyFilter);
   tabs_->SetSearch(filter_);
   return tabs_;
@@ -357,12 +352,7 @@ void SourcePage::OpenSettingsModal() {
     connect(settings_card_, &SourceSettingsCard::OpenSettingsRequested, this,
             &SourcePage::OpenSettingsRequested);
     settings_card_->setMaximumWidth(560);
-    auto* close = new QToolButton(settings_card_);
-    icons::Follow(close, icons::Glyph::Close);
-    close->setToolTip("Close");
-    close->setAutoRaise(true);
-    connect(close, &QToolButton::clicked, this, &SourcePage::CloseSettingsModal);
-    settings_card_->Header()->addWidget(close);
+    settings_card_->SetClose("Close", [this] { CloseSettingsModal(); });
   } else {
     settings_card_->Refresh();
   }
@@ -374,21 +364,15 @@ void SourcePage::OpenCollectionsModal() {
     collections_card_ = new ItchCollectionsCard(this);
     collections_card_->setMaximumWidth(560);
     connect(collections_card_, &ItchCollectionsCard::Changed, this, [this] { RefreshOwned(); });
-    auto* close = new QToolButton(collections_card_);
-    icons::Follow(close, icons::Glyph::Close);
-    close->setToolTip("Close");
-    close->setAutoRaise(true);
-    connect(close, &QToolButton::clicked, this, &SourcePage::CloseSettingsModal);
-    collections_card_->Header()->addWidget(close);
+    collections_card_->SetClose("Close", [this] { CloseSettingsModal(); });
   }
   collections_card_->Refresh();
   ShowModal(collections_card_);
 }
 
-void SourcePage::ShowModal(mira_gui::SettingsCard* card) {
+void SourcePage::ShowModal(mira_gui::Card* card) {
   if (settings_overlay_ == nullptr) {
     settings_overlay_ = new ModalOverlay(this);
-    settings_overlay_->scrim = QColor(0, 0, 0, 150);
     settings_overlay_->setFocusPolicy(Qt::StrongFocus);
     settings_overlay_->on_backdrop_clicked = [this] { CloseSettingsModal(); };
     auto* scroll = new QScrollArea(settings_overlay_);
@@ -397,7 +381,7 @@ void SourcePage::ShowModal(mira_gui::SettingsCard* card) {
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     SetUpScrolling(scroll, settings_overlay_);  // set up after the page's, so it's asked first
     // Only the viewport: the card keeps its own background.
-    scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget { background: transparent; }");
+    SeeThrough(scroll, SeeThroughPart::Viewport);
     // Centered both ways; FitSettingsModal sizes it, and a card taller than the window scrolls.
     settings_scroll_ = scroll;
     auto* column = new QVBoxLayout(settings_overlay_);
@@ -456,10 +440,7 @@ void SourcePage::FitSettingsModal() {
   modal_card_->setFixedWidth(width);
   const int wanted = modal_card_->heightForWidth(width) > 0 ? modal_card_->heightForWidth(width)
                                                             : modal_card_->sizeHint().height();
-  settings_scroll_->setFixedWidth(width +
-                                  (wanted > height() - 2 * kMargin
-                                       ? settings_scroll_->verticalScrollBar()->sizeHint().width()
-                                       : 0));
+  settings_scroll_->setFixedWidth(width);
   settings_scroll_->setFixedHeight(std::min(wanted, std::max(120, height() - 2 * kMargin)));
 }
 
@@ -584,19 +565,19 @@ QWidget* SourcePage::BuildDropZone(QWidget* parent) {
   logo->setPixmap(SourceLogo(source_, 48, devicePixelRatioF()));
   layout->addWidget(logo, 0, Qt::AlignHCenter);
   auto* title = new QLabel("Drop " + PlaysText(source_) + " games here", drop_zone_);
-  title->setProperty("role", "heading");
+  SetTextStyle(title, text::kHeading);
   title->setAlignment(Qt::AlignCenter);
   title->setWordWrap(true);
   layout->addWidget(title);
   auto* line = MakeLabel(
       drop_zone_, "Or add them from a folder. Games you put in its games folder show up too.",
-      "muted");
+      text::kDetail);
   line->setAlignment(Qt::AlignCenter);
   layout->addWidget(line);
   auto* buttons = new QHBoxLayout();
   buttons->setSpacing(8);
   buttons->addStretch(1);
-  auto* add = new QPushButton("Add games…", drop_zone_);
+  auto* add = new Button("Add games…", ButtonKind::Primary, drop_zone_);
   add->setDefault(true);
   connect(add, &QPushButton::clicked, this, &SourcePage::PickGames);
   auto* folder = new QPushButton("Open games folder", drop_zone_);
@@ -620,16 +601,16 @@ QWidget* SourcePage::BuildLibrarySection() {
 
   auto* header = new QHBoxLayout();
   library_heading_ = new QLabel("In your library", section);
-  library_heading_->setProperty("role", "heading");
+  SetTextStyle(library_heading_, text::kHeading);
   header->addWidget(library_heading_);
   header->addStretch(1);
-  import_result_ = MakeLabel(section, QString(), "muted");
+  import_result_ = MakeLabel(section, QString(), text::kDetail);
   import_result_->setWordWrap(false);
   import_result_->setVisible(false);
   header->addWidget(import_result_);
   layout->addLayout(header);
 
-  library_empty_ = MakeLabel(section, QString(), "muted");
+  library_empty_ = MakeLabel(section, QString(), text::kDetail);
   layout->addWidget(library_empty_);
   if (IsEmulator()) layout->addWidget(BuildDropZone(section));
 
@@ -662,13 +643,12 @@ QWidget* SourcePage::BuildOwnedSection() {
                               : IsLauncher()  ? "More " + CopyFor(id_).item + "s"
                                               : QString("Not installed"),
                               owned_section_);
-  owned_heading_->setProperty("role", "heading");
+  SetTextStyle(owned_heading_, text::kHeading);
   header->addWidget(owned_heading_, 0, Qt::AlignBaseline);
-  owned_count_ = MakeLabel(owned_section_, QString(), "muted", /*wrap=*/false);
+  owned_count_ = MakeLabel(owned_section_, QString(), text::kDetail, /*wrap=*/false);
   header->addWidget(owned_count_, 0, Qt::AlignBaseline);
   header->addStretch(1);
-  clear_filters_ = new QPushButton("Clear filters", owned_section_);
-  clear_filters_->setObjectName("text_button");
+  clear_filters_ = new Button("Clear filters", ButtonKind::Link, owned_section_);
   KeepSpaceWhenHidden(clear_filters_);
   clear_filters_->setVisible(false);
   header->addWidget(clear_filters_);
@@ -717,7 +697,7 @@ QWidget* SourcePage::BuildOwnedSection() {
   owned_skeleton_->setVisible(false);
   layout->addWidget(owned_skeleton_);
 
-  owned_note_ = MakeLabel(owned_section_, QString(), "muted");
+  owned_note_ = MakeLabel(owned_section_, QString(), text::kDetail);
   owned_note_->setVisible(false);
   layout->addWidget(owned_note_);
   if (id_ == "steam") {
@@ -744,7 +724,7 @@ QWidget* SourcePage::BuildOwnedSection() {
       ShowLine(owned_note_,
                source_.name +
                    " doesn't list games you own. What it installs shows up in your library above.",
-               "muted");
+               text::kDetail);
     }
   }
 
@@ -947,7 +927,7 @@ void SourcePage::AddToGames(const std::vector<std::string>& ids) {
                                        : QString("%1 games' prefixes").arg(ids.size());
   adding_ += static_cast<int>(ids.size());
   import_button_->setEnabled(false);
-  ShowLine(import_result_, "Getting " + what + " ready for " + source_.name + "…", "muted");
+  ShowLine(import_result_, "Getting " + what + " ready for " + source_.name + "…", text::kDetail);
   auto failed = std::make_shared<std::vector<std::pair<QString, ApiError>>>();
   auto left = std::make_shared<int>(static_cast<int>(ids.size()));
   const int count = static_cast<int>(ids.size());
@@ -962,16 +942,16 @@ void SourcePage::AddToGames(const std::vector<std::string>& ids) {
           if (!failed->empty()) {
             const auto& [first, error] = failed->front();
             const size_t more = failed->size() - 1;
-            const QString others = more == 0   ? QString()
-                                   : more == 1 ? QString(" and 1 other game")
-                                               : QString(" and %1 other games").arg(more);
+            const QString others =
+                more == 0 ? QString()
+                          : " and " + Counted(static_cast<qsizetype>(more), "other game");
             return ShowError(import_result_, "Could not add it to " + first + others + ".", error);
           }
           ShowLine(import_result_,
                    count == 1
                        ? "Added. Open it from the game's page."
                        : QString("Added to %1 games. Open it from a game's page.").arg(count),
-                   "muted");
+                   text::kDetail);
         });
   }
 }
@@ -1008,14 +988,14 @@ void SourcePage::AddGames(const std::vector<std::string>& paths) {
   api::AddEmulatorFilesAsync(this, id_, paths, [this](StoreImportResult result) {
     import_button_->setEnabled(true);
     if (!result.ok) return ShowError(import_result_, "Could not add those games", result.error);
-    ShowLine(import_result_, ImportOutcome(result.added, result.updated, "game"), "muted");
+    ShowLine(import_result_, ImportOutcome(result.added, result.updated, "game"), text::kDetail);
     if (result.added > 0 || result.updated > 0) emit LibraryChanged();
     for (const StartChoice& choice : result.choose) AskStartFile(choice);
   });
 }
 
 void SourcePage::AskStartFile(const StartChoice& choice) {
-  PopupDialog dialog(this, notify::Level::Info,
+  PopupDialog dialog(this, Tone::Info,
                      "Which file starts " + QString::fromStdString(choice.name) + "?");
   dialog.SetMessage(
       "Its folder has more than one program. You can change it later in the game's settings.");
@@ -1057,7 +1037,8 @@ void SourcePage::ApplyStoreStatus(const StoreStatusResult& status) {
     // Whatever was listed before signing out isn't this account's to install.
     owned_.clear();
     RebuildOwnedTiles();
-    ShowLine(owned_note_, "Sign in to " + source_.name + " to see the games you own.", "muted");
+    ShowLine(owned_note_, "Sign in to " + source_.name + " to see the games you own.",
+             text::kDetail);
   } else if (owned_section_ != nullptr) {
     owned_refresh_->setEnabled(!owned_loading_);
   }
@@ -1088,42 +1069,52 @@ void SourcePage::ApplyLauncher(const LauncherInfo& launcher) {
 }
 
 void SourcePage::UpdateStatusLine() {
-  const theme::Tokens& tokens = theme::Current();
+  std::optional<Tone> tone;
   QStringList parts;
+  const auto state = [&](Tone of, const QString& text) {
+    tone = of;
+    parts << text;
+  };
   if (IsStore()) {
     if (tool_updating_) {
-      parts << StatusDot(tokens.info) + "Updating " + ToolNames() + "…";
+      state(Tone::Info, "Updating " + ToolNames() + "…");
     } else if (!tool_installed_) {
-      parts << StatusDot(tokens.warning) + "Not set up";
+      state(Tone::Warning, "Not set up");
     } else if (!authenticated_) {
-      parts << StatusDot(tokens.warning) + "Not signed in";
+      state(Tone::Warning, "Not signed in");
     } else {
-      parts << StatusDot(tokens.success) +
-                   (account_.empty()
-                        ? QString("Signed in")
-                        : "Signed in as " + QString::fromStdString(account_).toHtmlEscaped());
+      state(Tone::Success, account_.empty() ? QString("Signed in")
+                                            : "Signed in as " + QString::fromStdString(account_));
     }
   } else if (IsLauncher()) {
-    parts << (launcher_installing_  ? StatusDot(tokens.info) + "Installing…"
-              : launcher_installed_ ? StatusDot(tokens.success) + "Installed"
-                                    : StatusDot(tokens.warning) + "Not installed");
+    if (launcher_installing_) {
+      state(Tone::Info, "Installing…");
+    } else {
+      state(launcher_installed_ ? Tone::Success : Tone::Warning,
+            launcher_installed_ ? "Installed" : "Not installed");
+    }
   } else if (IsEmulator()) {
-    parts << (emulator_.installed ? StatusDot(tokens.success) + "Installed"
-                                  : StatusDot(tokens.warning) + "Not installed");
+    state(emulator_.installed ? Tone::Success : Tone::Warning,
+          emulator_.installed ? "Installed" : "Not installed");
   } else if (IsModManager()) {
-    parts << (manager_unknown_     ? StatusDot(tokens.warning) + "Could not check"
-              : manager_.installed ? StatusDot(tokens.success) + "Installed"
-                                   : StatusDot(tokens.info) + "Installing…");
+    if (manager_unknown_) {
+      state(Tone::Warning, "Could not check");
+    } else {
+      state(manager_.installed ? Tone::Success : Tone::Info,
+            manager_.installed ? "Installed" : "Installing…");
+    }
   }
   if (IsModManager()) {
-    parts << "On " + GamesCount(library_count_);
+    parts << "On " + Counted(library_count_, "game");
   } else if (id_ != "humble") {
     const QString item = CopyFor(id_).item;
-    parts << (library_count_ == 1
-                  ? QString("1 %1 in your library").arg(item)
-                  : QString("%1 %2s in your library").arg(library_count_).arg(item));
+    parts << Counted(library_count_, item) + " in your library";
   }
-  status_line_->setText(parts.join("  ·  "));
+  if (tone) {
+    status_line_->Set(*tone, parts.join("  ·  "));
+  } else {
+    status_line_->SetPlain(parts.join("  ·  "));
+  }
 
   if (IsLauncher() && owned_note_ != nullptr) {
     const QString items = CopyFor(id_).item + "s";
@@ -1132,7 +1123,7 @@ void SourcePage::UpdateStatusLine() {
                  ? "Install more " + items + " in " + source_.name + ", then press \"" +
                        CopyFor(id_).import_button + "\" to add them here."
                  : "Install " + source_.name + " first, then install " + items + " in it.",
-             "muted");
+             text::kDetail);
   }
   if (library_empty_ == nullptr) return;
   library_empty_->setVisible(library_count_ == 0);
@@ -1167,7 +1158,7 @@ void SourcePage::Import() {
   const auto done = [this](bool ok, const ApiError& error, int added, int updated) {
     import_button_->setEnabled(true);
     if (ok) {
-      ShowLine(import_result_, ImportOutcome(added, updated, CopyFor(id_).item), "muted");
+      ShowLine(import_result_, ImportOutcome(added, updated, CopyFor(id_).item), text::kDetail);
     } else {
       ShowError(import_result_, "Could not import", error);
     }
@@ -1308,14 +1299,14 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
     ShowLine(owned_note_,
              "Steam on this computer hasn't listed any games yet. Open Steam and sign in, or set "
              "a Steam Web API key and your SteamID64 in Settings.",
-             "muted");
+             text::kDetail);
     if (steam_settings_ != nullptr) steam_settings_->setVisible(true);
   } else if (owned_.empty()) {
     ShowLine(owned_note_,
              library_->ShowingHidden() ? "Nothing hidden here" : "Everything you own is installed",
-             "muted");
+             text::kDetail);
   } else {
-    ShowLine(owned_note_, QString(), "muted");
+    ShowLine(owned_note_, QString(), text::kDetail);
   }
   RebuildOwnedTiles();
 }
@@ -1330,7 +1321,7 @@ void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
   }
   // A bundle can't be hidden.
   if (library_->ShowingHidden()) {
-    ShowLine(owned_note_, "Nothing hidden here", "muted");
+    ShowLine(owned_note_, "Nothing hidden here", text::kDetail);
     RebuildOwnedTiles();
     return;
   }
@@ -1343,7 +1334,7 @@ void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
            owned_.empty() ? QString("No purchases on this account")
                           : QString("Downloads land in your games folder, where Mira picks up "
                                     "anything it recognizes."),
-           "muted");
+           text::kDetail);
   RebuildOwnedTiles();
 }
 

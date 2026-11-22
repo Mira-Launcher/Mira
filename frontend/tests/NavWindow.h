@@ -10,8 +10,8 @@
 #include <QTest>
 #include <memory>
 
-#include "widgets/FocusRing.h"
-#include "widgets/SpatialNav.h"
+#include "components/FocusRing.h"
+#include "components/SpatialNav.h"
 
 namespace nav_test {
 

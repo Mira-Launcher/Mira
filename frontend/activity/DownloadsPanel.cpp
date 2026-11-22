@@ -7,16 +7,17 @@
 #include <QScrollArea>
 #include <QVBoxLayout>
 
-#include "../widgets/Scrolling.h"
+#include "../components/Button.h"
+#include "../components/Metrics.h"
+#include "../components/Scrolling.h"
+#include "../components/Text.h"
 #include "DownloadList.h"
 #include "DownloadTracker.h"
 
 namespace mira_gui {
 
 DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, QWidget* parent)
-    : QWidget(parent, Qt::Popup), tracker_(tracker) {
-  setObjectName("downloads_popover");
-  setAttribute(Qt::WA_StyledBackground);
+    : Popover(parent), tracker_(tracker) {
   setFixedWidth(380);
   // Laid out as a settings card: titled header, then rows split by a line.
   auto* layout = new QVBoxLayout(this);
@@ -24,28 +25,26 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   layout->setSpacing(0);
 
   auto* header = new QHBoxLayout();
-  header->setContentsMargins(18, 12, 10, 6);
+  header->setContentsMargins(kRowPaddingX, 12, 10, 6);
   auto* title = new QLabel("Activity", this);
-  title->setProperty("role", "section");
+  SetTextStyle(title, text::kSection);
   header->addWidget(title);
   header->addStretch(1);
-  auto* manage = new QPushButton("All downloads", this);
-  manage->setObjectName("text_button");
+  auto* manage = new Button("All downloads", ButtonKind::Link, this);
   connect(manage, &QPushButton::clicked, this, [this] {
     hide();
     emit ManageRequested();
   });
   header->addWidget(manage);
-  clear_ = new QPushButton("Clear finished", this);
-  clear_->setObjectName("text_button");
+  clear_ = new Button("Clear finished", ButtonKind::Link, this);
   connect(clear_, &QPushButton::clicked, tracker_, &DownloadTracker::ClearFinished);
   connect(clear_, &QPushButton::clicked, this, &DownloadsPanel::FinishedCleared);
   header->addWidget(clear_);
   layout->addLayout(header);
 
   empty_ = new QLabel("Nothing installing, downloading or running", this);
-  empty_->setProperty("role", "subtle");
-  empty_->setContentsMargins(18, 6, 18, 10);
+  SetTextStyle(empty_, text::kSubtle);
+  empty_->setContentsMargins(kRowPaddingX, 6, kRowPaddingX, 10);
   layout->addWidget(empty_);
 
   scroll_ = new QScrollArea(this);
@@ -69,9 +68,7 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
 
 void DownloadsPanel::ShowBelow(QWidget* anchor) {
   list_->Rebuild();
-  const QPoint corner = anchor->mapToGlobal(QPoint(anchor->width(), anchor->height() + 4));
-  move(corner.x() - width(), corner.y());
-  show();
+  PopUpBelow(anchor, popup::Align::End);
 }
 
 void DownloadsPanel::Fit() {

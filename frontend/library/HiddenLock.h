@@ -1,6 +1,7 @@
 #pragma once
 
-#include "../settings/SettingsCard.h"
+#include "../components/SettingRow.h"
+#include "../components/SheetCard.h"
 
 class QLabel;
 class QLineEdit;
@@ -9,7 +10,7 @@ class QPushButton;
 namespace mira_gui {
 
 // Asks for the hidden games' password before hidden mode shows them.
-class HiddenUnlockCard : public SettingsCard {
+class HiddenUnlockCard : public SheetCard {
   Q_OBJECT
 
  public:

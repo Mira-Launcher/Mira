@@ -8,24 +8,29 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Stores.h"
+#include "../components/Format.h"
+#include "../components/Metrics.h"
+#include "../components/SettingRow.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
+#include "SourceText.h"
 
 namespace mira_gui {
 
 ItchCollectionsCard::ItchCollectionsCard(QWidget* parent)
-    : SettingsCard("itch.io collections", parent) {
+    : SheetCard("itch.io collections", parent) {
   auto* intro = new QLabel(
       "Games in these collections show on the itch page. Free ones can be installed; paid ones "
       "install once you own them.",
       this);
-  intro->setProperty("role", "muted");
+  SetTextStyle(intro, text::kDetail);
   intro->setWordWrap(true);
-  intro->setContentsMargins(18, 8, 18, 8);
+  intro->setContentsMargins(kRowPaddingX, 8, kRowPaddingX, 8);
   AddRow(intro);
 
   status_ = new QLabel(this);
   status_->setWordWrap(true);
-  status_->setContentsMargins(18, 8, 18, 8);
+  status_->setContentsMargins(kRowPaddingX, 8, kRowPaddingX, 8);
   AddRow(status_);
 
   auto* add_row = new SettingRow("Add by link", "A collection's itch.io address", this);
@@ -47,9 +52,7 @@ void ItchCollectionsCard::Refresh() {
 }
 
 void ItchCollectionsCard::SetStatus(const QString& text, bool error) {
-  status_->setText(text);
-  status_->setVisible(!text.isEmpty());
-  theme::SetStyleProperty(status_, "role", error ? "error" : "muted");
+  ShowLine(status_, text, error ? text::kError : text::kDetail);
 }
 
 void ItchCollectionsCard::ShowCollections(const ItchCollectionsResult& result) {
@@ -62,15 +65,12 @@ void ItchCollectionsCard::ShowCollections(const ItchCollectionsResult& result) {
   SetStatus(result.collections.empty() ? "No collections yet" : QString());
   for (const ItchCollection& collection : result.collections) {
     auto* row = new SettingRow(QString::fromStdString(collection.title), QString(), this);
-    auto* count = new QLabel(QString("%1 game%2")
-                                 .arg(collection.games_count)
-                                 .arg(collection.games_count == 1 ? "" : "s"),
-                             row);
-    count->setProperty("role", "muted");
+    auto* count = new QLabel(Counted(collection.games_count, "game"), row);
+    SetTextStyle(count, text::kDetail);
     row->AddControl(count);
     if (collection.own) {
       auto* yours = new QLabel("Yours", row);
-      yours->setProperty("role", "muted");
+      SetTextStyle(yours, text::kDetail);
       row->AddControl(yours);
     } else {
       auto* remove = new QPushButton("Remove", row);

@@ -16,9 +16,15 @@
 #include <QVariantAnimation>
 #include <algorithm>
 
+#include "../components/Card.h"
+#include "../components/Metrics.h"
+#include "../components/NavRow.h"
+#include "../components/Scrolling.h"
+#include "../components/SearchField.h"
+#include "../components/SettingRow.h"
+#include "../components/SettingsPage.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
-#include "../widgets/Scrolling.h"
-#include "SettingsCard.h"
 #include "SettingsSearch.h"
 
 namespace mira_gui {
@@ -87,17 +93,9 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   left_layout_->setSpacing(10);
   column->addLayout(left_layout_);
 
-  search_ = new QLineEdit(left_);
+  search_ = new SearchField("Search settings…", left_);
   search_->setObjectName("settings_search");
-  search_->setPlaceholderText("Search settings…");
-  // Mira's own glyph rather than the desktop's clear icon, which doesn't match the rest.
-  auto* clear = search_->addAction(QIcon(), QLineEdit::TrailingPosition);
-  icons::Follow(clear, icons::Glyph::Close, &theme::Tokens::text_muted);
-  clear->setToolTip("Clear the search");
-  clear->setVisible(false);
-  connect(clear, &QAction::triggered, search_, &QLineEdit::clear);
-  connect(search_, &QLineEdit::textChanged, this, [this, clear](const QString& text) {
-    clear->setVisible(!text.isEmpty());
+  connect(search_, &QLineEdit::textChanged, this, [this] {
     ApplyFilter();
     jump_->stop();
     jumping_to_ = -1;
@@ -115,14 +113,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   nav_layout_->addStretch(1);
   scroll->setWidget(nav_);
   column->addWidget(scroll, /*stretch=*/1);
-  const auto fit_rows = [this, scroll] {
-    const int bar = scroll->verticalScrollBar()->maximum() > 0
-                        ? scroll->verticalScrollBar()->sizeHint().width()
-                        : 0;
-    nav_layout_->setContentsMargins(0, 0, std::max(0, kRight - bar), 0);
-  };
-  connect(scroll->verticalScrollBar(), &QScrollBar::rangeChanged, this, fit_rows);
-  fit_rows();
+  nav_layout_->setContentsMargins(0, 0, kRight, 0);
   outer->addWidget(left_);
 
   buttons_ = new QButtonGroup(this);
@@ -155,9 +146,9 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   sticky_layout->setContentsMargins(0, kTitleClearance, 0, 20);
   sticky_layout->setSpacing(kTitleGap);
   sticky_group_ = new QLabel(sticky_);
-  sticky_group_->setProperty("role", "nav_heading");
+  SetTextStyle(sticky_group_, text::kGroup);
   sticky_title_ = new QLabel(sticky_);
-  sticky_title_->setProperty("role", "heading");
+  SetTextStyle(sticky_title_, text::kHeading);
   sticky_layout->addWidget(sticky_group_);
   sticky_layout->addWidget(sticky_title_);
   sticky_->hide();
@@ -174,7 +165,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
 
   empty_state_ = new QLabel("No settings match your search", this);
   empty_state_->setAlignment(Qt::AlignCenter);
-  empty_state_->setProperty("role", "muted");
+  SetTextStyle(empty_state_, text::kDetail);
 
   content_stack_ = new QStackedWidget(this);
   content_stack_->addWidget(scroll_);
@@ -281,7 +272,8 @@ SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph 
     current_heading_ = nullptr;
     if (!nav_group.isEmpty()) {
       current_heading_ = new QLabel(nav_group.toUpper(), nav_);
-      current_heading_->setProperty("role", "nav_heading");
+      SetTextStyle(current_heading_, text::kGroup);
+      current_heading_->setContentsMargins(4, 12, 4, 3);
       nav_layout_->insertWidget(nav_layout_->count() - 1, current_heading_);
     }
   }
@@ -291,7 +283,7 @@ SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph 
   if (current_heading_ != nullptr) page->SetGroupHeading(current_group_);
   sections_->insertWidget(sections_->count() - 1, page);
 
-  auto* button = new QPushButton(title, nav_);
+  auto* button = new NavRow(title, nav_);
   button->setCheckable(true);
   button->setCursor(Qt::PointingHandCursor);
   auto* count = new QLabel(button);
@@ -356,14 +348,14 @@ void SettingsNavWidget::RegisterRow(QWidget* row_widget, const QString& searchab
 
   RowEntry row;
   row.row_widget = row_widget;
-  row.card = AncestorOf<SettingsCard>(row_widget);
+  row.card = AncestorOf<Card>(row_widget);
   row.expander = AncestorOf<ExpanderRow>(row_widget);
   row.search_text = settings_search::Normalize(searchable_text);
   row.category_index = static_cast<int>(category - categories_.begin());
   rows_.push_back(row);
   row_index_by_widget_.insert(row_widget, static_cast<int>(rows_.size()) - 1);
   category->total_rows++;
-  // A row rebuilt later (SettingsCard::ClearRows) leaves the search with it.
+  // A row rebuilt later (Card::ClearRows) leaves the search with it.
   connect(row_widget, &QObject::destroyed, this, [this, row_widget] { UnregisterRow(row_widget); });
 }
 
@@ -392,7 +384,7 @@ void SettingsNavWidget::ApplyFilter() {
   const QString query = search_->text().trimmed();
   const bool searching = !query.isEmpty();
   std::vector<int> visible_count(categories_.size(), 0);
-  QHash<SettingsCard*, int> card_visible;
+  QHash<Card*, int> card_visible;
   QHash<ExpanderRow*, int> expander_visible;
 
   for (const RowEntry& row : rows_) {
@@ -419,7 +411,7 @@ void SettingsNavWidget::ApplyFilter() {
   // A card shows while any of its rows does. Searching unfolds a folded card
   // with a match, and clearing the search folds it again.
   for (const Category& category : categories_) {
-    for (SettingsCard* card : category.page->findChildren<SettingsCard*>()) {
+    for (Card* card : category.page->findChildren<Card*>()) {
       if (!card_visible.contains(card)) {
         card->setVisible(!searching);  // no searchable rows: only shown outside a search
         continue;

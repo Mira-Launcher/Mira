@@ -9,16 +9,17 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 
 #include "../client/api/Artwork.h"
+#include "../components/FlowLayout.h"
+#include "../components/IconButton.h"
+#include "../components/ProgressRail.h"
+#include "../components/Scrolling.h"
+#include "../components/Text.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlowLayout.h"
-#include "../widgets/ProgressRail.h"
-#include "../widgets/Scrolling.h"
 #include "HeroBackdrop.h"
 
 namespace mira_gui {
@@ -78,7 +79,6 @@ class AchievementIcon : public QWidget {
 
 AchievementTile::AchievementTile(const Achievement& item, QWidget* parent)
     : QFrame(parent), item_(item) {
-  setObjectName("settings_card");
   // Its column's width, whatever its text would like: the grid sets the columns.
   setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   auto* row = new QHBoxLayout(this);
@@ -89,18 +89,18 @@ AchievementTile::AchievementTile(const Achievement& item, QWidget* parent)
   auto* text = new QVBoxLayout();
   text->setSpacing(2);
   name_ = new QLabel(this);
-  name_->setProperty("role", "section");
+  SetTextStyle(name_, text::kSection);
   name_->setWordWrap(true);
   description_ = new QLabel(this);
-  description_->setProperty("role", "muted");
+  SetTextStyle(description_, text::kDetail);
   description_->setWordWrap(true);
   // Wraps rather than widen the tile past its column.
   auto* facts_box = new QWidget(this);
   auto* facts = new FlowLayout(facts_box, 10);
   when_ = new QLabel(facts_box);
-  when_->setProperty("role", "muted");
+  SetTextStyle(when_, text::kDetail);
   rarity_ = new QLabel(facts_box);
-  rarity_->setProperty("role", "muted");
+  SetTextStyle(rarity_, text::kDetail);
   facts->addWidget(when_);
   facts->addWidget(rarity_);
   text->addWidget(name_);
@@ -155,9 +155,8 @@ void AchievementTile::Fill() {
                                   : "Locked");
   rarity_->setVisible(item_.rarity >= 0);
   rarity_->setText(QString("%1% of players").arg(QLocale().toString(item_.rarity, 'f', 1)));
-  rarity_->setStyleSheet(item_.rarity >= 0 && item_.rarity < kRare
-                             ? QString("color: %1;").arg(theme::Current().warning.name())
-                             : QString());
+  const bool rare = item_.rarity >= 0 && item_.rarity < kRare;
+  SetTextStyle(rarity_, {TextRole::Body, rare ? Tone::Warning : Tone::Muted, TextSize::Small});
   icon_->Set(pixmap_, !item_.unlocked, masked);
 }
 
@@ -170,15 +169,12 @@ AchievementsPage::AchievementsPage(std::string id, QWidget* parent)
   auto* header = new QHBoxLayout();
   header->setContentsMargins(kPageHeaderMargins);
   header->setSpacing(12);
-  auto* back = new QToolButton(this);
-  back->setAutoRaise(true);
-  back->setToolTip("Back");
-  icons::Follow(back, icons::Glyph::ArrowLeft);
+  auto* back = new IconButton(icons::Glyph::ArrowLeft, "Back", this);
   connect(back, &QToolButton::clicked, this, &AchievementsPage::BackClicked);
   auto* title = new QLabel("Achievements", this);
-  title->setProperty("role", "heading");
+  SetTextStyle(title, text::kHeading);
   count_ = new QLabel(this);
-  count_->setProperty("role", "subtle");
+  SetTextStyle(count_, text::kSubtle);
   rail_ = new ProgressRail(this);
   rail_->setFixedWidth(120);
   header->addWidget(back);
@@ -192,9 +188,7 @@ AchievementsPage::AchievementsPage(std::string id, QWidget* parent)
   scroll_->setWidgetResizable(true);
   scroll_->setFrameShape(QFrame::NoFrame);
   scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  scroll_->setStyleSheet(
-      "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
-  scroll_->viewport()->setAutoFillBackground(false);
+  SeeThrough(scroll_);
   SetUpScrolling(scroll_, this);
   auto* content = new QWidget();
   auto* content_layout = new QVBoxLayout(content);
@@ -269,7 +263,7 @@ void AchievementsPage::resizeEvent(QResizeEvent* event) {
 
 void AchievementsPage::Arrange() {
   // From the page's own width: the viewport's lags behind until the page has been shown.
-  const int room = width() - 36 - scroll_->verticalScrollBar()->sizeHint().width();
+  const int room = width() - 36;
   const int columns = std::max(1, (room + grid_->spacing()) / (kTileWidth + grid_->spacing()));
   if (columns == columns_ && grid_->count() == static_cast<int>(tiles_.size())) return;
   columns_ = columns;

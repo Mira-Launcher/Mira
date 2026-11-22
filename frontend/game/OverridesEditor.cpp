@@ -10,20 +10,22 @@
 #include "../client/api/Config.h"
 #include "../client/api/Games.h"
 #include "../client/api/Runners.h"
-#include "../settings/SettingsCard.h"
-#include "../widgets/ChipToggles.h"
-#include "../widgets/ListEdit.h"
+#include "../components/Card.h"
+#include "../components/ChipGroup.h"
+#include "../components/ListEdit.h"
+#include "../components/SettingRow.h"
+#include "../components/Text.h"
 
 namespace mira_gui {
 
 OverridesEditor::OverridesEditor(std::string game_id, QWidget* parent)
     : QObject(parent), game_id_(std::move(game_id)), parent_(parent) {}
 
-void OverridesEditor::PlaceRow(const std::string& key, SettingsCard* card, int at) {
+void OverridesEditor::PlaceRow(const std::string& key, Card* card, int at) {
   placed_[key] = Placement{card, at};
 }
 
-void OverridesEditor::SetOverridesCard(SettingsCard* card) {
+void OverridesEditor::SetOverridesCard(Card* card) {
   overrides_card_ = card;
   card->hide();  // until a category has a row this game can use
 }
@@ -67,7 +69,7 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
     SettingRow* row = field.Build(parent, QString::fromStdString(doc));
     row->hide();  // until this game's values say it can use it
     if (placed != placed_.end()) {
-      SettingsCard* card = placed->second.card;
+      Card* card = placed->second.card;
       card->AddRow(row);
       if (placed->second.at >= 0) card->MoveRow(row, placed->second.at);
       field.card = card;
@@ -85,7 +87,7 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
     if (field.list != nullptr) {
       // A list the game takes from Settings shows it muted; Edit… starts the game's own copy.
       field.from_settings = new QLabel("From Settings", row);
-      field.from_settings->setProperty("role", "subtle");
+      SetTextStyle(field.from_settings, text::kSubtle);
       row->AddAfterLabel(field.from_settings);
       field.edit_list = new QPushButton("Edit…", row);
       field.edit_list->setToolTip("Give this game a list of its own, starting from Settings' list");
@@ -227,7 +229,7 @@ OverridesEditor::Field* OverridesEditor::Find(const std::string& key) {
   return const_cast<Field*>(std::as_const(*this).Find(key));
 }
 
-void OverridesEditor::HideWhenEmpty(SettingsCard* card) {
+void OverridesEditor::HideWhenEmpty(Card* card) {
   hide_when_empty_.push_back(card);
   card->hide();  // until one of its rows is one this game can use
 }
@@ -247,7 +249,7 @@ void OverridesEditor::UpdateSummaries() {
     any = any || shown > 0;
   }
   if (overrides_card_ != nullptr) overrides_card_->setVisible(any);
-  for (SettingsCard* card : hide_when_empty_) {
+  for (Card* card : hide_when_empty_) {
     card->setVisible(std::ranges::any_of(fields_, [card](const Field& field) {
       return field.card == card && !field.embedded && field.applies && !field.hidden;
     }));

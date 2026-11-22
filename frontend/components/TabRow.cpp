@@ -1,0 +1,271 @@
+#include "TabRow.h"
+
+#include <QEvent>
+#include <QHBoxLayout>
+#include <QLineEdit>
+#include <QMenu>
+#include <QPainter>
+#include <QTimer>
+#include <QToolButton>
+#include <algorithm>
+
+#include "../theme/Icons.h"
+#include "../theme/Theme.h"
+#include "IconButton.h"
+#include "Popover.h"
+#include "PopupCard.h"
+#include "SearchField.h"
+
+namespace mira_gui {
+
+DropdownButton::DropdownButton(QMenu* menu, QWidget* parent) : QPushButton(parent), menu_(menu) {
+  setProperty("dropdown", true);  // base.qss leaves room on the right for the chevron
+  connect(this, &QPushButton::clicked, this, [this] {
+    if (menu_ == nullptr) return;
+    menu_->popup(popup::PlaceBelow(this, menu_->sizeHint(), popup::Align::Start, Popover::kGap));
+  });
+}
+
+QMenu* DropdownButton::Menu() const {
+  return menu_;
+}
+
+void DropdownButton::paintEvent(QPaintEvent* event) {
+  QPushButton::paintEvent(event);
+  constexpr int kSize = 12;
+  QPainter painter(this);
+  painter.drawPixmap(
+      width() - 10 - kSize, (height() - kSize) / 2,
+      icons::For(icons::Glyph::ChevronDown, theme::Current().text_muted).pixmap(kSize, kSize));
+}
+
+namespace {
+
+constexpr int kSearchMax = 320;
+constexpr int kSearchMin = 160;
+constexpr int kStretchMin = 12;  // gap kept between the tabs and the actions
+
+int WidthOf(const QWidget* widget) {
+  return widget->minimumWidth() == widget->maximumWidth() ? widget->minimumWidth()
+                                                          : widget->sizeHint().width();
+}
+
+}  // namespace
+
+TabRow::TabRow(QWidget* parent) : QWidget(parent) {
+  setObjectName("tab_row");
+  setAttribute(Qt::WA_StyledBackground, true);
+  layout_ = new QHBoxLayout(this);
+  layout_->setContentsMargins(0, 0, 0, 0);
+  layout_->setSpacing(4);
+  tabs_ = new QHBoxLayout();
+  tabs_->setSpacing(4);
+  layout_->addLayout(tabs_);
+  layout_->addStretch(1);
+
+  more_menu_ = new QMenu(this);
+  more_ = new DropdownButton(more_menu_, this);
+  more_->setText("More");
+  more_->setCursor(Qt::PointingHandCursor);
+  connect(more_menu_, &QMenu::aboutToShow, this, [this] {
+    more_menu_->clear();
+    for (const QString& key : Offered()) {
+      const Tab& tab = by_key_[key];
+      if (!tab.button->isHidden()) continue;
+      connect(more_menu_->addAction(tab.button->text()), &QAction::triggered, this,
+              [this, key] { Select(key); });
+    }
+  });
+  more_->hide();
+  tabs_->addWidget(more_);
+}
+
+void TabRow::AddTab(const QString& key, const QString& label) {
+  auto* button = new QPushButton(this);
+  button->setCheckable(true);
+  button->setFlat(true);
+  button->setCursor(Qt::PointingHandCursor);
+  connect(button, &QPushButton::clicked, this, [this, key] { Select(key); });
+  tabs_->insertWidget(tabs_->indexOf(more_), button);
+  by_key_.insert(key, Tab{button, label});
+  order_.append(key);
+  Relabel(by_key_[key]);
+}
+
+void TabRow::SetTabOffered(const QString& key, bool offered) {
+  if (offered == !left_out_.contains(key)) return;
+  if (offered)
+    left_out_.removeAll(key);
+  else
+    left_out_.append(key);
+  updateGeometry();
+  Fit();
+}
+
+QStringList TabRow::Offered() const {
+  QStringList offered = order_;
+  for (const QString& key : left_out_) offered.removeAll(key);
+  return offered;
+}
+
+void TabRow::Select(const QString& key) {
+  // Clicking the current tab again keeps it current.
+  const bool changed = key != current_;
+  SetCurrent(key);
+  if (changed) emit CurrentChanged(key);
+}
+
+void TabRow::Relabel(Tab& tab) {
+  tab.button->setText(tab.count < 0 ? tab.label : QString("%1  %2").arg(tab.label).arg(tab.count));
+  updateGeometry();
+  Fit();
+}
+
+void TabRow::SetCount(const QString& key, int count) {
+  const auto it = by_key_.find(key);
+  if (it == by_key_.end() || it->count == count) return;
+  it->count = count;
+  Relabel(*it);
+}
+
+void TabRow::SetCurrent(const QString& key) {
+  current_ = by_key_.contains(key) ? key : QString();
+  for (auto it = by_key_.begin(); it != by_key_.end(); ++it)
+    it->button->setChecked(it.key() == current_);
+  updateGeometry();
+  Fit();  // the current tab is bold, so wider, and always stays in the row
+}
+
+QString TabRow::Current() const {
+  return current_;
+}
+
+void TabRow::SetTabsVisible(bool visible) {
+  tabs_visible_ = visible;
+  updateGeometry();
+  Fit();
+}
+
+void TabRow::SetTrailing(QWidget* widget) {
+  layout_->insertWidget(
+      search_button_ != nullptr ? layout_->indexOf(search_button_) : layout_->count(), widget);
+  trailing_.append(widget);
+  updateGeometry();
+  Fit();
+}
+
+void TabRow::SetSearch(SearchField* search) {
+  search_ = search;
+  search_->setFixedHeight(kControlHeight);
+  search_->installEventFilter(this);
+  search_button_ = new IconButton(icons::Glyph::Search, "Search", this);
+  search_button_->setFixedSize(kControlHeight, kControlHeight);
+  search_button_->hide();
+  connect(search_button_, &QToolButton::clicked, this, [this] {
+    OpenSearch();
+    search_->setFocus(Qt::OtherFocusReason);
+  });
+  layout_->addWidget(search_button_);
+  layout_->addWidget(search_);
+  updateGeometry();
+  Fit();
+}
+
+void TabRow::OpenSearch() {
+  search_open_ = true;
+  Fit();
+}
+
+QSize TabRow::sizeHint() const {
+  QSize hint = QWidget::sizeHint();
+  const int spacing = layout_->spacing();
+  int width = kStretchMin;
+  if (tabs_visible_) {
+    for (const QString& key : Offered()) width += by_key_[key].button->sizeHint().width() + spacing;
+  }
+  for (const QWidget* widget : trailing_) {
+    if (!widget->isHidden()) width += WidthOf(widget) + spacing;
+  }
+  if (search_ != nullptr) width += kSearchMax + spacing;
+  hint.setWidth(width);
+  return hint;
+}
+
+bool TabRow::event(QEvent* event) {
+  // A trailing action shown or hidden, or its text changed.
+  if (event->type() == QEvent::LayoutRequest) Fit();
+  return QWidget::event(event);
+}
+
+bool TabRow::eventFilter(QObject* watched, QEvent* event) {
+  if (watched == search_ && event->type() == QEvent::FocusOut && search_open_) {
+    // Back to its button once left empty; after the focus change settles.
+    QTimer::singleShot(0, this, [this] {
+      if (search_->hasFocus() || !search_->text().isEmpty()) return;
+      search_open_ = false;
+      Fit();
+    });
+  }
+  return QWidget::eventFilter(watched, event);
+}
+
+void TabRow::resizeEvent(QResizeEvent* event) {
+  QWidget::resizeEvent(event);
+  Fit();
+}
+
+void TabRow::Fit() {
+  if (fitting_) return;
+  fitting_ = true;
+  const QStringList offered = Offered();
+  const int spacing = layout_->spacing();
+  const int room = width() - kStretchMin;
+  int trailing = 0;
+  for (const QWidget* widget : trailing_) {
+    if (!widget->isHidden()) trailing += WidthOf(widget) + spacing;
+  }
+
+  auto tabs_width = [&](const QStringList& keys, bool more) {
+    int total = 0;
+    for (const QString& key : keys) total += by_key_[key].button->sizeHint().width() + spacing;
+    return total + (more ? more_->sizeHint().width() + spacing : 0);
+  };
+
+  // The search box first: as wide as the room left beside every tab, within
+  // 160 to 320 px; below that a button, unless it's open or holds a query.
+  int search_space = 0;
+  if (search_ != nullptr) {
+    const int beside = room - trailing - (tabs_visible_ ? tabs_width(offered, false) : 0) - spacing;
+    bool collapsed = false;
+    int search_width = kSearchMin;
+    if (beside >= kSearchMin) {
+      search_width = std::min(kSearchMax, beside);
+    } else if (!search_open_ && search_->text().isEmpty() && !search_->hasFocus()) {
+      collapsed = true;
+    }
+    search_->setVisible(!collapsed);
+    search_button_->setVisible(collapsed);
+    if (!collapsed) search_->setFixedWidth(search_width);
+    search_space = (collapsed ? kControlHeight : search_width) + spacing;
+  }
+
+  // Then the tabs: as many as fit in order, keeping the current one, the
+  // rest in More.
+  QStringList shown = tabs_visible_ ? offered : QStringList();
+  if (tabs_visible_) {
+    const int budget = room - trailing - search_space;
+    for (qsizetype keep = offered.size(); keep >= 1; --keep) {
+      shown = offered.mid(0, keep);
+      if (offered.contains(current_) && !shown.contains(current_)) {
+        shown.removeLast();
+        shown.append(current_);
+      }
+      if (tabs_width(shown, shown.size() < offered.size()) <= budget) break;
+    }
+  }
+  for (const QString& key : order_) by_key_[key].button->setVisible(shown.contains(key));
+  more_->setVisible(tabs_visible_ && shown.size() < offered.size());
+  fitting_ = false;
+}
+
+}  // namespace mira_gui

@@ -8,6 +8,8 @@
 #include <QVBoxLayout>
 
 #include "../client/api/Logs.h"
+#include "../components/Button.h"
+#include "../components/Text.h"
 #include "../dialogs/LogWindow.h"
 
 namespace mira_gui {
@@ -27,10 +29,9 @@ SetupLog::SetupLog(const std::string& id, const QString& name, QWidget* parent)
   mono.setStyleHint(QFont::Monospace);
   mono.setPointSizeF(mono.pointSizeF() * 0.9);
   tail_->setFont(mono);
-  tail_->setProperty("role", "muted");
+  SetTextStyle(tail_, text::kDetail);
   layout->addWidget(tail_);
-  auto* open = new QPushButton("View full log", this);
-  open->setObjectName("text_button");
+  auto* open = new Button("View full log", ButtonKind::Link, this);
   const QString channel = QString::fromStdString("setup:" + id);
   connect(open, &QPushButton::clicked, this,
           [this, channel, name] { LogWindow::Open(this, channel, name + " setup"); });

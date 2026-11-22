@@ -1,5 +1,5 @@
 /* Mira's stylesheet. Not a theme: themes are the .toml token files, and
- * every @name below is substituted from the one being applied (ui/Theme.cpp).
+ * every @name below is substituted from the one being applied (theme/Theme.cpp).
  *
  * Broad backgrounds are left to the palette, which Fusion already honours;
  * what is here is the chrome the palette cannot express: shape, spacing,
@@ -8,37 +8,37 @@
 
 /* --- Text roles ---------------------------------------------------------- */
 
-QLabel[role="muted"] {
-  color: @text_muted;
-  font-size: @font_size_small;
+/* components/Text: a label's role, size and tone, set apart so they combine. */
+QLabel[text_role="section"] {
+  font-weight: 600;
 }
 
-/* A glyph on a tile, before a card row's label (Add games' choices). */
-QLabel[role="tile_icon"] {
-  background: @surface_alt;
-  border-radius: 7px;
-}
-
-QLabel[role="heading"] {
+QLabel[text_role="heading"] {
   font-size: @font_size_heading;
   font-weight: 600;
 }
 
-/* Muted color at the label's own size, for text inside a control. */
-QLabel[role="subtle"] {
-  color: @text_muted;
-}
-
-QLabel[role="section"] {
-  font-weight: 600;
-}
-
 /* A small heading over a group of rows ("PINNED", "SORT"). */
-QLabel[role="group_heading"] {
-  color: @text_muted;
-  font-size: @font_size_small;
+QLabel[text_role="group"] {
   font-weight: 600;
   letter-spacing: 0.04em;
+}
+
+QLabel[text_size="small"] {
+  font-size: @font_size_small;
+}
+
+QLabel[tone="muted"] { color: @text_muted; }
+QLabel[tone="accent"] { color: @accent; }
+QLabel[tone="info"] { color: @info; }
+QLabel[tone="success"] { color: @success; }
+QLabel[tone="warning"] { color: @warning; }
+QLabel[tone="danger"] { color: @error; }
+
+/* A glyph on a tile, before a card row's label (Add games' choices). */
+QLabel#tile_icon {
+  background: @surface_alt;
+  border-radius: 7px;
 }
 
 QWidget#divider {
@@ -56,18 +56,8 @@ QWidget#drop_line {
   background: @accent;
 }
 
-QLabel[role="error"] {
-  color: @error;
-  font-size: @font_size_small;
-}
-
-/* Something to notice before confirming, such as a move that copies to another drive. */
-QLabel[role="warning"] {
-  color: @warning;
-}
-
 /* One key of a shortcut, drawn as a keycap. */
-QLabel[role="keycap"] {
+QLabel#keycap {
   font-family: monospace;
   font-size: @font_size_small;
   background: @surface_alt;
@@ -75,30 +65,6 @@ QLabel[role="keycap"] {
   border-bottom-width: 2px;
   border-radius: 5px;
   padding: 0px 6px;
-}
-
-/* A game's lifecycle state, set as a "status" property so a theme change
- * recolors it without the widget having to be repopulated (ui/Theme.h's
- * SetStyleProperty). "running" is not a status mirad reports; it is the
- * frontend's own "playing right now". */
-QLabel[status="ready"],
-QLabel[status="setting_up"],
-QLabel[status="broken"],
-QLabel[status="missing"],
-QLabel[status="needs_install"] {
-  font-size: @font_size_small;
-  font-weight: 600;
-}
-
-QLabel[status="ready"] { color: @status_ready; }
-QLabel[status="setting_up"] { color: @status_setting_up; }
-QLabel[status="broken"] { color: @status_broken; }
-QLabel[status="missing"] { color: @status_missing; }
-QLabel[status="needs_install"] { color: @status_needs_install; }
-QLabel[status="running"] {
-  font-size: @font_size_small;
-  font-weight: 600;
-  color: @running;
 }
 
 /* --- The custom top bar -------------------------------------------------- */
@@ -166,31 +132,23 @@ QWidget#filter_sort_button:hover {
   border-color: @accent;
 }
 
-QWidget#filter_sort_popover {
+/* components/Popover: a panel dropping down from a button. */
+mira_gui--Popover {
   background: @surface;
   border: 1px solid @border;
   border-radius: @radius_panel;
 }
 
-QWidget#downloads_popover,
-QWidget#updates_popover {
-  background: @surface;
-  border: 1px solid @border;
-  border-radius: @radius_panel;
-}
-
-QWidget#downloads_popover QScrollArea,
-QWidget#downloads_popover QScrollArea > QWidget > QWidget,
-QWidget#updates_popover QScrollArea,
-QWidget#updates_popover QScrollArea > QWidget > QWidget {
+mira_gui--Popover QScrollArea,
+mira_gui--Popover QScrollArea > QWidget > QWidget {
   background: transparent;
 }
 
-QFrame#download_row {
+mira_gui--ListRow {
   border-top: 1px solid @border;
 }
 
-QFrame#download_row[first="true"] {
+mira_gui--ListRow[first="true"] {
   border-top: none;
 }
 
@@ -205,23 +163,7 @@ QWidget#filter_sort_popover QToolButton:hover {
   background: @surface_alt;
 }
 
-/* The sort rows -- same flat, full-width, icon-optional treatment as the
- * left sidebar's own nav rows (QWidget#left_sidebar QPushButton), just
- * scoped to the popover instead since these live outside the sidebar. */
-QWidget#filter_sort_popover QPushButton {
-  background: transparent;
-  border: none;
-  border-radius: @radius_control;
-  padding: 7px 10px;
-  text-align: left;
-}
-
-QWidget#filter_sort_popover QPushButton:hover {
-  background: @surface_alt;
-}
-
-QWidget#filter_sort_popover QToolButton:checked,
-QWidget#filter_sort_popover QPushButton:checked {
+QWidget#filter_sort_popover QToolButton:checked {
   background: @accent;
   color: @on_accent;
 }
@@ -271,46 +213,13 @@ QLabel#brand_title {
 }
 
 /* --- Left sidebar ---------------------------------------------------------
- * The nav, source and recently played rows are plain QPushButtons made to read as rows
- * (see ui/GameTileDelegate.cpp's own status-dot styling for the same
- * "flatten it, then restyle by objectName" approach elsewhere). */
-
-/* The sidebar paints no background of its own: it shows the window's color, and
+ * The sidebar paints no background of its own: it shows the window's color, and
  * the splitter's handle is its divider. */
 
 /* The pinned/sources/recent list scrolls; it shows the sidebar's own surface. */
 QWidget#left_sidebar QScrollArea,
 QWidget#left_sidebar QScrollArea > QWidget > QWidget {
   background: transparent;
-}
-
-QWidget#left_sidebar QPushButton {
-  background: transparent;
-  border: none;
-  border-radius: @radius_control;
-  padding: 7px 10px;
-  text-align: left;
-}
-
-/* The pinned/sources/recent rows scroll; their area takes the sidebar's own
- * background instead of drawing a darker box. */
-QWidget#left_sidebar QScrollArea,
-QWidget#left_sidebar QScrollArea > QWidget > QWidget {
-  background: transparent;
-}
-
-
-QWidget#left_sidebar QPushButton:hover {
-  background: @surface_alt;
-}
-
-QWidget#left_sidebar QPushButton:pressed {
-  background: @border;
-}
-
-QWidget#left_sidebar QPushButton:checked {
-  background: @accent;
-  color: @on_accent;
 }
 
 /* setItemWidget rows (LibraryWindow.cpp's MakeFilterRow) draw their own
@@ -347,37 +256,147 @@ QPushButton:pressed {
   background: @border;
 }
 
-QPushButton:default {
-  background: @accent;
-  border-color: @accent;
-  color: @on_accent;
-}
-
 QPushButton:disabled {
   color: @text_muted;
   border-color: @border;
 }
 
-QPushButton:default:disabled {
+/* components/NavRow: the sidebar's and Settings' rows, alike. After the plain QPushButton's rules,
+ * which match it as specifically and would otherwise win. */
+mira_gui--NavRow {
+  background: transparent;
+  border: none;
+  border-radius: @radius_control;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+mira_gui--NavRow:hover {
   background: @surface_alt;
 }
 
-/* A running game's Stop, and an action that deletes files, in the error color. */
-QPushButton#game_play[stop="true"],
-QPushButton[tone="danger"] {
+mira_gui--NavRow:pressed {
+  background: @border;
+}
+
+mira_gui--NavRow:checked {
+  background: @accent;
+  color: @on_accent;
+}
+
+mira_gui--NavRow:disabled {
+  color: @text_muted;
+}
+
+/* components/Button's kinds; a plain QPushButton is the Secondary look above. */
+mira_gui--Button[kind="primary"] {
+  background: @accent;
+  border-color: @accent;
+  color: @on_accent;
+}
+
+mira_gui--Button[kind="primary"]:hover {
+  background: @accent_hover;
+  border-color: @accent_hover;
+}
+
+mira_gui--Button[kind="primary"]:pressed {
+  background: @accent_pressed;
+  border-color: @accent_pressed;
+}
+
+/* A running game's Stop, and an action that deletes files. */
+mira_gui--Button[kind="danger"] {
   background: @error;
   border-color: @error;
   color: @on_accent;
 }
 
-QPushButton#game_play[stop="true"]:disabled {
+mira_gui--Button[kind="danger"]:hover {
+  background: @error_hover;
+  border-color: @error_hover;
+}
+
+mira_gui--Button[kind="danger"]:pressed {
+  background: @error_pressed;
+  border-color: @error_pressed;
+}
+
+mira_gui--Button[kind="primary"]:disabled,
+mira_gui--Button[kind="danger"]:disabled {
   background: @surface_alt;
   border-color: @border;
   color: @text_muted;
 }
 
-QPushButton[tone="danger"]:hover {
-  border-color: @text;
+/* Quiet actions: Link in the accent, underlined on hover; Text muted, in the text color on hover. */
+mira_gui--Button[kind="link"],
+mira_gui--Button[kind="text"] {
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+mira_gui--Button[kind="link"] {
+  color: @accent;
+}
+
+mira_gui--Button[kind="link"]:hover {
+  text-decoration: underline;
+}
+
+mira_gui--Button[kind="link"]:pressed {
+  color: @accent_pressed;
+}
+
+mira_gui--Button[kind="text"] {
+  color: @text_muted;
+}
+
+mira_gui--Button[kind="text"]:hover {
+  color: @text;
+}
+
+mira_gui--Button[kind="text"]:pressed {
+  background: @surface_alt;
+}
+
+mira_gui--Button[kind="link"]:disabled,
+mira_gui--Button[kind="text"]:disabled {
+  color: @text_muted;
+  text-decoration: none;
+}
+
+mira_gui--Button[kind="text"]:disabled {
+  background: transparent;
+}
+
+/* Glass over a game's art: dark whatever the theme, since it sits on the art, not the surface. */
+mira_gui--Button[kind="glass"] {
+  background: rgba(20, 22, 27, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e6e8ec;
+  border-radius: @radius_control;
+  padding: 5px 12px;
+}
+
+mira_gui--Button[kind="glass"]:hover {
+  background: rgba(20, 22, 27, 0.8);
+}
+
+mira_gui--Button[kind="glass"]:pressed {
+  background: rgba(20, 22, 27, 0.9);
+}
+
+mira_gui--Button[kind="glass"]:checked {
+  background: @accent_soft;
+  border-color: @accent;
+}
+
+mira_gui--Button[kind="glass"]:disabled {
+  color: rgba(230, 232, 236, 0.45);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Frameless tool buttons (autoRaise): back, close, fold, more, a row's grip
@@ -491,7 +510,7 @@ QComboBox QAbstractItemView {
   selection-color: @on_accent;
 }
 
-/* widgets/FlatCombo's popup draws plain items, so they're styled here as the others look. */
+/* components/FlatCombo's popup draws plain items, so they're styled here as the others look. */
 mira_gui--FlatCombo QAbstractItemView::item {
   padding: 4px 8px;
   border-radius: @radius_control;
@@ -573,34 +592,13 @@ QSlider::handle:horizontal:disabled {
 
 /* --- Scrollbars ---------------------------------------------------------- */
 
-QScrollBar:vertical, QScrollBar:horizontal {
-  background: transparent;
-  border: none;
-  margin: 0;
-}
-
-QScrollBar:vertical { width: 10px; }
-QScrollBar:horizontal { height: 10px; }
-
-QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
-  background: @border;
-  border-radius: 5px;
-  min-height: 32px;
-  min-width: 32px;
-}
-
-QScrollBar::handle:hover {
-  background: @text_muted;
-}
-
-QScrollBar::add-line, QScrollBar::sub-line {
-  width: 0;
-  height: 0;
-}
-
-QScrollBar::add-page, QScrollBar::sub-page {
-  background: transparent;
-}
+/* components/OverlayScrollBar draws every bar over its content. Qt's own keeps the position, 1 px
+   and undrawn: at 0 px Qt leaves it out of the accessibility tree. */
+QScrollBar { background: transparent; border: none; margin: 0; }
+QScrollBar:vertical { width: 1px; }
+QScrollBar:horizontal { height: 1px; }
+QScrollBar::handle, QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 
 /* --- Lists, tables, menus ------------------------------------------------ */
 
@@ -611,7 +609,7 @@ QListView#library_grid {
   border: none;
 }
 
-/* --- Settings (ui/SettingsNav, ui/SettingsCard) --------------------------
+/* --- Settings (settings/SettingsNav, components/Card) --------------------------
  * The nav is the main sidebar's twin: the window's color, as the sidebar shows,
  * and the same flat rows, under small uppercase group headings. */
 
@@ -625,43 +623,9 @@ QWidget#settings_nav QScrollArea > QWidget > QWidget {
   background: transparent;
 }
 
-QWidget#settings_nav QPushButton {
-  background: transparent;
-  border: none;
-  border-radius: @radius_control;
-  padding: 7px 10px;
-  text-align: left;
-}
-
-QWidget#settings_nav QPushButton:hover {
-  background: @surface_alt;
-}
-
-QWidget#settings_nav QPushButton:checked {
-  background: @accent;
-  color: @on_accent;
-}
-
-QLabel[role="nav_heading"] {
-  color: @text_muted;
-  font-size: @font_size_small;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 12px 4px 3px 4px;
-}
-
-QWidget#settings_nav QPushButton:disabled {
-  color: @text_muted;
-}
-
 QScrollArea#settings_page,
 QWidget#settings_canvas {
   background: @window;
-}
-
-/* The group heading above the first page of each group, flush with the titles. */
-QWidget#settings_section QLabel[role="nav_heading"] {
-  padding: 0;
 }
 
 /* The current page's group and title, held at the top of the scroll over the column
@@ -675,23 +639,21 @@ QWidget#settings_sticky[pushed="true"] {
   border-bottom: 1px solid transparent;
 }
 
-QWidget#settings_sticky QLabel[role="nav_heading"] {
-  padding: 0;
-}
-
-QFrame#settings_card {
+/* A card, and an achievement on the same raised surface. */
+mira_gui--Card,
+mira_gui--AchievementTile {
   background: @surface;
   border: 1px solid @border;
   border-radius: @radius_card;
 }
 
-/* settings/SettingsCard's ExpanderRow: its rows, opened, on a sunken surface. */
+/* components/SettingRow's ExpanderRow: its rows, opened, on a sunken surface. */
 QWidget#expander_body {
   background: @surface_sunken;
   border-top: 1px solid @border;
 }
 
-/* A sunken row that ends its card takes the card's bottom corners (SettingsCard::RoundBottomRow). */
+/* A sunken row that ends its card takes the card's bottom corners (Card::RoundBottomRow). */
 QWidget#list_row[card_bottom="true"],
 QPushButton#list_more[card_bottom="true"],
 QWidget#expander_body[card_bottom="true"],
@@ -704,52 +666,43 @@ QWidget#expander_head:hover {
   background: @surface_alt;
 }
 
-QLabel#expander_summary[tone="success"] {
-  color: @success;
-}
-
 /* One height for every control in a card (32 px with padding and border), with the row
- * labels' minimum height in settings/SettingsCard.cpp, so every row is as tall as the next. */
-QFrame#settings_card QLineEdit,
-QFrame#settings_card QSpinBox,
-QFrame#settings_card QDoubleSpinBox,
-QFrame#settings_card QComboBox {
+ * labels' minimum height in components/SettingRow.cpp, so every row is as tall as the next. */
+mira_gui--Card QLineEdit,
+mira_gui--Card QSpinBox,
+mira_gui--Card QDoubleSpinBox,
+mira_gui--Card QComboBox {
   min-height: 22px;
   max-height: 22px;
 }
 
 /* A longer choice in a card is its value and a chevron, boxed only on hover. Its chevron ends
- * where the switches and fields of the rows around it do (widgets/FlatCombo sizes from this). */
-QFrame#settings_card QComboBox:!editable {
+ * where the switches and fields of the rows around it do (components/FlatCombo sizes from this). */
+mira_gui--Card QComboBox:!editable {
   background: transparent;
   border: 1px solid transparent;
   padding-right: 0;
 }
 
-QFrame#settings_card QComboBox:!editable::drop-down {
+mira_gui--Card QComboBox:!editable::drop-down {
   width: 14px;
 }
 
-QFrame#settings_card QComboBox:!editable::down-arrow {
+mira_gui--Card QComboBox:!editable::down-arrow {
   margin-right: 1px;
 }
 
-QFrame#settings_card QComboBox:!editable:hover,
-QFrame#settings_card QComboBox:!editable:focus {
+mira_gui--Card QComboBox:!editable:hover,
+mira_gui--Card QComboBox:!editable:focus {
   background: @surface_alt;
 }
 
-/* A card whose rows scroll inside it shows the card's surface behind them. */
-QScrollArea#card_scroll,
-QScrollArea#card_scroll > QWidget > QWidget {
-  background: transparent;
-}
 
 /* Fields sit a step darker than the card they are on, as in the grid. */
-QFrame#settings_card QLineEdit,
-QFrame#settings_card QSpinBox,
-QFrame#settings_card QDoubleSpinBox,
-QFrame#settings_card QComboBox {
+mira_gui--Card QLineEdit,
+mira_gui--Card QSpinBox,
+mira_gui--Card QDoubleSpinBox,
+mira_gui--Card QComboBox {
   background: @window;
 }
 
@@ -776,28 +729,7 @@ QFrame#drop_zone {
   background: transparent;
 }
 
-/* widgets/Labels' MakeTag: a small pill beside a name ("Beta", "Recommended", "Not checked"). */
-QLabel#tag {
-  color: @text_muted;
-  font-size: @font_size_small;
-  border: 1px solid @border;
-  border-radius: 8px;
-  padding: 0px 6px;
-}
-QLabel#tag[tone="accent"] {
-  color: @accent;
-  border-color: @accent;
-}
-QLabel#tag[tone="success"] {
-  color: @success;
-  border-color: @success;
-}
-QLabel#tag[tone="warning"] {
-  color: @warning;
-  border-color: @warning;
-}
-
-/* widgets/CopyField: a command to copy. */
+/* components/CopyField: a command to copy. */
 QLabel#copy_field {
   font-family: monospace;
   background: @window;
@@ -806,13 +738,13 @@ QLabel#copy_field {
   padding: 6px;
 }
 
-/* widgets/ListEdit: a list setting's items as sunken rows under its row. */
+/* components/ListEdit: a list setting's items as sunken rows under its row. */
 QWidget#list_row {
   background: @surface_sunken;
   border-top: 1px solid @border;
 }
 
-QFrame#settings_card QLineEdit#list_item {
+mira_gui--Card QLineEdit#list_item {
   background: transparent;
   border: none;
   padding: 6px 0px;
@@ -834,29 +766,6 @@ QFrame#script_box QLineEdit#script_line {
   font-family: monospace;
 }
 
-QPushButton#step_chip {
-  background: @surface;
-  border: 1px solid @border;
-  border-radius: 6px;
-  padding: 5px 12px;
-}
-
-QPushButton#step_chip:hover {
-  border-color: @text_muted;
-}
-
-QPushButton#step_chip:checked {
-  background: @accent;
-  border-color: @accent;
-  color: @on_accent;
-}
-
-QPushButton#step_chip:disabled {
-  background: @surface;
-  border-color: @border;
-  color: @text_muted;
-}
-
 QWidget#list_row[inherited="true"] QLineEdit#list_item {
   color: @text_muted;
 }
@@ -873,50 +782,6 @@ QPushButton#list_more {
 
 QPushButton#list_more:hover {
   text-decoration: underline;
-}
-
-QPushButton#list_add,
-QPushButton#text_button {
-  background: transparent;
-  border: none;
-  color: @accent;
-  padding: 6px 10px;
-  text-align: left;
-}
-
-QPushButton#list_add:hover,
-QPushButton#text_button:hover {
-  text-decoration: underline;
-}
-
-QPushButton#text_button:disabled {
-  color: @text_muted;
-  text-decoration: none;
-}
-
-QPushButton#text_button[tone="muted"] {
-  color: @text_muted;
-}
-
-/* ui/TagEdit: one chip per tag. */
-QFrame#tag_chip {
-  background: @surface_alt;
-  border: 1px solid @border;
-  border-radius: @radius_control;
-}
-
-QFrame#tag_chip[folder="true"] {
-  border: 1px solid @accent;
-}
-
-QToolButton#tag_remove {
-  border: none;
-  border-radius: @radius_control;
-  padding: 1px;
-}
-
-QToolButton#tag_remove:hover {
-  background: @border;
 }
 
 QListWidget, QTreeWidget, QTableWidget {
@@ -1005,8 +870,23 @@ QScrollArea {
   border: none;
 }
 
+/* components/Scrolling's SeeThrough: the area shows what's behind it. */
+QAbstractScrollArea[see_through="viewport"],
+QAbstractScrollArea[see_through="viewport"] > QWidget,
+QAbstractScrollArea[see_through="page"],
+QAbstractScrollArea[see_through="page"] > QWidget,
+QAbstractScrollArea[see_through="page"] > QWidget > QWidget {
+  background: transparent;
+  border: none;
+}
+
+QLabel#drop_overlay {
+  background: @window_veil;
+  color: @text;
+}
+
 /* --- Game-edit overlay ---------------------------------------------------
- * The scrim and the card (ui/HeroBackdrop) are painted in code; these are
+ * The scrim and the card (game/HeroBackdrop) are painted in code; these are
  * what sits over the card's hero art. */
 
 QLabel#game_edit_title, QLabel#page_title {
@@ -1014,26 +894,8 @@ QLabel#game_edit_title, QLabel#page_title {
   font-weight: 700;
 }
 
-/* Dark glass whatever the theme: they sit on the art, not the surface. */
-QPushButton#hero_action {
-  background: rgba(20, 22, 27, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #e6e8ec;
-  border-radius: @radius_control;
-  padding: 5px 12px;
-}
-
-QPushButton#hero_action:hover {
-  background: rgba(20, 22, 27, 0.8);
-}
-
-QPushButton#hero_action:checked {
-  background: @accent_soft;
-  border-color: @accent;
-}
-
 /* The game card's achievement count and saves line, which open their pages: dark glass like
- * hero_action, since bright hero art shows through the scrim there. The radius stays under half
+ * a Glass button, since bright hero art shows through the scrim there. The radius stays under half
  * the chip's height. */
 QPushButton#achievements_summary,
 QPushButton#saves_summary {
@@ -1064,7 +926,7 @@ QPushButton#saves_summary[attention="true"] {
   border-color: rgba(245, 196, 107, 0.55);
 }
 
-/* --- Page header and tabs (ui/PageHeader) -------------------------------- */
+/* --- Page header and tabs (components/PageHeader) -------------------------------- */
 
 QLabel#page_status {
   color: @text_muted;
@@ -1096,7 +958,7 @@ QWidget#picker_tabs QPushButton:checked {
   border-bottom-color: @accent;
 }
 
-/* --- Continue playing (ui/ContinueRow) ----------------------------------- */
+/* --- Continue playing (library/ContinueRow) ----------------------------------- */
 
 QFrame#continue_card {
   background: @surface;
@@ -1132,44 +994,15 @@ QLabel#step_marker[state="done"] {
   color: @success;
 }
 
-/* --- Art picker ---------------------------------------------------------- */
-
-QPushButton#chip {
-  background: transparent;
-  border: 1px solid @border;
-  border-radius: 10px;
-  padding: 3px 10px;
-  font-size: @font_size_small;
-}
-
-QPushButton#chip:hover {
-  border-color: @text_muted;
-}
-
 /* Room for DropdownButton's chevron. */
 QPushButton[dropdown="true"],
-QPushButton#chip[dropdown="true"],
 QWidget#tab_row QPushButton[dropdown="true"] {
   padding-right: 28px;
 }
 
-QPushButton#chip:checked {
-  border-color: @accent;
-  background: @accent_soft;
-}
-
 /* --- Runners page -------------------------------------------------------- */
 
-/* The build Windows games use by default, beside its name. */
-QLabel#default_tag {
-  color: @accent;
-  font-size: @font_size_small;
-  border: 1px solid @accent;
-  border-radius: 8px;
-  padding: 0px 6px;
-}
-
-/* A two or three way choice (widgets/Segmented). */
+/* A two or three way choice (components/Segmented). */
 QWidget#segmented {
   background: @surface;
   border: 1px solid @border;
@@ -1236,10 +1069,6 @@ QScrollArea#setup_scroll > QWidget > QWidget {
 QWidget#setup_foot {
   background: @surface;
   border-top: 1px solid @border;
-}
-
-QWidget#setup_foot QPushButton#text_button {
-  color: @text_muted;
 }
 
 QWidget#setup_window QWidget#segmented QPushButton {
@@ -1312,29 +1141,6 @@ QLabel#setup_tick {
 QLabel#setup_tick[on="true"] {
   background: @accent;
   border-color: @accent;
-}
-
-QLabel#setup_chip, QLabel#info_chip {
-  background: @surface_alt;
-  border: 1px solid @border;
-  border-radius: 8px;
-  padding: 2px 9px;
-  font-size: @font_size_small;
-}
-
-QLabel#setup_chip[state="ok"], QLabel#info_chip[state="ok"] {
-  color: @success;
-  border-color: @success;
-}
-
-QLabel#setup_chip[state="warning"], QLabel#info_chip[state="warning"] {
-  color: @warning;
-  border-color: @warning;
-}
-
-QLabel#setup_chip[state="error"], QLabel#info_chip[state="error"] {
-  color: @error;
-  border-color: @error;
 }
 
 QPushButton#setup_account {

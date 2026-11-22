@@ -19,14 +19,15 @@
 #include "../client/Events.h"
 #include "../client/api/Config.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
+#include "../components/Labels.h"
+#include "../components/ProgressRail.h"
+#include "../components/Segmented.h"
 #include "../sources/SourceText.h"
 #include "../sources/Sources.h"
 #include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ProgressRail.h"
-#include "../widgets/Segmented.h"
 #include "BrowserSketch.h"
 #include "SetupLog.h"
 
@@ -69,7 +70,7 @@ QWidget* StepRow(QWidget* parent, int number, const QString& text, const char* s
 }
 
 QPushButton* Accent(const QString& text, QWidget* parent) {
-  auto* button = new QPushButton(text, parent);
+  auto* button = new Button(text, ButtonKind::Primary, parent);
   button->setDefault(true);
   return button;
 }
@@ -91,13 +92,12 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
   if (header) {
     auto* head = new QHBoxLayout();
     head->setSpacing(10);
-    auto* back = new QPushButton("Back", this);
-    back->setObjectName("text_button");
+    auto* back = new Button("Back", ButtonKind::Link, this);
     connect(back, &QPushButton::clicked, this, &SignInPanel::BackClicked);
     head->addWidget(back);
     if (source != nullptr) head->addWidget(MakeSourceBadge(*source, 26, this));
     auto* title = new QLabel(guide_.title, this);
-    title->setProperty("role", "heading");
+    SetTextStyle(title, text::kHeading);
     head->addWidget(title);
     head->addStretch(1);
     done_label_ = new QLabel(this);
@@ -107,7 +107,7 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
     layout->addLayout(head);
   }
 
-  if (!guide_.intro.isEmpty()) layout->addWidget(MakeLabel(this, guide_.intro, "muted"));
+  if (!guide_.intro.isEmpty()) layout->addWidget(MakeLabel(this, guide_.intro, text::kDetail));
 
   // While the store's helper tool downloads; the steps wait for it.
   preparing_ = new QWidget(this);
@@ -144,7 +144,7 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
   account_row_ = new QWidget(body_);
   auto* account = new QHBoxLayout(account_row_);
   account->setContentsMargins(0, 0, 0, 0);
-  account_ = MakeLabel(account_row_, QString(), "muted");
+  account_ = MakeLabel(account_row_, QString(), text::kDetail);
   account_->setTextFormat(Qt::RichText);
   account->addWidget(account_, /*stretch=*/1);
   account_choice_ = new QComboBox(account_row_);
@@ -161,7 +161,7 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
                                theme::Current().text_muted)
                         .pixmap(QSize(14, 14), devicePixelRatioF()));
     note->addWidget(icon, 0, Qt::AlignTop);
-    note->addWidget(MakeLabel(body_, guide_.note, "muted"), /*stretch=*/1);
+    note->addWidget(MakeLabel(body_, guide_.note, text::kDetail), /*stretch=*/1);
     left->addLayout(note);
   }
   left->addStretch(1);
@@ -173,7 +173,7 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
     right->setSpacing(6);
     sketch_ = new BrowserSketch(body_);
     right->addWidget(sketch_);
-    caption_ = MakeLabel(body_, QString(), "muted");
+    caption_ = MakeLabel(body_, QString(), text::kDetail);
     caption_->setTextFormat(Qt::RichText);
     right->addWidget(caption_);
     right->addStretch(1);
@@ -213,7 +213,7 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
   foot_->setVisible(mode_ != Mode::Launcher);
   layout->addWidget(foot_);
 
-  error_ = MakeLabel(this, QString(), "error");
+  error_ = MakeLabel(this, QString(), text::kError);
   error_->setVisible(false);
   layout->addWidget(error_);
 
@@ -251,7 +251,7 @@ void SignInPanel::ShowBrowser(bool other) {
   const Sketch& sketch = other ? guide_.other_sketch : guide_.sketch;
   if (sketch_ != nullptr) {
     sketch_->SetSketch(sketch);
-    ShowLine(caption_, sketch.caption, "muted");
+    ShowLine(caption_, sketch.caption, text::kDetail);
   }
   ShowSteps();
 }
@@ -298,7 +298,7 @@ void SignInPanel::ShowSteps() {
   const int current = done_ ? last + 1 : opened_ ? last : 0;
   QPushButton* open = nullptr;
   if (!done_) {
-    open = new QPushButton(guide_.open, body_);
+    open = new Button(guide_.open, opened_ ? ButtonKind::Secondary : ButtonKind::Primary, body_);
     open->setDefault(!opened_);
     connect(open, &QPushButton::clicked, this, &SignInPanel::OpenPage);
   }

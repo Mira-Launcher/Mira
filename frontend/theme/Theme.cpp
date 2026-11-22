@@ -28,6 +28,7 @@
 #include <string>
 #include <toml.hpp>
 #include <utility>
+#include <vector>
 
 namespace mira_gui::theme {
 namespace {
@@ -147,6 +148,8 @@ Tokens ParseTokens(const std::string& text, Tokens tokens = {}) {
   return tokens;
 }
 
+std::vector<std::function<void(QWidget*)>> g_polish_hooks;
+
 // Fusion rather than the desktop's own style: ours is the only palette and stylesheet in play, and
 // Breeze/Adwaita would otherwise keep drawing the parts our QSS doesn't name, which is what
 // "half-themed" looks like. Its dotted focus frame is left out: the focus ring marks focus.
@@ -167,6 +170,7 @@ class AppStyle : public QProxyStyle {
     if (auto* spin = qobject_cast<QAbstractSpinBox*>(widget)) {
       if (auto* edit = spin->findChild<QLineEdit*>()) edit->setTextMargins(6, 0, 0, 0);
     }
+    for (const auto& hook : g_polish_hooks) hook(widget);
   }
   using QProxyStyle::polish;
 };
@@ -351,6 +355,15 @@ QHash<QString, QString> QssValues(const Tokens& tokens) {
   QColor accent_soft = tokens.accent;
   accent_soft.setAlphaF(0.3);
   values.insert("accent_soft", ColorToQss(accent_soft));
+  // Over the whole window while files are dragged onto it, the library still faintly behind.
+  QColor window_veil = tokens.window;
+  window_veil.setAlpha(220);
+  values.insert("window_veil", ColorToQss(window_veil));
+  // A filled button's hover and press: a step lighter and a step darker.
+  values.insert("accent_hover", ColorToQss(Mix(tokens.accent, Qt::white, 0.12)));
+  values.insert("accent_pressed", ColorToQss(Mix(tokens.accent, Qt::black, 0.15)));
+  values.insert("error_hover", ColorToQss(Mix(tokens.error, Qt::white, 0.12)));
+  values.insert("error_pressed", ColorToQss(Mix(tokens.error, Qt::black, 0.15)));
   // The top bar shows the window's color, except that hidden mode tints it with the (then purple)
   // accent, so it's plain which mode this is. The border is always there, so the bar never resizes.
   values.insert("top_bar", g_hidden_mode ? ColorToQss(Mix(tokens.window, tokens.accent, 0.22))
@@ -584,10 +597,17 @@ void SetOverrides(const Overrides& overrides) {
   ApplyResolved(g_resolved);
 }
 
+void OnPolish(std::function<void(QWidget*)> hook) {
+  UseFusion();  // the style that runs the hooks
+  g_polish_hooks.push_back(std::move(hook));
+}
+
 void SetStyleProperty(QWidget* widget, const char* name, const QString& value) {
   if (widget == nullptr) return;
   if (widget->property(name).toString() == value) return;
   widget->setProperty(name, value);
+  // An unpolished widget reads the property when it's first polished.
+  if (!widget->testAttribute(Qt::WA_WState_Polished)) return;
   widget->style()->unpolish(widget);
   widget->style()->polish(widget);
 }

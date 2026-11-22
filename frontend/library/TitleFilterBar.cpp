@@ -8,9 +8,10 @@
 #include <algorithm>
 #include <array>
 
+#include "../components/Button.h"
+#include "../components/Chip.h"
+#include "../components/Labels.h"
 #include "../sources/Sources.h"
-#include "../widgets/Labels.h"
-#include "../widgets/TabRow.h"
 
 namespace mira_gui {
 namespace {
@@ -31,9 +32,9 @@ class StayOpenMenu : public QMenu {
   }
 };
 
-DropdownButton* Dropdown(QWidget* parent, QMenu* menu) {
-  auto* button = new DropdownButton(menu, parent);
-  button->setObjectName("chip");
+Chip* Dropdown(QWidget* parent, QMenu* menu) {
+  auto* button = new Chip(QString(), parent);
+  button->SetMenu(menu);
   return button;
 }
 
@@ -126,8 +127,7 @@ TitleFilterBar::TitleFilterBar(QWidget* parent) : QWidget(parent) {
   sort_button_ = Dropdown(this, sort_menu);
   layout->addWidget(sort_button_);
 
-  clear_ = new QPushButton("Clear filters", this);
-  clear_->setObjectName("text_button");
+  clear_ = new Button("Clear filters", ButtonKind::Link, this);
   KeepSpaceWhenHidden(clear_);
   connect(clear_, &QPushButton::clicked, this, &TitleFilterBar::Clear);
   layout->addWidget(clear_);
@@ -201,7 +201,7 @@ void TitleFilterBar::SetSortKey(const std::string& key) {
 }
 
 void TitleFilterBar::Clear() {
-  for (DropdownButton* button : {store_, tier_, review_}) {
+  for (Chip* button : {store_, tier_, review_}) {
     for (QAction* action : button->Menu()->actions()) {
       const QSignalBlocker block(action);
       action->setChecked(false);

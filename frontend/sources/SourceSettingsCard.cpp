@@ -13,8 +13,14 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
+#include "../components/FlatCombo.h"
+#include "../components/Format.h"
+#include "../components/Metrics.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlatCombo.h"
 #include "SourceText.h"
 
 namespace mira_gui {
@@ -32,19 +38,13 @@ bool IsSourceKey(const SourceInfo& source, const std::string& key) {
   return key.starts_with(id + ".") && key != id + ".runner" && key != "itch.collections";
 }
 
-QString Counted(int count, const QString& item) {
-  return QString("%1 %2%3").arg(count).arg(item).arg(count == 1 ? "" : "s");
-}
-
 }  // namespace
 
 SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent)
-    : SettingsCard(source.name + " settings", parent),
-      source_(source),
-      id_(source.id.toStdString()) {
+    : SheetCard(source.name + " settings", parent), source_(source), id_(source.id.toStdString()) {
   status_ = new QLabel(this);
   status_->setVisible(false);
-  Header()->addWidget(status_);
+  AddHeaderWidget(status_);
 
   if (HasRunner()) BuildRunnerRow();
   if (source_.kind == SourceInfo::Kind::Emulator) BuildEmulatorRow();
@@ -53,9 +53,8 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
 
   footer_ = new QWidget(this);
   auto* footer = new QHBoxLayout(footer_);
-  footer->setContentsMargins(12, 8, 18, 6);
-  auto* all = new QPushButton("All settings…", footer_);
-  all->setObjectName("text_button");
+  footer->setContentsMargins(12, 8, kRowPaddingX, 6);
+  auto* all = new Button("All settings…", ButtonKind::Link, footer_);
   all->setCursor(Qt::PointingHandCursor);
   connect(all, &QPushButton::clicked, this, [this] {
     emit OpenSettingsRequested(
@@ -67,7 +66,7 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
   discard_ = new QPushButton("Discard", footer_);
   connect(discard_, &QPushButton::clicked, this, &SourceSettingsCard::Discard);
   footer->addWidget(discard_);
-  save_ = new QPushButton("Save", footer_);
+  save_ = new Button("Save", ButtonKind::Primary, footer_);
   save_->setDefault(true);
   connect(save_, &QPushButton::clicked, this, &SourceSettingsCard::Save);
   footer->addWidget(save_);
@@ -241,7 +240,7 @@ void SourceSettingsCard::BuildRunnerRow() {
   note_row->setContentsMargins(0, 0, 0, 0);
   runner_note_ = new QLabel(note);
   runner_note_->setWordWrap(true);
-  runner_note_->setProperty("role", "muted");
+  SetTextStyle(runner_note_, text::kDetail);
   note_row->addWidget(runner_note_, /*stretch=*/1);
   runner_apply_ = new QPushButton(note);
   runner_apply_->setVisible(false);
@@ -378,8 +377,8 @@ void SourceSettingsCard::LoadSettings() {
         SettingEditor& editor = settings_[i];
         if (i == first_shared) {
           auto* heading = new QLabel("All emulators", this);
-          theme::SetStyleProperty(heading, "role", "section");
-          heading->setContentsMargins(18, 12, 18, 2);
+          SetTextStyle(heading, text::kSection);
+          heading->setContentsMargins(kRowPaddingX, 12, kRowPaddingX, 2);
           AddRow(heading);
         }
         AddRow(editor.Build(this));
@@ -418,9 +417,7 @@ void SourceSettingsCard::LoadSettings() {
 }
 
 void SourceSettingsCard::ShowStatus(const QString& text, bool error) {
-  theme::SetStyleProperty(status_, "role", error ? "error" : "muted");
-  status_->setText(text);
-  status_->setVisible(true);
+  ShowLine(status_, text, error ? text::kError : text::kDetail);
 }
 
 }  // namespace mira_gui

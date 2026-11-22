@@ -7,6 +7,7 @@
 #include <QString>
 #include <QStringList>
 #include <array>
+#include <functional>
 #include <optional>
 
 class QWidget;
@@ -154,12 +155,12 @@ QString CurrentName();
 // the desktop's light or dark theme. For previewing a theme before picking it.
 Tokens Peek(const QString& name);
 
-// Sets one of the stylesheet's own properties on a widget: "role" for a text
-// style (muted, heading, section, error, keys), "status" for a lifecycle
-// color. Qt does not restyle a widget when a property changes after it has
-// been polished, so this re-polishes it; setting the property directly works
-// only before the widget is first shown.
+// Sets one of the stylesheet's own properties on a widget, e.g. "busy" for the top bar's notice
+// (a label's text style goes through components/Text's SetTextStyle). Qt does not restyle a widget
+// when a property changes after it has been polished, so this re-polishes one that already is.
 void SetStyleProperty(QWidget* widget, const char* name, const QString& value);
+// Runs `hook` on every widget the app's style polishes (when it first shows, and on a restyle).
+void OnPolish(std::function<void(QWidget*)> hook);
 
 // Changed() fires after every Apply(). Anything that paints with tokens
 // instead of with the stylesheet (the tile delegate, the toasts) connects to

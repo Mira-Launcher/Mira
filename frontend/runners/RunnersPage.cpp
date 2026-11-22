@@ -18,15 +18,21 @@
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Runners.h"
-#include "../settings/SettingsCard.h"
+#include "../components/Badge.h"
+#include "../components/Button.h"
+#include "../components/Card.h"
+#include "../components/FlatCombo.h"
+#include "../components/Format.h"
+#include "../components/IconButton.h"
+#include "../components/Labels.h"
+#include "../components/PageHeader.h"
+#include "../components/ProgressRail.h"
+#include "../components/Scrolling.h"
+#include "../components/Segmented.h"
+#include "../components/SettingRow.h"
+#include "../components/Text.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/Labels.h"
-#include "../widgets/PageHeader.h"
-#include "../widgets/ProgressRail.h"
-#include "../widgets/Scrolling.h"
-#include "../widgets/Segmented.h"
 #include "RunnerUpdater.h"
 
 namespace mira_gui {
@@ -49,7 +55,7 @@ QString FormatDate(const std::string& iso) {
 // A row's facts after its name, in one line that shrinks before the controls do.
 ElidedLabel* Facts(const QString& text, SettingRow* row) {
   auto* facts = new ElidedLabel(text, row);
-  facts->setProperty("role", "subtle");
+  SetTextStyle(facts, text::kSubtle);
   row->AddAfterLabel(facts);
   return facts;
 }
@@ -57,7 +63,7 @@ ElidedLabel* Facts(const QString& text, SettingRow* row) {
 // An empty list's one line, in the card's row padding.
 SettingRow* NoteRow(const QString& text) {
   auto* row = new SettingRow(text, {});
-  row->Label()->setProperty("role", "subtle");
+  SetTextStyle(row->Label(), text::kSubtle);
   return row;
 }
 
@@ -70,7 +76,7 @@ QWidget* Progress(QWidget* parent, double fraction) {
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
   auto* percent = new QLabel(holder);
-  percent->setProperty("role", "subtle");
+  SetTextStyle(percent, text::kSubtle);
   layout->addWidget(percent);
   auto* rail = new ProgressRail(holder);
   rail->setFixedWidth(90);
@@ -136,13 +142,13 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   columns->addStretch(0);
 
   // What runners need besides a build, first since nothing works without it.
-  tools_card_ = new SettingsCard("Missing tools", canvas);
+  tools_card_ = new Card("Missing tools", canvas);
   tools_card_->hide();
   left->addWidget(tools_card_);
 
-  installed_ = new SettingsCard("Installed", canvas);
+  installed_ = new Card("Installed", canvas);
   left->addWidget(installed_);
-  default_note_ = MakeLabel(canvas, QString(), "muted");
+  default_note_ = MakeLabel(canvas, QString(), text::kDetail);
   default_note_->setContentsMargins(4, 0, 4, 0);
   default_note_->setTextFormat(Qt::RichText);
   connect(default_note_, &QLabel::linkActivated, this, [this] {
@@ -156,19 +162,17 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   });
   left->addWidget(default_note_);
 
-  catalog_ = new SettingsCard("Get more", canvas);
+  catalog_ = new Card("Get more", canvas);
   source_ = new FlatCombo(catalog_);
   source_->setToolTip("Where builds are downloaded from");
   connect(source_, &QComboBox::activated, this, [this] { RefreshCatalog(); });
-  catalog_->Header()->addWidget(source_);
-  auto* refresh = new QToolButton(catalog_);
-  refresh->setAutoRaise(true);
-  icons::Follow(refresh, icons::Glyph::Refresh, &theme::Tokens::text_muted);
-  refresh->setToolTip("Check again");
+  catalog_->AddHeaderWidget(source_);
+  auto* refresh =
+      new IconButton(icons::Glyph::Refresh, "Check again", catalog_, &theme::Tokens::text_muted);
   connect(refresh, &QToolButton::clicked, this, &RunnersPage::Refresh);
-  catalog_->Header()->addWidget(refresh);
+  catalog_->AddHeaderWidget(refresh);
   right->addWidget(catalog_);
-  status_ = MakeLabel(canvas, QString(), "muted");
+  status_ = MakeLabel(canvas, QString(), text::kDetail);
   status_->setContentsMargins(4, 0, 4, 0);
   right->addWidget(status_);
 
@@ -205,7 +209,7 @@ std::string RunnersPage::CurrentKind() const {
 
 void RunnersPage::SetStatus(const QString& text, bool error) {
   status_->setText(text);
-  theme::SetStyleProperty(status_, "role", error ? "error" : "muted");
+  SetTextStyle(status_, error ? text::kError : text::kDetail);
 }
 
 void RunnersPage::Refresh() {
@@ -316,13 +320,11 @@ void RunnersPage::RebuildInstalled() {
 
     auto* row = new SettingRow(QString::fromStdString(runner.label), {});
     if (is_default) {
-      auto* badge = new QLabel("Default", row);
-      badge->setObjectName("default_tag");
-      row->AddAfterLabel(badge);
+      row->AddAfterLabel(new Badge("Default", Tone::Accent, row));
     }
 
     QStringList facts;
-    facts << (used == 1 ? QString("Used by 1 game") : QString("Used by %1 games").arg(used));
+    facts << "Used by " + Counted(used, "game");
     // Some builds only report a bare build timestamp, which means nothing here.
     const QString version = QString::fromStdString(runner.version);
     bool numeric = false;
@@ -341,11 +343,11 @@ void RunnersPage::RebuildInstalled() {
       if (entry != nullptr && entry->state == DownloadTracker::State::Running) {
         auto* updating =
             new QLabel("Updating to " + QString::fromStdString(update->label) + "…", row);
-        updating->setProperty("role", "subtle");
+        SetTextStyle(updating, text::kSubtle);
         row->AddControl(updating);
       } else {
         // Short, so a long build name can't crowd out the row's facts.
-        auto* update_button = new QPushButton("Update", row);
+        auto* update_button = new Button("Update", ButtonKind::Primary, row);
         update_button->setToolTip("Update to " + QString::fromStdString(update->label));
         update_button->setDefault(true);
         connect(update_button, &QPushButton::clicked, this,
@@ -357,10 +359,7 @@ void RunnersPage::RebuildInstalled() {
       }
     }
 
-    auto* more = new QToolButton(row);
-    more->setAutoRaise(true);
-    icons::Follow(more, icons::Glyph::More);
-    more->setToolTip("More");
+    auto* more = new IconButton(icons::Glyph::More, "More", row);
     KeepSpaceWhenHidden(more);
     more->setVisible(!is_default || runner.removable);
     connect(more, &QToolButton::clicked, this, [this, more, runner, is_default] {
@@ -388,11 +387,9 @@ void RunnersPage::RebuildInstalled() {
   // "proton:GE-Proton11-7" reads as "GE-Proton11-7".
   const QString chosen = QString::fromStdString(default_windows_).section(':', 1);
   default_note_->setText(
-      automatic
-          ? "Windows games set to Auto use the newest Proton build, or Wine if there's none."
-          : QString("Windows games set to Auto use %1. <a href=\"auto\" style=\"color:%2\">Pick "
-                    "automatically instead</a>")
-                .arg(chosen.toHtmlEscaped(), tokens.accent.name()));
+      automatic ? "Windows games set to Auto use the newest Proton build, or Wine if there's none."
+                : QString("Windows games set to Auto use %1. %2")
+                      .arg(chosen.toHtmlEscaped(), Anchor("auto", "Pick automatically instead")));
 }
 
 void RunnersPage::RebuildCatalog() {
@@ -410,13 +407,7 @@ void RunnersPage::RebuildCatalog() {
     // knowing before a 500 MB download.
     facts << (release.has_checksum ? "verified" : "no checksum");
     ElidedLabel* details = Facts(facts.join(" · "), row);
-    if (!release.has_checksum) {
-      const auto warn = [details] {
-        details->setStyleSheet(QString("color: %1;").arg(theme::Current().warning.name()));
-      };
-      warn();
-      connect(theme::Notifier::Instance(), &theme::Notifier::Changed, details, warn);
-    }
+    if (!release.has_checksum) SetTextStyle(details, {TextRole::Body, Tone::Warning});
 
     const QString key =
         DownloadTracker::KeyFor(DownloadTracker::Kind::Runner, QString::fromStdString(kind),
@@ -429,10 +420,10 @@ void RunnersPage::RebuildCatalog() {
       row->AddControl(progress);
     } else if (release.installed) {
       auto* label = new QLabel("Installed", row);
-      label->setProperty("role", "subtle");
+      SetTextStyle(label, text::kSubtle);
       row->AddControl(label);
     } else {
-      auto* install = new QPushButton("Install", row);
+      auto* install = new Button("Install", ButtonKind::Primary, row);
       install->setDefault(true);
       install->setFixedWidth(90);
       connect(install, &QPushButton::clicked, this, [this, install, tag = release.tag] {
@@ -459,7 +450,7 @@ void RunnersPage::RebuildTools() {
     if (entry != nullptr && entry->state == DownloadTracker::State::Running) {
       row->AddControl(Progress(row, entry->progress));
     } else {
-      auto* install = new QPushButton("Install", row);
+      auto* install = new Button("Install", ButtonKind::Primary, row);
       install->setDefault(true);
       connect(install, &QPushButton::clicked, this, [this, install, tool] {
         install->setEnabled(false);

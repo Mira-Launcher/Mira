@@ -18,6 +18,10 @@ class QToolButton;
 
 namespace mira_gui {
 
+class StatusLine;
+
+class Chip;
+
 // A task's live log in a window of its own (GET /v1/logs/<channel>), frameless with Mira's own
 // bar. One window per channel: opening the same log again raises it, opening another task's
 // opens a second window, so logs never mix.
@@ -31,7 +35,6 @@ class LogWindow : public QWidget {
 
  protected:
   void closeEvent(QCloseEvent* event) override;
-  void changeEvent(QEvent* event) override;
 
  private:
   LogWindow(QWidget* parent, QString channel, QString title);
@@ -54,18 +57,15 @@ class LogWindow : public QWidget {
   QString channel_;
   QString title_;
   QPlainTextEdit* view_ = nullptr;
-  QLabel* state_ = nullptr;
+  StatusLine* state_ = nullptr;
   QLabel* count_ = nullptr;
   QLineEdit* filter_ = nullptr;
-  QPushButton* pause_ = nullptr;
-  QPushButton* wrap_ = nullptr;
-  QPushButton* follow_ = nullptr;
+  Chip* pause_ = nullptr;
+  Chip* wrap_ = nullptr;
+  Chip* follow_ = nullptr;
   QToolButton* copy_ = nullptr;
   QToolButton* save_ = nullptr;
   QToolButton* clear_ = nullptr;
-  QToolButton* minimize_ = nullptr;
-  QToolButton* maximize_ = nullptr;
-  QToolButton* close_ = nullptr;
   QTimer* timer_ = nullptr;
 
   std::deque<QString> lines_;

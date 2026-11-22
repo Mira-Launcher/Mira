@@ -27,11 +27,17 @@
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
 #include "../client/api/Tags.h"
+#include "../components/Button.h"
+#include "../components/Card.h"
+#include "../components/ChangeBar.h"
+#include "../components/Format.h"
+#include "../components/Labels.h"
+#include "../components/SearchField.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
-#include "../settings/SettingsCard.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
 #include "TagPicker.h"
 
 namespace mira_gui {
@@ -49,13 +55,13 @@ QString FoldersMove(int count) {
 
 SettingRow* NoteRow(QWidget* parent) {
   auto* row = new SettingRow(QString(), {}, parent);
-  row->Label()->setProperty("role", "subtle");
+  SetTextStyle(row->Label(), text::kSubtle);
   return row;
 }
 
 QLabel* CountLabel(QWidget* parent) {
   auto* count = new QLabel(parent);
-  count->setProperty("role", "subtle");
+  SetTextStyle(count, text::kSubtle);
   count->setFixedWidth(kCountWidth);
   count->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   return count;
@@ -70,7 +76,7 @@ QToolButton* MoreButton(QWidget* parent) {
 
 QLabel* ColumnHeading(const QString& text, int width, Qt::Alignment align, QWidget* parent) {
   auto* heading = new QLabel(text.toUpper(), parent);
-  heading->setProperty("role", "group_heading");
+  SetTextStyle(heading, text::kGroup);
   heading->setFixedWidth(width);
   heading->setAlignment(align | Qt::AlignVCenter);
   return heading;
@@ -226,7 +232,7 @@ class CountPill : public QWidget {
   void Set(std::size_t games, std::size_t most) {
     games_ = games;
     most_ = most;
-    setToolTip(GamesCount(games));
+    setToolTip(Counted(games, "game"));
     updateGeometry();
     update();
   }
@@ -367,12 +373,11 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
 
   const int more_width = std::unique_ptr<QToolButton>(MoreButton(nullptr))->sizeHint().width();
 
-  mine_ = new SettingsCard("Your tags", overview_);
-  auto* add = new QPushButton("New tag", mine_);
-  add->setObjectName("text_button");
+  mine_ = new Card("Your tags", overview_);
+  auto* add = new Button("New tag", ButtonKind::Link, mine_);
   icons::Follow(add, icons::Glyph::Plus);
   connect(add, &QPushButton::clicked, this, [this] { OpenPicker(QString(), /*existing=*/false); });
-  mine_->Header()->addWidget(add);
+  mine_->AddHeaderWidget(add);
   mine_->SetScrollable();
   auto* mine_headings = HeadingsRow(mine_);
   mine_headings->AddControl(ColumnHeading("Games", kCountWidth, Qt::AlignRight, mine_headings));
@@ -389,9 +394,9 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   mine_note_ = NoteRow(mine_);
   mine_note_->Label()->setText("No tags yet. Add one from Steam's, or a new one.");
   mine_->AddRow(mine_note_);
-  connect(mine_, &SettingsCard::RowsReordered, this, &TagsPage::FoldersReordered);
+  connect(mine_, &Card::RowsReordered, this, &TagsPage::FoldersReordered);
 
-  settings_card_ = new SettingsCard("Tag settings", overview_);
+  settings_card_ = new Card("Tag settings", overview_);
 
   left_ = new QWidget(overview_);
   auto* left_layout = new QVBoxLayout(left_);
@@ -401,21 +406,18 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   left_layout->addWidget(mine_, /*stretch=*/1);
   left_layout->addWidget(settings_card_);
 
-  steam_ = new SettingsCard("From Steam", overview_);
-  steam_search_ = new QLineEdit(steam_);
-  steam_search_->setPlaceholderText("Find a tag");
-  steam_search_->setClearButtonEnabled(true);
+  steam_ = new Card("From Steam", overview_);
+  steam_search_ = new SearchField("Find a tag", steam_);
   steam_search_->setFixedWidth(180);
   connect(steam_search_, &QLineEdit::textChanged, this, &TagsPage::FilterSteam);
-  steam_->Header()->addWidget(steam_search_);
+  steam_->AddHeaderWidget(steam_search_);
   steam_->SetScrollable();
   steam_note_ = NoteRow(steam_);
   steam_->AddRow(steam_note_);
   steam_columns_ = new RowColumns(steam_);
   steam_->AddRow(steam_columns_);
   steam_rare_row_ = new SettingRow(QString(), {}, steam_);
-  steam_rare_ = new QPushButton(steam_rare_row_);
-  steam_rare_->setObjectName("text_button");
+  steam_rare_ = new Button(QString(), ButtonKind::Link, steam_rare_row_);
   connect(steam_rare_, &QPushButton::clicked, this, [this] {
     show_rare_steam_ = !show_rare_steam_;
     FilterSteam();
@@ -687,7 +689,7 @@ void TagsPage::SyncMine() {
     KeepSpaceWhenHidden(entry.icon, any_folder);
     entry.icon->setVisible(folder);
     entry.count->setText(QString::number(ShownCount(tag.ids)));
-    entry.count->setToolTip(GamesCount(ShownCount(tag.ids)));
+    entry.count->setToolTip(Counted(ShownCount(tag.ids), "game"));
     const QSignalBlocker block(entry.folder);
     entry.folder->setChecked(folder);
     mine_->MoveRow(entry.row, static_cast<int>(i) + 1);
@@ -879,7 +881,8 @@ void TagsPage::ShowMenu(const std::string& name, QWidget* anchor) {
         Refresh();
       });
     };
-    bar_->SetText(QString("Remove %1 from %2?").arg(label, GamesCount(count)), "Remove", "Cancel");
+    bar_->SetText(QString("Remove %1 from %2?").arg(label, Counted(count, "game")), "Remove",
+                  "Cancel");
   });
   menu.exec(anchor->mapToGlobal(QPoint(0, anchor->height())));
   if (rename) StartRename(name);

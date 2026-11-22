@@ -13,7 +13,7 @@
 #include <QTabBar>
 
 #include "../bigscreen/GamepadInput.h"
-#include "../widgets/SpatialNav.h"
+#include "../components/SpatialNav.h"
 
 namespace mira_gui {
 namespace {

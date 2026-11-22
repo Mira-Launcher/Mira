@@ -13,7 +13,7 @@ class DownloadList;
 class DownloadTracker;
 class LinkDownloads;
 class PageHeader;
-class SettingsCard;
+class Card;
 
 // Every download and install, as a page of the window like Runners: what needs the user, what's
 // running, what waits, and what finished, each in a card of its own. The speed limit and the rest
@@ -33,7 +33,7 @@ class DownloadsPage : public QWidget {
 
  private:
   struct Section {
-    SettingsCard* card = nullptr;
+    Card* card = nullptr;
     DownloadList* list = nullptr;
   };
 

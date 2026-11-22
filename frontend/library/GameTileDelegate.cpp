@@ -11,11 +11,11 @@
 #include <QTimer>
 #include <algorithm>
 
+#include "../components/TileView.h"
+#include "../components/paint/Rail.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/ProgressRail.h"
-#include "../widgets/TileView.h"
 #include "ArtworkStore.h"
 #include "GamePresentation.h"
 
@@ -198,8 +198,8 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
 
   // Between the title and the status line, which says how far along it is.
   if (progress.isValid()) {
-    PaintRail(*painter, QRectF(rect.left() + 8, rect.bottom() - 40, rect.width() - 16, 4),
-              progress.toDouble(), tokens.accent, QColor(255, 255, 255, 40));
+    paint::Rail(*painter, QRectF(rect.left() + 8, rect.bottom() - 40, rect.width() - 16, 4),
+                progress.toDouble(), tokens.accent, QColor(255, 255, 255, 40));
     if (progress.toDouble() < 0) {
       if (auto* view = dynamic_cast<TileView*>(const_cast<QWidget*>(option.widget)))
         view->KeepAnimating();

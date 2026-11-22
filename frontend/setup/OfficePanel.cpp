@@ -12,13 +12,15 @@
 #include "../client/Events.h"
 #include "../client/api/Config.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
+#include "../components/Format.h"
+#include "../components/Labels.h"
+#include "../components/ProgressRail.h"
 #include "../sources/SourceText.h"
 #include "../sources/Sources.h"
 #include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ProgressRail.h"
 #include "SetupLog.h"
 #include "SignInGuide.h"
 
@@ -50,13 +52,12 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   if (header) {
     auto* head = new QHBoxLayout();
     head->setSpacing(10);
-    auto* back = new QPushButton("Back", this);
-    back->setObjectName("text_button");
+    auto* back = new Button("Back", ButtonKind::Link, this);
     connect(back, &QPushButton::clicked, this, &OfficePanel::BackClicked);
     head->addWidget(back);
     head->addWidget(MakeSourceBadge(*FindSourceInfo("office"), 26, this));
     auto* title = new QLabel(guide.title, this);
-    title->setProperty("role", "heading");
+    SetTextStyle(title, text::kHeading);
     head->addWidget(title);
     head->addStretch(1);
     done_label_ = new QLabel(QString::fromUtf8("\xe2\x9c\x93 ") + guide.done, this);
@@ -70,7 +71,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   auto* plan = new QVBoxLayout(plan_box_);
   plan->setContentsMargins(0, 0, 0, 0);
   plan->setSpacing(8);
-  plan->addWidget(MakeLabel(plan_box_, "Which plan do you have?", "section"));
+  plan->addWidget(MakeLabel(plan_box_, "Which plan do you have?", text::kSection));
   auto* choices = new QHBoxLayout();
   choices->setSpacing(8);
   plans_ = new QButtonGroup(this);
@@ -92,7 +93,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
           if (!result.ok) ShowError(error_, "Could not save the plan", result.error);
         });
   });
-  install_ = new QPushButton("Install Office", plan_box_);
+  install_ = new Button("Install Office", ButtonKind::Primary, plan_box_);
   install_->setDefault(true);
   connect(install_, &QPushButton::clicked, this, &OfficePanel::Install);
   auto* install_row = new QHBoxLayout();
@@ -117,10 +118,10 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   auto* apps = new QVBoxLayout(apps_box_);
   apps->setContentsMargins(0, 0, 0, 0);
   apps->setSpacing(8);
-  apps->addWidget(MakeLabel(apps_box_, "Add to your library", "section"));
+  apps->addWidget(MakeLabel(apps_box_, "Add to your library", text::kSection));
   app_tiles_ = new QWidget(apps_box_);
   apps->addWidget(app_tiles_);
-  add_ = new QPushButton(apps_box_);
+  add_ = new Button(QString(), ButtonKind::Primary, apps_box_);
   add_->setDefault(true);
   connect(add_, &QPushButton::clicked, this, &OfficePanel::AddApps);
   auto* add_row = new QHBoxLayout();
@@ -135,10 +136,10 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   auto* icon = new QLabel(this);
   icons::Follow(icon, icons::Glyph::EyeSlash, 14);
   note->addWidget(icon, 0, Qt::AlignTop);
-  note->addWidget(MakeLabel(this, guide.note, "muted"), /*stretch=*/1);
+  note->addWidget(MakeLabel(this, guide.note, text::kDetail), /*stretch=*/1);
   layout->addLayout(note);
 
-  error_ = MakeLabel(this, QString(), "error");
+  error_ = MakeLabel(this, QString(), text::kError);
   error_->setVisible(false);
   layout->addWidget(error_);
   log_ = new SetupLog("office", FindSourceInfo("office")->name, this);
@@ -228,7 +229,7 @@ void OfficePanel::ShowState() {
     grid->addWidget(tile, i / 4, i % 4);
     if (!app.installed && picked_.contains(ref)) ++to_add;
   }
-  add_->setText(to_add == 1 ? "Add 1 app" : QString("Add %1 apps").arg(to_add));
+  add_->setText("Add " + Counted(to_add, "app"));
   add_->setVisible(to_add > 0 || !queue_.empty());
   add_->setEnabled(queue_.empty());
   if (!queue_.empty())

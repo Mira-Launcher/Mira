@@ -2,24 +2,20 @@
 
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QMouseEvent>
 #include <QSlider>
 #include <QTimer>
 #include <QToolButton>
-#include <QWindow>
 
+#include "../components/IconButton.h"
+#include "../components/Labels.h"
+#include "../components/SpatialNav.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/SpatialNav.h"
 
 namespace mira_gui {
 
-TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(parent) {
-  setObjectName("top_bar");
-  setAttribute(
-      Qt::WA_StyledBackground);  // a plain QWidget subclass draws no QSS background otherwise
-  spatial_nav::TabLast(this);    // window tools after the library itself
+TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : TitleBar(parent) {
+  spatial_nav::TabLast(this);  // window tools after the library itself
 
   auto* layout = new QHBoxLayout(this);
   layout->setContentsMargins(12, 4, 6, 4);
@@ -57,42 +53,32 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : QWidget(
   zoom_->setToolTip("Tile size");
   layout->addWidget(zoom_);
 
-  const auto tool = [this, layout](const QString& tooltip) {
-    auto* button = new QToolButton(this);
-    button->setAutoRaise(true);
-    button->setToolTip(tooltip);
+  const auto tool = [this, layout](icons::Glyph glyph, const QString& tooltip) {
+    auto* button = new IconButton(glyph, tooltip, this);
     layout->addWidget(button);
     return button;
   };
 
-  big_screen_ = tool("Big screen: a fullscreen mode for a TV and a controller");
+  big_screen_ =
+      tool(icons::Glyph::Monitor, "Big screen: a fullscreen mode for a TV and a controller");
   connect(big_screen_, &QToolButton::clicked, this, &TopBar::BigScreenClicked);
-  activity_ = tool("Activity");
+  activity_ = tool(icons::Glyph::Download, "Activity");
   // Its count's text is taller than the icon; the bar shouldn't grow for it.
   activity_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
   connect(activity_, &QToolButton::clicked, this, &TopBar::ActivityClicked);
-  updates_ = tool("Updates");
+  updates_ = tool(icons::Glyph::Update, "Updates");
   updates_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
   connect(updates_, &QToolButton::clicked, this, &TopBar::UpdatesClicked);
-  refresh_ = tool("Refresh library");
+  refresh_ = tool(icons::Glyph::Refresh, "Refresh library");
   connect(refresh_, &QToolButton::clicked, this, &TopBar::RefreshClicked);
-  shortcuts_ = tool("Keyboard shortcuts");
+  shortcuts_ = tool(icons::Glyph::Keyboard, "Keyboard shortcuts");
   connect(shortcuts_, &QToolButton::clicked, this, &TopBar::ShortcutsClicked);
-  about_ = tool("About Mira");
+  about_ = tool(icons::Glyph::Info, "About Mira");
   connect(about_, &QToolButton::clicked, this, &TopBar::AboutClicked);
 
   layout->addWidget(MakeDivider(this, Qt::Vertical, 20));
 
-  minimize_ = tool("Minimize");
-  connect(minimize_, &QToolButton::clicked, this, [this] { window()->showMinimized(); });
-  maximize_ = tool("Maximize");
-  connect(maximize_, &QToolButton::clicked, this, &TopBar::ToggleMaximize);
-  close_ = tool("Close");
-  close_->setObjectName("close_button");
-  connect(close_, &QToolButton::clicked, this, [this] { window()->close(); });
-
-  ApplyIcons();
-  connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, &TopBar::ApplyIcons);
+  layout->addWidget(new WindowButtons(this));
 }
 
 void TopBar::SetActivityCount(int running) {
@@ -125,12 +111,6 @@ void TopBar::SetNotice(const QString& text, bool busy, const QString& tooltip, b
   QTimer::singleShot(0, this, &TopBar::PlaceHiddenNote);
 }
 
-void TopBar::SyncMaximized() {
-  const bool maximized = window()->isMaximized();
-  maximize_->setIcon(icons::For(maximized ? icons::Glyph::Restore : icons::Glyph::Maximize));
-  maximize_->setToolTip(maximized ? "Restore" : "Maximize");
-}
-
 void TopBar::SetHiddenShortcut(const QString& shortcut) {
   hidden_note_->setText(
       shortcut.isEmpty() ? QString() : QString("Showing hidden games · %1 to leave").arg(shortcut));
@@ -155,43 +135,6 @@ void TopBar::PlaceHiddenNote() {
 void TopBar::resizeEvent(QResizeEvent* event) {
   QWidget::resizeEvent(event);
   PlaceHiddenNote();
-}
-
-void TopBar::ApplyIcons() {
-  using icons::Glyph;
-  big_screen_->setIcon(icons::For(Glyph::Monitor));
-  refresh_->setIcon(icons::For(Glyph::Refresh));
-  activity_->setIcon(icons::For(Glyph::Download));
-  updates_->setIcon(icons::For(Glyph::Update));
-  shortcuts_->setIcon(icons::For(Glyph::Keyboard));
-  about_->setIcon(icons::For(Glyph::Info));
-  minimize_->setIcon(icons::For(Glyph::Minimize));
-  close_->setIcon(icons::For(Glyph::Close));
-  SyncMaximized();
-}
-
-void TopBar::ToggleMaximize() {
-  if (window()->isMaximized()) {
-    window()->showNormal();
-  } else {
-    window()->showMaximized();
-  }
-}
-
-// The bar's own background, plus labels on it (a label passes its clicks
-// up); a click on a control goes to it instead.
-void TopBar::mousePressEvent(QMouseEvent* event) {
-  if (event->button() == Qt::LeftButton && window()->windowHandle() != nullptr) {
-    window()->windowHandle()->startSystemMove();
-    event->accept();
-    return;
-  }
-  QWidget::mousePressEvent(event);
-}
-
-void TopBar::mouseDoubleClickEvent(QMouseEvent* event) {
-  ToggleMaximize();
-  event->accept();
 }
 
 }  // namespace mira_gui

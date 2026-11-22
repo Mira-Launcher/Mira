@@ -9,9 +9,11 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "../components/Metrics.h"
+#include "../components/SheetCard.h"
+#include "../components/Text.h"
+#include "../components/WindowCards.h"
 #include "../game/CardParts.h"
-#include "../settings/SettingsCard.h"
-#include "../widgets/WindowCards.h"
 #include "KeyBindings.h"
 #include "Tray.h"
 
@@ -42,7 +44,7 @@ QWidget* Keycaps(const QString& text, QWidget* parent) {
   for (int c = 0; c < combos.size(); ++c) {
     if (c > 0) {
       auto* gap = new QLabel("or", caps);
-      gap->setProperty("role", "muted");
+      SetTextStyle(gap, text::kDetail);
       layout->addWidget(gap);
     }
     const QString& combo = combos[c];
@@ -59,7 +61,7 @@ QWidget* Keycaps(const QString& text, QWidget* parent) {
     if (!key.isEmpty()) keys << key;
     for (const QString& name : keys) {
       auto* cap = new QLabel(name, caps);
-      cap->setProperty("role", "keycap");
+      cap->setObjectName("keycap");
       layout->addWidget(cap);
     }
   }
@@ -67,12 +69,12 @@ QWidget* Keycaps(const QString& text, QWidget* parent) {
 }
 
 // Every key a window answers to, its groups in two columns, each group's rows in order.
-class ReferenceCard : public SettingsCard {
+class ReferenceCard : public SheetCard {
  public:
-  ReferenceCard(const QList<Entry>& entries, const std::function<void()>& change)
-      : SettingsCard(QString()) {
+  ReferenceCard(const QList<Entry>& entries, const std::function<void()>& change) : SheetCard() {
     SetProminentTitle();
-    AddCardHeading(this, "Keyboard shortcuts", "Close", [this] { cards::Close(this); });
+    SetHeading("Keyboard shortcuts");
+    SetClose("Close", [this] { cards::Close(this); });
     if (change) {
       auto* edit = new QPushButton("Change…", this);
       edit->setFlat(true);
@@ -81,7 +83,7 @@ class ReferenceCard : public SettingsCard {
         cards::Close(this);
         change();
       });
-      Header()->insertWidget(Header()->count() - 1, edit, 0, Qt::AlignVCenter);
+      AddHeaderWidget(edit);
     }
 
     std::vector<std::pair<QString, QList<Entry>>> groups;
@@ -98,7 +100,7 @@ class ReferenceCard : public SettingsCard {
 
     auto* body = new QWidget(this);
     auto* columns = new QHBoxLayout(body);
-    columns->setContentsMargins(18, 4, 18, 12);
+    columns->setContentsMargins(kRowPaddingX, 4, kRowPaddingX, 12);
     columns->setSpacing(28);
     QVBoxLayout* column[2] = {new QVBoxLayout(), new QVBoxLayout()};
     for (QVBoxLayout* layout : column) layout->setSpacing(0);
@@ -108,7 +110,7 @@ class ReferenceCard : public SettingsCard {
       const int at = rows[1] < rows[0] ? 1 : 0;
       rows[at] += static_cast<int>(list.size()) + 1;
       auto* heading = new QLabel(group.toUpper(), body);
-      heading->setProperty("role", "group_heading");
+      SetTextStyle(heading, text::kGroup);
       heading->setContentsMargins(0, 10, 0, 4);
       column[at]->addWidget(heading);
       for (const Entry& entry : list) {

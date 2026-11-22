@@ -11,10 +11,12 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
-#include "../settings/SettingsCard.h"
+#include "../components/Format.h"
+#include "../components/IconButton.h"
+#include "../components/Labels.h"
+#include "../components/Switch.h"
+#include "../components/TileGridLayout.h"
 #include "../theme/Icons.h"
-#include "../widgets/Labels.h"
-#include "../widgets/TileGridLayout.h"
 #include "SourceRemoval.h"
 #include "SourceText.h"
 #include "SourceTile.h"
@@ -33,10 +35,6 @@ QString Ago(std::int64_t unix_seconds) {
   return QString("%1 days ago").arg(seconds / 86400);
 }
 
-QString Counted(int n, const QString& item) {
-  return QString("%1 %2%3").arg(n).arg(item).arg(n == 1 ? "" : "s");
-}
-
 QString Status(const SourceEntry& entry) {
   const QString items = Counted(entry.games, CopyFor(entry.source.id.toStdString()).item);
   if (!entry.enabled) return "Off · " + items + " kept out of the library";
@@ -50,7 +48,7 @@ QString Status(const SourceEntry& entry) {
 void AddLine(SourceTile* tile, const QString& text, const QString& tip, QWidget* control) {
   auto* line = new QHBoxLayout();
   line->setContentsMargins(0, 0, 4, 0);
-  QLabel* label = MakeLabel(tile, text, nullptr, false);
+  QLabel* label = MakeLabel(tile, text, text::kBody, false);
   label->setToolTip(tip);
   control->setToolTip(tip);
   line->addWidget(label, 1);
@@ -75,7 +73,7 @@ AddedSources::AddedSources(QWidget* parent) : QWidget(parent) {
   apps_heading_ = MakeGroupHeading(this, "Apps");
   apps_heading_->setContentsMargins(0, 12, 0, 0);
   apps_grid_ = Grid(this);
-  empty_ = MakeLabel(this, QString(), "subtle");
+  empty_ = MakeLabel(this, QString(), text::kSubtle);
   empty_->hide();
   for (QWidget* widget :
        {static_cast<QWidget*>(games_heading_), games_grid_, static_cast<QWidget*>(apps_heading_),
@@ -124,18 +122,10 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
   tile.tile->SetClickable("Open " + name);
   connect(tile.tile, &SourceTile::Clicked, this, [this, id] { emit OpenRequested(id); });
 
-  auto* settings = new QToolButton(tile.tile);
-  settings->setAutoRaise(true);
-  icons::Follow(settings, icons::Glyph::Settings);
-  settings->setToolTip(name + " settings");
-  settings->setAccessibleName(name + " settings");
+  auto* settings = new IconButton(icons::Glyph::Settings, name + " settings", tile.tile);
   connect(settings, &QToolButton::clicked, this, [this, id] { emit SettingsRequested(id); });
   tile.tile->Corner()->addWidget(settings);
-  auto* more = new QToolButton(tile.tile);
-  more->setAutoRaise(true);
-  icons::Follow(more, icons::Glyph::More);
-  more->setToolTip("More for " + name);
-  more->setAccessibleName("More for " + name);
+  auto* more = new IconButton(icons::Glyph::More, "More for " + name, tile.tile);
   connect(more, &QToolButton::clicked, this, [this, id] { ShowMenu(id); });
   tile.tile->Corner()->addWidget(more);
   tile.more = more;
@@ -145,7 +135,7 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
   if (id == "local") {
     AddLine(tile.tile, QString("%1 in library").arg(items[0].toUpper() + items.mid(1)),
             "Games from no store or launcher are always in the library.",
-            MakeLabel(tile.tile, "Always", "subtle", false));
+            MakeLabel(tile.tile, "Always", text::kSubtle, false));
   } else {
     tile.in_library = new Switch(tile.tile);
     tile.in_library->setAccessibleName(QString("%1's %2 in the library").arg(name, items));

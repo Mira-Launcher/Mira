@@ -14,14 +14,17 @@
 #include <algorithm>
 #include <set>
 
-#include "../settings/SettingsCard.h"
+#include "../components/FlatCombo.h"
+#include "../components/IconButton.h"
+#include "../components/ListEdit.h"
+#include "../components/Metrics.h"
+#include "../components/PathField.h"
+#include "../components/PopupDialog.h"
+#include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/ListEdit.h"
-#include "../widgets/PathField.h"
-#include "../widgets/PopupDialog.h"
 
 namespace mira_gui {
 namespace {
@@ -64,7 +67,7 @@ LaunchOptionsEdit::LaunchOptionsEdit(QWidget* parent) : QWidget(parent) {
   rows_->setSpacing(0);
 
   empty_ = new QLabel("None", this);
-  theme::SetStyleProperty(empty_, "role", "subtle");
+  SetTextStyle(empty_, text::kSubtle);
   add_ = new QPushButton("Add…", this);
   add_->setCursor(Qt::PointingHandCursor);
   connect(add_, &QPushButton::clicked, this, [this] {
@@ -128,10 +131,7 @@ void LaunchOptionsEdit::Rebuild() {
     text->setToolTip(
         QString::fromStdString(option.exe + (option.args.empty() ? "" : " " + option.args)));
     layout->addWidget(text, /*stretch=*/1);
-    auto* edit = new QToolButton(row);
-    edit->setAutoRaise(true);
-    icons::Follow(edit, icons::Glyph::Settings, &theme::Tokens::text_muted);
-    edit->setToolTip("Edit");
+    auto* edit = new IconButton(icons::Glyph::Settings, "Edit", row, &theme::Tokens::text_muted);
     connect(edit, &QToolButton::clicked, this, [this, id = option.id] {
       auto it = std::ranges::find(launch_.options, id, &LaunchOption::id);
       if (it == launch_.options.end()) return;
@@ -178,7 +178,7 @@ void LaunchOptionsEdit::Rebuild() {
 }
 
 bool LaunchOptionsEdit::Edit(LaunchOption& option) {
-  PopupDialog dialog(this, notify::Level::Info,
+  PopupDialog dialog(this, Tone::Info,
                      option.name.empty() ? "Add launch option" : "Edit launch option");
   dialog.SetMessage(
       "Another program that starts the game (a mod launcher), runs beside it (a deck tracker), or "

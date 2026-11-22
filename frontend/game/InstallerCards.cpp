@@ -12,10 +12,13 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Games.h"
+#include "../components/Button.h"
+#include "../components/FlatCombo.h"
+#include "../components/Format.h"
+#include "../components/Labels.h"
+#include "../components/SettingRow.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/Labels.h"
 #include "CardParts.h"
 #include "LaunchOptionsEdit.h"
 
@@ -23,10 +26,10 @@ namespace mira_gui {
 
 InstallerCard::InstallerCard(const GameSummary& game, const InstallerInfoResult& info,
                              ArtworkStore* artwork, QWidget* parent)
-    : SettingsCard(QString(), parent), game_id_(game.id), install_path_(game.install_path) {
+    : SheetCard(QString(), parent), game_id_(game.id), install_path_(game.install_path) {
   setFixedWidth(560);
-  AddGameCardHeading(this, game, "Install " + QString::fromStdString(game.name) + "?", artwork,
-                     "Not now", [this] { emit CloseRequested(); });
+  AddGameCardHeading(this, game, "Install " + QString::fromStdString(game.name) + "?", artwork);
+  SetClose("Not now", [this] { emit CloseRequested(); });
 
   auto* installer = new SettingRow("Installer", QString(), this);
   file_ = new QLabel(installer);
@@ -56,20 +59,20 @@ InstallerCard::InstallerCard(const GameSummary& game, const InstallerInfoResult&
     row->AddControl(target_);
     AddRow(row);
   }
-  error_ = AddErrorLine(this);
+  error_ = ErrorLine();
 
-  QHBoxLayout* buttons = AddButtonRow(this);
+  QHBoxLayout* buttons = ButtonRow();
   auto* later = new QPushButton("Not now", this);
   connect(later, &QPushButton::clicked, this, &InstallerCard::CloseRequested);
   buttons->addWidget(later);
-  quiet_ = new QPushButton("Install quietly", this);
+  quiet_ = new Button("Install quietly", ButtonKind::Secondary, this);
   quiet_->setToolTip("Run the installer in the background without its window");
   // Hidden until the format allows it, keeping its place so the row doesn't shift.
   KeepSpaceWhenHidden(quiet_);
   quiet_->hide();
   connect(quiet_, &QPushButton::clicked, this, [this] { Install(/*interactive=*/false); });
   buttons->addWidget(quiet_);
-  shown_ = new QPushButton("Show the installer", this);
+  shown_ = new Button("Show the installer", ButtonKind::Secondary, this);
   shown_->setToolTip("Open the installer's window and click through it yourself");
   shown_->setEnabled(false);
   connect(shown_, &QPushButton::clicked, this, [this] { Install(/*interactive=*/true); });
@@ -108,7 +111,9 @@ void InstallerCard::ShowInfo(const InstallerInfoResult& info, const std::string&
   file_->setToolTip(QString::fromStdString(info.path));
   silent_ = info.silent;
   quiet_->setVisible(info.silent);
-  (info.silent ? quiet_ : shown_)->setDefault(true);
+  Button* recommended = info.silent ? quiet_ : shown_;
+  recommended->SetKind(ButtonKind::Primary);
+  recommended->setDefault(true);
   shown_->setEnabled(true);
 }
 
@@ -134,10 +139,11 @@ void InstallerCard::Install(bool interactive) {
 InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game,
                                              const std::string& installer_dir, std::int64_t bytes,
                                              ArtworkStore* artwork, QWidget* parent)
-    : SettingsCard(QString(), parent), game_id_(game.id) {
+    : SheetCard(QString(), parent), game_id_(game.id) {
   setFixedWidth(560);
   AddGameCardHeading(this, game, "Delete " + QString::fromStdString(game.name) + "'s installer?",
-                     artwork, "Keep it", [this] { emit CloseRequested(); });
+                     artwork);
+  SetClose("Keep it", [this] { emit CloseRequested(); });
 
   auto* folder = new SettingRow("Installer folder", QString(), this);
   auto* path = new QLabel(
@@ -146,10 +152,10 @@ InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game,
   path->setTextInteractionFlags(Qt::TextSelectableByMouse);
   folder->SetBelow(path);
   AddRow(folder);
-  error_ = AddErrorLine(this);
+  error_ = ErrorLine();
 
-  QHBoxLayout* buttons = AddButtonRow(this);
-  auto* keep = new QPushButton("Keep", this);
+  QHBoxLayout* buttons = ButtonRow();
+  auto* keep = new Button("Keep", ButtonKind::Primary, this);
   keep->setDefault(true);  // a stray Return never deletes
   connect(keep, &QPushButton::clicked, this, &InstallerLeftoverCard::CloseRequested);
   buttons->addWidget(keep);
@@ -173,18 +179,19 @@ InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game,
 ProgramsFoundCard::ProgramsFoundCard(const GameSummary& game, const ProgramsFoundEvent& event,
                                      ArtworkStore* artwork, std::function<GameLaunch()> current,
                                      QWidget* parent)
-    : SettingsCard(QString(), parent), game_id_(game.id), current_(std::move(current)) {
+    : SheetCard(QString(), parent), game_id_(game.id), current_(std::move(current)) {
   setFixedWidth(560);
   AddGameCardHeading(this, game,
                      QString::fromStdString(event.by) + " installed " +
                          (event.programs.size() == 1 ? "a program" : "programs"),
-                     artwork, "Close", [this] { emit CloseRequested(); });
+                     artwork);
+  SetClose("Close", [this] { emit CloseRequested(); });
   for (const ProgramsFoundEvent::Program& program : event.programs) {
     auto* row = new SettingRow(QString::fromStdString(program.name), QString(), this);
     auto* path = new QLabel(QString::fromStdString(program.exe), row);
     path->setWordWrap(true);
     path->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    path->setProperty("role", "subtle");
+    SetTextStyle(path, text::kSubtle);
     row->SetBelow(path);
     auto* mode = new FlatCombo(row);
     for (const auto& [id, text] : kLaunchModes) mode->addItem(text, QString(id));
@@ -231,10 +238,10 @@ ProgramsFoundCard::ProgramsFoundCard(const GameSummary& game, const ProgramsFoun
     row->AddControl(add);
     AddRow(row);
   }
-  error_ = AddErrorLine(this);
+  error_ = ErrorLine();
 
-  QHBoxLayout* buttons = AddButtonRow(this);
-  auto* done = new QPushButton("Done", this);
+  QHBoxLayout* buttons = ButtonRow();
+  auto* done = new Button("Done", ButtonKind::Primary, this);
   done->setDefault(true);
   connect(done, &QPushButton::clicked, this, &ProgramsFoundCard::CloseRequested);
   buttons->addWidget(done);

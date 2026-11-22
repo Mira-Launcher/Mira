@@ -20,6 +20,9 @@
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
+#include "../components/FocusRing.h"
+#include "../components/paint/Pill.h"
+#include "../components/paint/Rail.h"
 #include "../game/RemoveGamesCard.h"
 #include "../game/SavesText.h"
 #include "../library/ArtworkStore.h"
@@ -29,7 +32,6 @@
 #include "../library/GamePresentation.h"
 #include "../library/OwnedTitles.h"
 #include "../theme/Theme.h"
-#include "../widgets/FocusRing.h"
 #include "CollectionsPage.h"
 #include "DownloadsPage.h"
 #include "GameKeyboard.h"
@@ -106,11 +108,7 @@ class Chrome : public QWidget {
       const QString& name = window_->tab_names_[i];
       const double w = painter.fontMetrics().horizontalAdvance(name) + u * 2;
       const QRectF pill(x, mid - u * 1.05, w, u * 2.1);
-      if (i == active) {
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(255, 255, 255, 22));
-        painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2);
-      }
+      if (i == active) paint::Pill(painter, pill, pill.height() / 2, QColor(255, 255, 255, 22));
       painter.setPen(i == active ? tokens.text : tokens.text_muted);
       painter.drawText(pill, Qt::AlignCenter, name);
       x += w + u * 0.3;
@@ -154,12 +152,7 @@ class Chrome : public QWidget {
     if (running > 0) {
       const double progress = total / running;
       const QRectF bar(right - u * 4, mid - u * 0.15, u * 4, u * 0.3);
-      painter.setPen(Qt::NoPen);
-      painter.setBrush(QColor(255, 255, 255, 34));
-      painter.drawRoundedRect(bar, bar.height() / 2, bar.height() / 2);
-      painter.setBrush(Accent());
-      painter.drawRoundedRect(QRectF(bar.topLeft(), QSizeF(bar.width() * progress, bar.height())),
-                              bar.height() / 2, bar.height() / 2);
+      paint::Rail(painter, bar, progress, Accent(), QColor(255, 255, 255, 34));
       painter.setPen(tokens.text);
       const QString percent = QString("%1%").arg(qRound(progress * 100));
       const double w = painter.fontMetrics().horizontalAdvance(percent);

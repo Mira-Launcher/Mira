@@ -12,11 +12,15 @@
 #include "../app/Notify.h"
 #include "../client/Jobs.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
+#include "../components/Format.h"
+#include "../components/Labels.h"
+#include "../components/ListRow.h"
+#include "../components/Metrics.h"
+#include "../components/ProgressRail.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/ProgressRail.h"
 
 namespace mira_gui {
 namespace {
@@ -212,14 +216,12 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   const theme::Tokens& tokens = theme::Current();
   const QString name = tracker_->NameFor(entry);
 
-  auto* row = new QFrame();
-  row->setObjectName("download_row");
+  auto* row = new ListRow(first);
   row->setProperty("download_key", entry.key);
   row->setProperty("download_running", entry.state == State::Running);
   row->setProperty("link_state", entry.link_state);
-  row->setProperty("first", first);
   auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(18, 10, 18, 10);
+  layout->setContentsMargins(kRowPaddingX, 10, kRowPaddingX, 10);
   layout->setSpacing(12);
 
   auto* cover = new QLabel(row);
@@ -261,12 +263,12 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
     title = new ElidedLabel(name, row);
   }
   title->setObjectName("download_title");
-  title->setStyleSheet("font-weight: 600;");
+  SetTextStyle(title, text::kSection);
   title->setToolTip(name);
   text->addWidget(title);
 
   QString state;
-  const char* role = "muted";
+  TextStyle style = text::kDetail;
   if (entry.state == State::Running) {
     state = RunningText(entry);
   } else if (entry.state == State::Paused && !entry.message.isEmpty()) {
@@ -279,16 +281,16 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   } else if (entry.kind == Kind::Notice) {
     state =
         entry.message.isEmpty() ? QString("Not shown as a desktop notification") : entry.message;
-    if (entry.source == "error") role = "error";
+    if (entry.source == "error") style = text::kError;
   } else {
     state = "Failed";
     if (!entry.error.empty()) state += ": " + error_help::Describe(entry.error);
-    role = "error";
+    style = text::kError;
   }
   const QString origin = Origin(*tracker_, entry);
   auto* status = new QLabel(origin.isEmpty() ? state : origin + "  ·  " + state, row);
   status->setObjectName("download_status");
-  status->setProperty("role", role);
+  SetTextStyle(status, style);
   status->setWordWrap(true);
   status->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   text->addWidget(status);
@@ -308,8 +310,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   // Every row, whatever its state: what it did, or is doing. A link's goes to the daemon's log, so
   // its row keeps to its progress and one button. A notice is no work of its own.
   if (entry.kind != Kind::Link && entry.kind != Kind::Notice) {
-    auto* log = new QPushButton("Log", row);
-    log->setObjectName("text_button");
+    auto* log = new Button("Log", ButtonKind::Link, row);
     log->setToolTip("Open its live log in a window");
     connect(log, &QPushButton::clicked, this,
             [this, channel = DownloadTracker::LogChannelFor(entry), name] {

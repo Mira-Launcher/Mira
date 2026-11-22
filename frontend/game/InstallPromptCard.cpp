@@ -4,14 +4,16 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QToolButton>
 #include <QVBoxLayout>
 #include <filesystem>
 
 #include "../app/Notify.h"
 #include "../client/Types.h"
+#include "../components/Button.h"
+#include "../components/SettingRow.h"
+#include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../library/ArtworkStore.h"
-#include "../theme/Icons.h"
 #include "../theme/Theme.h"
 
 namespace mira_gui {
@@ -31,7 +33,7 @@ QString WindowsPath(const std::string& path) {
 InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string& install_path,
                                      const std::string& exe_path, ArtworkStore* artwork,
                                      QWidget* parent)
-    : SettingsCard(QString(), parent), install_path_(install_path), exe_path_(exe_path) {
+    : SheetCard(QString(), parent), install_path_(install_path), exe_path_(exe_path) {
   setFixedWidth(560);
 
   auto* cover = new QLabel(this);
@@ -51,21 +53,16 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
   heading_layout->setContentsMargins(0, 0, 0, 0);
   heading_layout->setSpacing(2);
   auto* title = new QLabel(QString::fromStdString(game.name) + " installed a program", heading);
-  title->setProperty("role", "heading");
+  SetTextStyle(title, text::kHeading);
   heading_layout->addWidget(title);
   auto* question =
       new QLabel("It ran as an installer. Use the program it installed instead?", heading);
-  question->setProperty("role", "subtle");
+  SetTextStyle(question, text::kSubtle);
   question->setWordWrap(true);
   heading_layout->addWidget(question);
   SetTitleWidget(heading);
 
-  auto* close = new QToolButton(this);
-  close->setAutoRaise(true);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Keep as is");
-  connect(close, &QToolButton::clicked, this, &InstallPromptCard::CloseRequested);
-  Header()->addWidget(close, 0, Qt::AlignTop);
+  SetClose("Keep as is", [this] { emit CloseRequested(); });
 
   // The path under its label, full width, so the file name shows.
   auto* program = new SettingRow("Program", QString(), this);
@@ -83,20 +80,15 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
   app_row->AddControl(app_);
   AddRow(app_row);
 
-  auto* buttons = new QWidget(this);
-  auto* buttons_layout = new QHBoxLayout(buttons);
-  buttons_layout->setContentsMargins(18, 12, 18, 10);
-  buttons_layout->setSpacing(8);
-  buttons_layout->addStretch(1);
-  auto* keep = new QPushButton("Keep as is", buttons);
+  QHBoxLayout* buttons = ButtonRow();
+  auto* keep = new QPushButton("Keep as is", this);
   connect(keep, &QPushButton::clicked, this, &InstallPromptCard::CloseRequested);
-  buttons_layout->addWidget(keep);
-  use_ = new QPushButton("Use this program", buttons);
+  buttons->addWidget(keep);
+  use_ = new Button("Use this program", ButtonKind::Primary, this);
   use_->setDefault(true);
   connect(use_, &QPushButton::clicked, this,
           [this] { emit Accepted(exe_path_, app_->isChecked()); });
-  buttons_layout->addWidget(use_);
-  AddRow(buttons);
+  buttons->addWidget(use_);
 
   ShowProgram();
 }
@@ -105,7 +97,7 @@ void InstallPromptCard::ShowProgram() {
   const bool found = !exe_path_.empty();
   program_->setText(found ? WindowsPath((std::filesystem::path(install_path_) / exe_path_).string())
                           : QString("None found"));
-  theme::SetStyleProperty(program_, "role", found ? "" : "subtle");
+  SetTextStyle(program_, found ? text::kBody : text::kSubtle);
   use_->setEnabled(found);
 }
 

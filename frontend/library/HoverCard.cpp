@@ -1,16 +1,14 @@
 #include "HoverCard.h"
 
-#include <QGuiApplication>
 #include <QLabel>
 #include <QLocale>
-#include <QPainter>
-#include <QPainterPath>
-#include <QScreen>
 #include <QSizePolicy>
 #include <QVBoxLayout>
 #include <algorithm>
 
 #include "../client/api/Artwork.h"
+#include "../components/PopupCard.h"
+#include "../components/Text.h"
 #include "../theme/Theme.h"
 #include "GamePresentation.h"
 
@@ -26,9 +24,9 @@ std::string Join(const std::vector<std::string>& values) {
   return joined;
 }
 
-QLabel* AddLine(QVBoxLayout* layout, QWidget* parent, const char* role) {
+QLabel* AddLine(QVBoxLayout* layout, QWidget* parent, TextStyle style) {
   auto* label = new QLabel(parent);
-  label->setProperty("role", role);
+  SetTextStyle(label, style);
   label->setWordWrap(true);
   label->hide();
   layout->addWidget(label);
@@ -42,61 +40,6 @@ void SetLine(QLabel* label, const QString& text) {
 
 }  // namespace
 
-namespace card {
-
-void Paint(QWidget* widget) {
-  const theme::Tokens& tokens = theme::Current();
-  QPainter painter(widget);
-  painter.setRenderHint(QPainter::Antialiasing);
-  QPainterPath path;
-  path.addRoundedRect(QRectF(widget->rect()).adjusted(0.5, 0.5, -0.5, -0.5), tokens.radius_panel,
-                      tokens.radius_panel);
-  painter.fillPath(path, tokens.surface);
-  painter.setPen(QPen(tokens.border, 1));
-  painter.drawPath(path);
-}
-
-QPoint Place(const QRect& anchor, QSize size, bool beside) {
-  QScreen* screen = QGuiApplication::screenAt(anchor.center());
-  if (screen == nullptr) screen = QGuiApplication::primaryScreen();
-  return Place(anchor, size, beside,
-               screen != nullptr ? screen->availableGeometry() : QRect(anchor.topLeft(), size));
-}
-
-QPoint Place(const QRect& anchor, QSize size, bool beside, const QRect& area) {
-  QPoint pos;
-  if (beside) {
-    pos = QPoint(anchor.right() + 1 + kGap, anchor.top());
-    if (pos.x() + size.width() > area.right()) pos.setX(anchor.left() - kGap - size.width());
-  } else {
-    pos = QPoint(anchor.center().x() - size.width() / 2, anchor.bottom() + 1 + kGap);
-    if (pos.y() + size.height() > area.bottom()) pos.setY(anchor.top() - kGap - size.height());
-  }
-  pos.setX(
-      std::clamp(pos.x(), area.left(), std::max(area.left(), area.right() + 1 - size.width())));
-  pos.setY(
-      std::clamp(pos.y(), area.top(), std::max(area.top(), area.bottom() + 1 - size.height())));
-  return pos;
-}
-
-}  // namespace card
-
-HoverDwell::HoverDwell(std::function<void(const QModelIndex&)> on_hover)
-    : on_hover_(std::move(on_hover)) {
-  timer_.setSingleShot(true);
-  QObject::connect(&timer_, &QTimer::timeout, [this] {
-    if (last_.isValid()) on_hover_(last_);
-  });
-}
-
-void HoverDwell::Track(const QModelIndex& hovered) {
-  if (QPersistentModelIndex(hovered) == last_) return;
-  last_ = hovered;
-  timer_.stop();
-  on_hover_(QModelIndex());  // hide at once on change or leave
-  if (hovered.isValid()) timer_.start(card::kDwellMs);
-}
-
 HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->window() : nullptr) {
   // A child of the window, not a tooltip window of its own: a separate
   // window swallowed clicks meant for the grid beside it while it showed.
@@ -105,13 +48,14 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
   hide();
 
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(card::kPaddingX, card::kPaddingY, card::kPaddingX, card::kPaddingY);
+  layout->setContentsMargins(popup::kPaddingX, popup::kPaddingY, popup::kPaddingX,
+                             popup::kPaddingY);
   layout->setSpacing(4);
   setFixedWidth(240);
 
   name_ = new QLabel(this);
   name_->setTextFormat(Qt::PlainText);
-  name_->setProperty("role", "section");
+  SetTextStyle(name_, text::kSection);
   name_->setWordWrap(true);
   layout->addWidget(name_);
 
@@ -119,7 +63,7 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
   status_->setTextFormat(Qt::RichText);
   status_->setWordWrap(true);
   layout->addWidget(status_);
-  size_line_ = AddLine(layout, this, "muted");
+  size_line_ = AddLine(layout, this, text::kDetail);
 
   protondb_ = new QLabel(this);
   // Fixed, not the layout's default: a QSS-painted pill should hug its own
@@ -130,12 +74,12 @@ HoverCard::HoverCard(QWidget* parent) : QWidget(parent != nullptr ? parent->wind
 
   layout->addSpacing(4);
 
-  platform_line_ = AddLine(layout, this, "muted");
-  played_line_ = AddLine(layout, this, "muted");
-  developer_line_ = AddLine(layout, this, "muted");
-  review_line_ = AddLine(layout, this, "muted");
-  error_line_ = AddLine(layout, this, "error");
-  hint_line_ = AddLine(layout, this, "muted");
+  platform_line_ = AddLine(layout, this, text::kDetail);
+  played_line_ = AddLine(layout, this, text::kDetail);
+  developer_line_ = AddLine(layout, this, text::kDetail);
+  review_line_ = AddLine(layout, this, text::kDetail);
+  error_line_ = AddLine(layout, this, text::kError);
+  hint_line_ = AddLine(layout, this, text::kDetail);
 }
 
 void HoverCard::Reset() {
@@ -251,11 +195,11 @@ void HoverCard::Reposition() {
   QWidget* window = parentWidget();
   if (!anchor_.isValid() || window == nullptr) return;
   const QRect area(window->mapToGlobal(QPoint(0, 0)), window->size());
-  move(window->mapFromGlobal(card::Place(anchor_, size(), /*beside=*/true, area)));
+  move(window->mapFromGlobal(popup::Place(anchor_, size(), /*beside=*/true, area)));
 }
 
 void HoverCard::paintEvent(QPaintEvent*) {
-  card::Paint(this);
+  popup::Paint(this);
 }
 
 }  // namespace mira_gui

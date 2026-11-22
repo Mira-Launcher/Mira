@@ -4,19 +4,20 @@
 #include <QVBoxLayout>
 #include <algorithm>
 
+#include "../components/Labels.h"
+#include "../components/Metrics.h"
 #include "../setup/EmulatorPanel.h"
 #include "../setup/OfficePanel.h"
 #include "../setup/SignInPanel.h"
-#include "../widgets/Labels.h"
 #include "SourceText.h"
 
 namespace mira_gui {
 
 SourceSetupCard::SourceSetupCard(const SourceInfo& source, QWidget* parent)
-    : SettingsCard("Set up " + source.name, parent), source_(source) {
+    : SheetCard("Set up " + source.name, parent), source_(source) {
   setVisible(false);
-  error_ = MakeLabel(this, QString(), "error");
-  error_->setContentsMargins(18, 4, 18, 14);
+  error_ = MakeLabel(this, QString(), text::kError);
+  error_->setContentsMargins(kRowPaddingX, 4, kRowPaddingX, 14);
   error_->setVisible(false);
   AddRow(error_);
 }
@@ -45,7 +46,7 @@ void SourceSetupCard::ShowNeeded(bool needed) {
     connect(panel, &SignInPanel::InstallFailed, this, &SourceSetupCard::LauncherInstallFailed);
     panel_ = panel;
   }
-  panel_->setContentsMargins(18, 4, 18, 14);
+  panel_->setContentsMargins(kRowPaddingX, 4, kRowPaddingX, 14);
   AddRow(panel_);
 }
 
@@ -71,7 +72,7 @@ void SourceSetupCard::ShowEmulator(const EmulatorInfo& emulator) {
   auto* panel = new EmulatorPanel(emulator, this);
   connect(panel, &EmulatorPanel::Changed, this, &SourceSetupCard::StatusChanged);
   panel_ = panel;
-  panel_->setContentsMargins(18, 4, 18, 14);
+  panel_->setContentsMargins(kRowPaddingX, 4, kRowPaddingX, 14);
   AddRow(panel_);
 }
 

@@ -27,15 +27,23 @@
 #include "../client/api/Downloads.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
+#include "../components/Badge.h"
+#include "../components/Button.h"
+#include "../components/Chip.h"
+#include "../components/FlatCombo.h"
+#include "../components/Format.h"
+#include "../components/Labels.h"
+#include "../components/Metrics.h"
+#include "../components/SearchField.h"
+#include "../components/Segmented.h"
+#include "../components/SettingRow.h"
+#include "../components/SheetCard.h"
+#include "../components/Switch.h"
+#include "../components/WindowCards.h"
 #include "../downloads/LinkText.h"
 #include "../game/CardParts.h"
-#include "../settings/SettingsCard.h"
 #include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
-#include "../widgets/FlatCombo.h"
-#include "../widgets/Labels.h"
-#include "../widgets/Segmented.h"
-#include "../widgets/WindowCards.h"
 #include "LibraryActions.h"
 
 namespace mira_gui {
@@ -57,7 +65,7 @@ QStringList ListSetting(const ConfigResult& config, const std::string& key) {
 // The glyph on a tile before each of the first page's rows.
 QLabel* Tile(QWidget* parent, icons::Glyph glyph) {
   auto* tile = new QLabel(parent);
-  tile->setProperty("role", "tile_icon");
+  tile->setObjectName("tile_icon");
   tile->setFixedSize(kTile, kTile);
   tile->setAlignment(Qt::AlignCenter);
   icons::Follow(tile, glyph, 18, &theme::Tokens::accent);
@@ -68,12 +76,12 @@ QLabel* Tile(QWidget* parent, icons::Glyph glyph) {
 // height as the line fills in.
 QLabel* Detail(QWidget* parent, const QString& text) {
   auto* label = new ElidedLabel(text, parent);
-  label->setProperty("role", "muted");
+  SetTextStyle(label, text::kDetail);
   return label;
 }
 
-SettingsCard* NewPage() {
-  auto* page = new SettingsCard(QString());
+SheetCard* NewPage() {
+  auto* page = new SheetCard();
   page->setFixedWidth(kWidth);
   page->SetProminentTitle();
   return page;
@@ -140,7 +148,7 @@ AddGamesCard::AddGamesCard(QWidget* parent) : QWidget(parent) {
   });
 }
 
-void AddGamesCard::ShowPage(SettingsCard* page) {
+void AddGamesCard::ShowPage(SheetCard* page) {
   if (page_ != nullptr) {
     // Out of the layout now: until it's deleted, its height would add to the new page's.
     layout_->removeWidget(page_);
@@ -174,8 +182,9 @@ bool AddGamesCard::InLibraryRoot(const QString& path) const {
 void AddGamesCard::ShowMenu() {
   ++request_;  // a pick still being read no longer opens its page
   name_hint_.clear();
-  SettingsCard* page = NewPage();
-  AddCardHeading(page, "Add games", "Close", [this] { Close(); });
+  SheetCard* page = NewPage();
+  page->SetHeading("Add games");
+  page->SetClose("Close", [this] { Close(); });
 
   std::vector<QPushButton*> buttons;
   const auto add_row = [page, &buttons](icons::Glyph glyph, const QString& label,
@@ -256,8 +265,7 @@ void AddGamesCard::FillMenuDetails() {
     } else if (count == 0) {
       menu_detail_->setText("Every entry is already in Mira");
     } else {
-      menu_detail_->setText(count == 1 ? QString("1 entry, Flatpaks included")
-                                       : QString("%1 entries, Flatpaks included").arg(count));
+      menu_detail_->setText(Counted(count, "entry", "entries") + ", Flatpaks included");
     }
     menu_choose_->setEnabled(candidates_->ok && count > 0);
   }
@@ -276,11 +284,7 @@ void AddGamesCard::Classify(const QString& path, std::optional<bool> installer) 
                              if (!guess.ok) {
                                // The page stays as it is; the line under it says why.
                                if (page_ != nullptr) {
-                                 QLabel* error = page_->findChild<QLabel*>("add_error");
-                                 if (error == nullptr) {
-                                   error = AddErrorLine(page_);
-                                   error->setObjectName("add_error");
-                                 }
+                                 QLabel* error = page_->ErrorLine();
                                  error->setText("Could not read " + QFileInfo(path).fileName() +
                                                 ": " + error_help::Describe(guess.error));
                                  error->show();
@@ -302,10 +306,10 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
                           : guess.name.empty()  ? fallback
                                                 : QString::fromStdString(guess.name);
 
-  SettingsCard* page = NewPage();
-  AddCardBack(page, [this] { ShowMenu(); });
-  QLabel* heading = AddCardHeading(
-      page, guessed, "Close", [this] { Close(); }, QString::fromStdString(guess.reason));
+  SheetCard* page = NewPage();
+  page->SetBack([this] { ShowMenu(); });
+  QLabel* heading = page->SetHeading(guessed, QString::fromStdString(guess.reason));
+  page->SetClose("Close", [this] { Close(); });
 
   auto* where = new SettingRow(folder ? "Folder" : "Program", QString(), page);
   auto* path_line = Detail(where, HomeRelative(path));
@@ -364,13 +368,12 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
     connect(kinds, &Segmented::Changed, row, label);
   }
 
-  QLabel* error = AddErrorLine(page);
-  error->setObjectName("add_error");
-  QHBoxLayout* buttons = AddButtonRow(page);
+  QLabel* error = page->ErrorLine();
+  QHBoxLayout* buttons = page->ButtonRow();
   auto* cancel = new QPushButton("Cancel", page);
   connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
   buttons->addWidget(cancel);
-  auto* add = new QPushButton(page);
+  auto* add = new Button(QString(), ButtonKind::Primary, page);
   add->setDefault(true);
   buttons->addWidget(add);
   const auto refresh = [add, name, heading, program] {
@@ -428,9 +431,10 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
                           : guess.name.empty()  ? QFileInfo(path).completeBaseName()
                                                 : QString::fromStdString(guess.name);
 
-  SettingsCard* page = NewPage();
-  AddCardBack(page, [this] { ShowMenu(); });
-  QLabel* heading = AddCardHeading(page, QString(), "Close", [this] { Close(); });
+  SheetCard* page = NewPage();
+  page->SetBack([this] { ShowMenu(); });
+  QLabel* heading = page->SetHeading(QString());
+  page->SetClose("Close", [this] { Close(); });
 
   auto* installer = new SettingRow("Installer", QString(), page);
   QStringList parts{QFileInfo(path).fileName()};
@@ -473,26 +477,27 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
     page->AddRow(row);
   }
 
-  QLabel* error = AddErrorLine(page);
-  error->setObjectName("add_error");
+  QLabel* error = page->ErrorLine();
   if (!info.ok) {
     error->setText("Mira can't run this installer itself: add it, then install it from its card.");
     error->show();
   }
-  QHBoxLayout* buttons = AddButtonRow(page);
-  auto* add_only = new QPushButton("Add without installing", page);
+  QHBoxLayout* buttons = page->ButtonRow();
+  auto* add_only = new Button("Add without installing", ButtonKind::Secondary, page);
   add_only->setToolTip("Add it as needing install, and install it later");
   buttons->addWidget(add_only);
   // The usual way last, where the default button goes.
-  auto* shown = new QPushButton("Show the installer", page);
+  auto* shown = new Button("Show the installer", ButtonKind::Secondary, page);
   shown->setToolTip("Open the installer's window and click through it yourself");
   shown->setEnabled(info.ok);
   buttons->addWidget(shown);
-  auto* quiet = new QPushButton("Install quietly", page);
+  auto* quiet = new Button("Install quietly", ButtonKind::Secondary, page);
   quiet->setToolTip("Run the installer in the background without its window");
   quiet->setVisible(info.ok && info.silent);
   buttons->addWidget(quiet);
-  (info.ok && info.silent ? quiet : shown)->setDefault(true);
+  Button* recommended = info.ok && info.silent ? quiet : shown;
+  recommended->SetKind(ButtonKind::Primary);
+  recommended->setDefault(true);
 
   const auto refresh = [name, heading, add_only, quiet, shown, ok = info.ok] {
     const QString text = name->text().trimmed();
@@ -507,7 +512,7 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
   // Added once: a failed install after that retries the install, not the add.
   auto added = std::make_shared<std::string>();
   const auto run = [=, this](std::optional<bool> interactive) {
-    for (QPushButton* button : {add_only, quiet, shown}) button->setEnabled(false);
+    for (Button* button : {add_only, quiet, shown}) button->setEnabled(false);
     error->hide();
     const auto failed = [=](const QString& what, const ApiError& why) {
       refresh();
@@ -545,9 +550,10 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
 
 void AddGamesCard::ShowLinks() {
   const int request = ++request_;
-  SettingsCard* page = NewPage();
-  AddCardBack(page, [this] { ShowMenu(); });
-  AddCardHeading(page, "Download from links", "Close", [this] { Close(); });
+  SheetCard* page = NewPage();
+  page->SetBack([this] { ShowMenu(); });
+  page->SetHeading("Download from links");
+  page->SetClose("Close", [this] { Close(); });
 
   auto* intro = new SettingRow("Links for one game", QString(), page);
   intro->SetBelow(Detail(intro, "One per line. Enter downloads, Shift+Enter adds a line."));
@@ -560,7 +566,7 @@ void AddGamesCard::ShowLinks() {
   for (const std::string& link : copied) text->appendPlainText(QString::fromStdString(link));
   auto* box = new QWidget(page);
   auto* box_layout = new QVBoxLayout(box);
-  box_layout->setContentsMargins(18, 0, 18, 10);
+  box_layout->setContentsMargins(kRowPaddingX, 0, kRowPaddingX, 10);
   box_layout->addWidget(text);
   page->AddRow(box);
 
@@ -595,12 +601,12 @@ void AddGamesCard::ShowLinks() {
     page->AddRow(row);
   }
 
-  QLabel* error = AddErrorLine(page);
-  QHBoxLayout* buttons = AddButtonRow(page);
+  QLabel* error = page->ErrorLine();
+  QHBoxLayout* buttons = page->ButtonRow();
   auto* cancel = new QPushButton("Cancel", page);
   connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
   buttons->addWidget(cancel);
-  auto* start = new QPushButton("Download", page);
+  auto* start = new Button("Download", ButtonKind::Primary, page);
   start->setDefault(true);
   buttons->addWidget(start);
   const auto refresh = [text, start] {
@@ -654,21 +660,20 @@ void AddGamesCard::ShowLinks() {
 
 void AddGamesCard::ShowAppMenu() {
   if (!candidates_ || !candidates_->ok) return;
-  SettingsCard* page = NewPage();
-  AddCardBack(page, [this] { ShowMenu(); });
-  AddCardHeading(page, "From your app menu", "Close", [this] { Close(); });
-  auto* search = new QLineEdit(page);
-  search->setPlaceholderText("Search");
-  search->setClearButtonEnabled(true);
+  SheetCard* page = NewPage();
+  page->SetBack([this] { ShowMenu(); });
+  page->SetHeading("From your app menu");
+  page->SetClose("Close", [this] { Close(); });
+  auto* search = new SearchField("Search", page);
   search->setFixedWidth(170);
-  page->Header()->insertWidget(page->Header()->count() - 1, search, 0, Qt::AlignVCenter);
+  page->AddHeaderWidget(search);
 
   struct Entry {
     std::string id;
     QString name;
     QWidget* row;
     QCheckBox* pick;
-    QPushButton* app;
+    Chip* app;
   };
   auto entries = std::make_shared<std::vector<Entry>>();
   QLabel* count = nullptr;
@@ -683,17 +688,14 @@ void AddGamesCard::ShowAppMenu() {
     icon->setPixmap(EntryIcon(candidate.icon, devicePixelRatioF()));
     row->SetLeading(icon);
     if (candidate.flatpak) {
-      auto* tag = new QLabel("Flatpak", row);
-      tag->setObjectName("default_tag");
-      row->AddAfterLabel(tag);
+      row->AddAfterLabel(new Badge("Flatpak", Tone::Accent, row));
     } else if (!candidate.command.empty()) {
       auto* command = new ElidedLabel(QString::fromStdString(candidate.command), row);
-      command->setProperty("role", "muted");
+      SetTextStyle(command, text::kDetail);
       row->SetBelow(command);
     }
     // Shown once the entry is ticked, keeping its place so nothing shifts.
-    auto* app = new QPushButton("App", row);
-    app->setObjectName("chip");
+    auto* app = new Chip("App", row);
     app->setCheckable(true);
     app->setChecked(candidate.app);
     app->setToolTip("Add it as an app rather than a game");
@@ -708,15 +710,15 @@ void AddGamesCard::ShowAppMenu() {
   }
   if (entries->size() > 6) page->SetScrollable();
 
-  QLabel* error = AddErrorLine(page);
-  QHBoxLayout* buttons = AddButtonRow(page);
+  QLabel* error = page->ErrorLine();
+  QHBoxLayout* buttons = page->ButtonRow();
   count = new QLabel(page);
-  count->setProperty("role", "subtle");
+  SetTextStyle(count, text::kSubtle);
   buttons->insertWidget(0, count);
   auto* cancel = new QPushButton("Cancel", page);
   connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
   buttons->addWidget(cancel);
-  add = new QPushButton("Add", page);
+  add = new Button("Add", ButtonKind::Primary, page);
   add->setDefault(true);
   buttons->addWidget(add);
 
@@ -728,8 +730,8 @@ void AddGamesCard::ShowAppMenu() {
       if (entry.pick->isChecked()) ++(entry.app->isChecked() ? apps : games);
     }
     QStringList parts;
-    if (games > 0) parts << (games == 1 ? QString("1 game") : QString("%1 games").arg(games));
-    if (apps > 0) parts << (apps == 1 ? QString("1 app") : QString("%1 apps").arg(apps));
+    if (games > 0) parts << Counted(games, "game");
+    if (apps > 0) parts << Counted(apps, "app");
     count->setText(parts.join(", "));
     add->setText(games + apps > 0 ? QString("Add %1").arg(games + apps) : QString("Add"));
     add->setEnabled(games + apps > 0);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QMargins>
 #include <QPointer>
 #include <QString>
 #include <QWidget>
@@ -55,8 +56,14 @@ QVBoxLayout* SetupPageLayout(SetupStep* page, icons::Glyph glyph, const QString&
                              const QString& title, const QString& lead);
 // "Not now? ..." with a clock: where a step can be done later.
 QWidget* SetupLaterLine(QWidget* parent, const QString& text);
+// A page's content under its heading or hero strip, and the space between its parts.
+inline constexpr QMargins kSetupPageMargins{36, 14, 36, 22};
+constexpr int kSetupPageSpacing = 12;
 // A raised group for a page's content.
 QFrame* SetupCard(QWidget* parent);
+// Inside a setup card: around a list of rows, which pad themselves, and around anything else.
+inline constexpr QMargins kSetupListMargins{14, 4, 14, 4};
+inline constexpr QMargins kSetupCardMargins{16, 14, 16, 14};
 // A setting in a setup card: its label, whose tooltip is `doc`, then `control` at the end of the
 // line or, with `below`, under it. `after` goes right after the label.
 QWidget* SetupRow(QWidget* parent, const QString& label, const QString& doc, QWidget* control,

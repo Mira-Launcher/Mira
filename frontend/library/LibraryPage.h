@@ -10,7 +10,7 @@
 
 #include "../activity/DownloadTracker.h"
 #include "../client/Types.h"
-#include "../widgets/TileView.h"
+#include "../components/TileView.h"
 #include "GameLibraryModel.h"
 #include "OwnedTitles.h"
 
@@ -24,6 +24,8 @@ class QTimer;
 class QVBoxLayout;
 
 namespace mira_gui {
+
+class SearchField;
 
 class ArtworkStore;
 class ContinueRow;
@@ -168,7 +170,7 @@ class LibraryPage : public QWidget {
   GameFilterProxy* games_ = nullptr;
   TabRow* tabs_ = nullptr;
   FilterSortPill* pill_ = nullptr;
-  QLineEdit* search_ = nullptr;
+  SearchField* search_ = nullptr;
   QTimer* search_timer_ = nullptr;  // waits for typing to pause before ApplyFilter
   ContinueRow* continue_row_ = nullptr;
   LibraryGrid* grid_ = nullptr;

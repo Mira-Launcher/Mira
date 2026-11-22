@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../widgets/TileView.h"
+#include "../components/TileView.h"
 #include "Sources.h"
 
 class QLabel;
@@ -29,6 +29,10 @@ class QVBoxLayout;
 
 namespace mira_gui {
 
+class SearchField;
+
+class StatusLine;
+
 class ArtworkStore;
 class DownloadTracker;
 class GameFilterProxy;
@@ -39,7 +43,7 @@ class ModalOverlay;
 class ModManagerPicker;
 class ProgressRail;
 class RatingChips;
-class SettingsCard;
+class Card;
 class SourceSettingsCard;
 class ZoomSettle;
 class SourceSetupCard;
@@ -72,7 +76,7 @@ class SourcePage : public QWidget {
   // Starts an update of an installed store title.
   void UpdateTitle(const QString& ref);
   // Null until the banner's settings button first opens it.
-  SourceSettingsCard* SettingsCard() const { return settings_card_; }
+  SourceSettingsCard* Card() const { return settings_card_; }
   bool SettingsModalOpen() const;
   const SourceInfo& Source() const { return source_; }
   // The source's settings over the page.
@@ -129,7 +133,7 @@ class SourcePage : public QWidget {
 
   void OpenCollectionsModal();
   // Shows `card` alone over the page, in place of whichever card was there.
-  void ShowModal(mira_gui::SettingsCard* card);
+  void ShowModal(mira_gui::Card* card);
   void FitSettingsModal();
   void FillMoreMenu(QMenu* menu);
   void UpdateTool();
@@ -199,10 +203,10 @@ class SourcePage : public QWidget {
   bool checking_ = false;       // mirad is re-checking the store behind the list shown
   int owned_generation_ = 0;
 
-  QLabel* status_line_ = nullptr;
+  StatusLine* status_line_ = nullptr;
   QPushButton* banner_primary_ = nullptr;  // Open launcher / Sign out
   TabRow* tabs_ = nullptr;
-  QLineEdit* filter_ = nullptr;
+  SearchField* filter_ = nullptr;
   QToolButton* settings_button_ = nullptr;
   QToolButton* more_button_ = nullptr;
   QWidget* content_ = nullptr;
@@ -212,7 +216,7 @@ class SourcePage : public QWidget {
   int adding_ = 0;                               // games the mod manager is still being added to
   SourceSettingsCard* settings_card_ = nullptr;  // built on first open
   ItchCollectionsCard* collections_card_ = nullptr;  // itch only, built on first open
-  mira_gui::SettingsCard* modal_card_ = nullptr;     // the one the overlay shows
+  mira_gui::Card* modal_card_ = nullptr;             // the one the overlay shows
   ModalOverlay* settings_overlay_ = nullptr;
   QScrollArea* settings_scroll_ = nullptr;
 

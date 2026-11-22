@@ -7,6 +7,7 @@
 #include "../client/api/Artwork.h"
 #include "../client/api/Config.h"
 #include "../client/api/Library.h"
+#include "../components/Format.h"
 
 namespace mira_gui::actions {
 
@@ -72,11 +73,8 @@ void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& i
     }
     // The moved games arrive as game.updated events.
     if (result.moved > 0 || result.errors.empty()) {
-      notify::Notice(
-          parent,
-          result.moved == 0
-              ? QString("Every game was already in place")
-              : QString("Moved %1 game%2").arg(result.moved).arg(result.moved == 1 ? "" : "s"));
+      notify::Notice(parent, result.moved == 0 ? QString("Every game was already in place")
+                                               : "Moved " + Counted(result.moved, "game"));
     }
     if (!result.errors.empty()) {
       QStringList failed;

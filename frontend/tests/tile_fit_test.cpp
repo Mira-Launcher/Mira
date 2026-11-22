@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <vector>
 
-#include "widgets/TileFit.h"
+#include "components/TileFit.h"
 
 using namespace mira_gui;
 

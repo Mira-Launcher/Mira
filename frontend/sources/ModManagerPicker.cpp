@@ -3,7 +3,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 
-#include "../widgets/Labels.h"
+#include "../components/Format.h"
 
 namespace mira_gui {
 
@@ -27,7 +27,7 @@ void ModManagerPicker::Open(const std::vector<const GameSummary*>& games) {
 
 void ModManagerPicker::UpdateApply() {
   const int count = TickedCount();
-  ApplyButton()->setText(QString("Add to %1").arg(GamesCount(count)));
+  ApplyButton()->setText(QString("Add to %1").arg(Counted(count, "game")));
   ApplyButton()->setEnabled(count > 0);
 }
 

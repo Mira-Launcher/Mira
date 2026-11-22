@@ -3,13 +3,13 @@
 #include <string>
 
 #include "../client/Types.h"
-#include "../settings/SettingsCard.h"
+#include "../components/SheetCard.h"
 
 namespace mira_gui {
 
 // Asked when something was dropped into a Mira folder that Mira couldn't sort: where it goes.
 // An in-window card over the library.
-class UnclearDropCard : public SettingsCard {
+class UnclearDropCard : public SheetCard {
   Q_OBJECT
 
  public:

@@ -6,7 +6,8 @@
 #include <QStyle>
 #include <QVBoxLayout>
 
-#include "../widgets/Labels.h"
+#include "../components/Badge.h"
+#include "../components/Labels.h"
 
 namespace mira_gui {
 
@@ -31,13 +32,13 @@ SourceTile::SourceTile(const SourceInfo& source, QWidget* parent)
   name_ = new ElidedLabel(source.name, this);
   name_->setObjectName("source_tile_name");
   line_ = new ElidedLabel(QString(), this);
-  line_->setProperty("role", "subtle");
+  SetTextStyle(line_, text::kSubtle);
   if (source.beta || source.recommended) {
     auto* name_row = new QHBoxLayout();
     name_row->setSpacing(6);
     name_row->addWidget(name_, 0);
-    QLabel* tag =
-        source.beta ? MakeTag(this, "Beta", "accent") : MakeTag(this, "Recommended", "success");
+    auto* tag = source.beta ? new Badge("Beta", Tone::Accent, this)
+                            : new Badge("Recommended", Tone::Success, this);
     tag->setToolTip(source.beta ? "Works, but not everything does yet"
                                 : "The best pick for its consoles");
     name_row->addWidget(tag, 0, Qt::AlignVCenter);
@@ -68,7 +69,7 @@ void SourceTile::SetClickable(const QString& tooltip) {
 
 void SourceTile::SetDim(bool dim) {
   SetSourceBadgeDim(badge_, source_, dim);
-  name_->setProperty("role", dim ? "subtle" : "");
+  SetTextStyle(name_, dim ? text::kSubtle : text::kBody);
   name_->style()->unpolish(name_);
   name_->style()->polish(name_);
 }

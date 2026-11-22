@@ -22,13 +22,14 @@
 #include "app/Tray.h"
 #include "bigscreen/Session.h"
 #include "client/api/Config.h"
+#include "components/FocusRing.h"
+#include "components/OverlayScrollBar.h"
+#include "components/Scrolling.h"
+#include "components/SpatialNav.h"
+#include "components/ToolTip.h"
 #include "setup/SetupWindow.h"
 #include "theme/DesktopPortal.h"
 #include "theme/Theme.h"
-#include "widgets/FocusRing.h"
-#include "widgets/Scrolling.h"
-#include "widgets/SpatialNav.h"
-#include "widgets/ToolTip.h"
 #include "window/LibraryWindow.h"
 
 int main(int argc, char** argv) {
@@ -53,6 +54,7 @@ int main(int argc, char** argv) {
   mira_gui::theme::KeepTextSize();
   mira_gui::theme::WriteUserCopies();
   mira_gui::SetUpSmoothWheel();
+  mira_gui::SetUpOverlayScrollBars();
 
   // Mira closes to tray rather than quitting, so a second launch (another
   // double-click on the AppImage, another "Mira" from the app menu) must

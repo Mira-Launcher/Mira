@@ -12,10 +12,12 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "../components/Labels.h"
+#include "../components/NavRow.h"
+#include "../components/Popover.h"
+#include "../components/TabRow.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
-#include "../widgets/Labels.h"
-#include "../widgets/TabRow.h"
 #include "LibrarySort.h"
 
 namespace mira_gui {
@@ -56,7 +58,7 @@ QWidget* MakeFilterRow(icons::Glyph glyph, const QString& label, QWidget* parent
   layout->addWidget(text, /*stretch=*/1);
   auto* count = new QLabel(row);
   count->setObjectName("count");
-  count->setProperty("role", "muted");
+  SetTextStyle(count, text::kDetail);
   layout->addWidget(count);
   return row;
 }
@@ -141,7 +143,7 @@ FilterSortPill::FilterSortPill(const std::string& sort_key, bool sort_descending
   sort_icon_ = new QLabel(this);
   layout->addWidget(sort_icon_);
   sort_label_ = new QLabel(this);
-  sort_label_->setProperty("role", "subtle");
+  SetTextStyle(sort_label_, text::kSubtle);
   layout->addWidget(sort_label_);
   chevron_ = new QLabel(this);
   layout->addWidget(chevron_);
@@ -156,10 +158,10 @@ FilterSortPill::~FilterSortPill() {
   delete popover_;
 }  // parentless; see BuildPopover
 
-QWidget* FilterSortPill::BuildPopover() {
+Popover* FilterSortPill::BuildPopover() {
   // No parent: as the pill's child it would sit inside the tab row, whose
   // checked-button style would then override the sort rows'.
-  auto* popover = new QWidget(nullptr, Qt::Popup);
+  auto* popover = new Popover();
   popover->setObjectName("filter_sort_popover");
   auto* layout = new QVBoxLayout(popover);
   layout->setContentsMargins(8, 8, 8, 8);
@@ -192,8 +194,7 @@ QWidget* FilterSortPill::BuildPopover() {
   layout->addWidget(filters_);
 
   // Hidden mode applies on top of the filter, so it's a switch rather than a filter row.
-  hidden_ = new QPushButton("Hidden games", popover);
-  hidden_->setFlat(true);
+  hidden_ = new NavRow("Hidden games", popover);
   hidden_->setCheckable(true);
   connect(hidden_, &QPushButton::clicked, this, [this] {
     hidden_->setChecked(!hidden_->isChecked());  // the mode's own change sets it
@@ -246,8 +247,7 @@ QWidget* FilterSortPill::BuildPopover() {
   // to unreadable widths.
   auto* sort_group = new QButtonGroup(popover);
   for (const SortOption& option : SortOptions()) {
-    auto* button = new QPushButton(option.label, popover);
-    button->setFlat(true);
+    auto* button = new NavRow(option.label, popover);
     button->setCheckable(true);
     button->setChecked(option.key == sort_key_);
     const std::string key = option.key;
@@ -379,8 +379,7 @@ void FilterSortPill::OpenPopover() {
                         static_cast<QGridLayout*>(tags_box_->layout())->horizontalSpacing() +
                         margins.left() + margins.right();
   popover_->setFixedWidth(qMax(qMax(240, width()), qMin(fits_tags, kMaxWidth)));
-  popover_->move(mapToGlobal(QPoint(0, height() + 4)));
-  popover_->show();
+  popover_->PopUpBelow(this, popup::Align::Start);
   // The filters take the arrow keys, however the popover was opened.
   filters_->setFocus(Qt::PopupFocusReason);
 }
