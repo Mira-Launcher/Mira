@@ -37,4 +37,8 @@ constexpr TextStyle kGroup{TextRole::Group, Tone::Muted, TextSize::Small};
 // Gives `widget` `style`, restyling it if it's already shown.
 void SetTextStyle(QWidget* widget, TextStyle style);
 
+// A link in a label's rich text, `text` going to `href`, both escaped. Drawn in the palette's link
+// color (the accent), so it follows a theme change; a link that stands alone is a Link button.
+QString Anchor(const QString& href, const QString& text);
+
 }  // namespace mira_gui

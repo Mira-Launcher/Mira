@@ -11,6 +11,7 @@
 #include <cstdlib>
 
 #include "../components/Labels.h"
+#include "../components/NavRow.h"
 #include "../library/ArtworkStore.h"
 #include "../library/CoverArt.h"
 #include "../theme/Theme.h"
@@ -383,8 +384,7 @@ QPushButton* MakeCoverRow(const GameSummary& game, ArtworkStore* artwork, const 
   // The button only draws the background; the cover, name and trailing text
   // are labels, so a long name elides short of the trailing text.
   const QString name = QString::fromStdString(game.name);
-  auto* row = new QPushButton(parent);
-  row->setFlat(true);
+  auto* row = new NavRow({}, parent);
   row->setAccessibleName(name);
   row->setMinimumHeight(kThumb.height() + 8);
   // Only hover and press take the cover's color; at rest the rows stay plain.

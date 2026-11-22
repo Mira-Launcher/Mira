@@ -34,6 +34,7 @@
 #include "../components/ProgressRail.h"
 #include "../components/Segmented.h"
 #include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
 #include "../sources/SourceText.h"
@@ -1236,7 +1237,7 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   star_text->addWidget(
       MakeLabel(star, "Enjoying Mira? A star on GitHub helps other people find it."));
   auto* link = new QLabel(
-      "<a href='https://github.com/Mira-Launcher/Mira'>github.com/Mira-Launcher/Mira</a>", star);
+      Anchor("https://github.com/Mira-Launcher/Mira", "github.com/Mira-Launcher/Mira"), star);
   link->setObjectName("setup_link");
   link->setOpenExternalLinks(true);
   link->setTextInteractionFlags(Qt::TextBrowserInteraction);

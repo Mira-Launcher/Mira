@@ -25,6 +25,7 @@
 #include "../components/ModalOverlay.h"
 #include "../components/PopupDialog.h"
 #include "../components/Scrolling.h"
+#include "../components/SearchField.h"
 #include "../components/Segmented.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
@@ -64,12 +65,8 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   titles->addWidget(hint_);
   header->addLayout(titles, /*stretch=*/1);
 
-  search_ = new QLineEdit(this);
-  search_->setPlaceholderText("Search sources");
-  search_->setClearButtonEnabled(true);
+  search_ = new SearchField("Search sources", this);
   search_->setFixedWidth(220);
-  icons::Follow(search_->addAction(QIcon(), QLineEdit::LeadingPosition), icons::Glyph::Search,
-                &theme::Tokens::text_muted);
   header->addWidget(search_, 0, Qt::AlignTop);
 
   views_ = new Segmented({{"added", "Added"}, {"catalog", "Add source"}}, this);

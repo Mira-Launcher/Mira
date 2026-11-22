@@ -12,6 +12,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "IconButton.h"
+#include "SearchField.h"
 
 namespace mira_gui {
 
@@ -145,7 +146,7 @@ void TabRow::SetTrailing(QWidget* widget) {
   Fit();
 }
 
-void TabRow::SetSearch(QLineEdit* search) {
+void TabRow::SetSearch(SearchField* search) {
   search_ = search;
   search_->setFixedHeight(kControlHeight);
   search_->installEventFilter(this);

@@ -726,10 +726,7 @@ void LibraryWindow::ClosePagesForTray() {
 }
 
 void LibraryWindow::changeEvent(QEvent* event) {
-  if (event->type() == QEvent::WindowStateChange && top_bar_ != nullptr) {
-    top_bar_->SyncMaximized();
-    ScheduleSavePrefs();
-  }
+  if (event->type() == QEvent::WindowStateChange) ScheduleSavePrefs();
   QMainWindow::changeEvent(event);
 }
 

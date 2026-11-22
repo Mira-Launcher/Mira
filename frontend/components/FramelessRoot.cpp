@@ -5,6 +5,8 @@
 #include <QMouseEvent>
 #include <QWindow>
 
+#include "WindowChrome.h"
+
 namespace mira_gui {
 namespace {
 
@@ -44,7 +46,7 @@ void FramelessRoot::mousePressEvent(QMouseEvent* event) {
 
 void FramelessRoot::mouseDoubleClickEvent(QMouseEvent* event) {
   if (event->pos().y() <= kResizeMargin && ResizableEdgesAt(event->pos()) == Qt::Edges()) {
-    window_->isMaximized() ? window_->showNormal() : window_->showMaximized();
+    ToggleMaximized(window_);
     return;
   }
   QWidget::mouseDoubleClickEvent(event);

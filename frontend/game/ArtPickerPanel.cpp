@@ -44,6 +44,7 @@
 #include "../components/Chip.h"
 #include "../components/FlowLayout.h"
 #include "../components/Scrolling.h"
+#include "../components/SearchField.h"
 #include "../components/TabRow.h"
 #include "../components/Text.h"
 #include "../theme/Theme.h"
@@ -319,9 +320,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   match_->setMinimumWidth(180);
   connect(match_, &QComboBox::activated, this, &ArtPickerPanel::ChooseMatch);
   match_layout->addWidget(match_);
-  match_search_ = new QLineEdit(match_row_);
-  match_search_->setPlaceholderText("Game name, then Enter");
-  match_search_->setClearButtonEnabled(true);
+  match_search_ = new SearchField("Game name, then Enter", match_row_);
   match_search_->setMinimumWidth(180);
   match_search_->hide();
   connect(match_search_, &QLineEdit::returnPressed, this, [this] {
@@ -346,7 +345,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   bar_layout->addWidget(url_button_);
   url_field_ = new QLineEdit(bar);
   url_field_->setPlaceholderText("Image URL, then Enter");
-  url_field_->setClearButtonEnabled(true);
+  AddClearButton(url_field_);
   url_field_->setMinimumWidth(240);
   url_field_->hide();
   bar_layout->addWidget(url_field_);

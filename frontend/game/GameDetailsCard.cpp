@@ -66,10 +66,6 @@ QLabel* Text(QWidget* parent, const QString& text, Qt::TextFormat format = Qt::P
   return label;
 }
 
-QString Anchor(const QString& href, const QString& text) {
-  return QString("<a href=\"%1\">%2</a>").arg(href.toHtmlEscaped(), text.toHtmlEscaped());
-}
-
 // A label that runs `clicked` on a left click, Enter or Space: a screenshot, or the large one over
 // the card.
 class Clickable : public QLabel {

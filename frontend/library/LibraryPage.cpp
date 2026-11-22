@@ -20,6 +20,7 @@
 #include "../app/Notify.h"
 #include "../client/api/Stores.h"
 #include "../components/Scrolling.h"
+#include "../components/SearchField.h"
 #include "../components/TabRow.h"
 #include "../components/Text.h"
 #include "../components/TileView.h"
@@ -207,10 +208,8 @@ QWidget* LibraryPage::BuildHeader(const std::string& sort_key, bool sort_descend
   connect(pill_, &FilterSortPill::HiddenToggled, this,
           [this] { library_->SetShowingHidden(!library_->ShowingHidden()); });
   tabs_->SetTrailing(pill_);
-  search_ = new QLineEdit(top);
+  search_ = new SearchField("Search…", top);
   search_->setObjectName("library_search");
-  search_->setPlaceholderText("Search…");
-  search_->setClearButtonEnabled(true);
   search_timer_ = new QTimer(this);
   search_timer_->setSingleShot(true);
   search_timer_->setInterval(150);

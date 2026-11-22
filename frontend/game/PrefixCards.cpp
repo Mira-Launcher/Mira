@@ -19,6 +19,7 @@
 #include "../components/Labels.h"
 #include "../components/PathField.h"
 #include "../components/ProgressRail.h"
+#include "../components/SearchField.h"
 #include "../components/SettingRow.h"
 #include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
@@ -152,9 +153,7 @@ WinetricksCard::WinetricksCard(std::string game_id, const QString& name, QWidget
   auto* pick_layout = new QVBoxLayout(pick);
   pick_layout->setContentsMargins(18, 10, 18, 10);
   pick_layout->setSpacing(10);
-  verb_ = new QLineEdit(pick);
-  verb_->setPlaceholderText("Search or type a verb");
-  verb_->setClearButtonEnabled(true);
+  verb_ = new SearchField("Search or type a verb", pick);
   pick_layout->addWidget(verb_);
   chips_ = new QWidget(pick);
   chips_layout_ = new FlowLayout(chips_);

@@ -35,7 +35,6 @@ class LogWindow : public QWidget {
 
  protected:
   void closeEvent(QCloseEvent* event) override;
-  void changeEvent(QEvent* event) override;
 
  private:
   LogWindow(QWidget* parent, QString channel, QString title);
@@ -67,9 +66,6 @@ class LogWindow : public QWidget {
   QToolButton* copy_ = nullptr;
   QToolButton* save_ = nullptr;
   QToolButton* clear_ = nullptr;
-  QToolButton* minimize_ = nullptr;
-  QToolButton* maximize_ = nullptr;
-  QToolButton* close_ = nullptr;
   QTimer* timer_ = nullptr;
 
   std::deque<QString> lines_;

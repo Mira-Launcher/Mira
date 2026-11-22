@@ -32,6 +32,7 @@
 #include "../components/ChangeBar.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
+#include "../components/SearchField.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
 #include "../library/ArtworkStore.h"
@@ -406,9 +407,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   left_layout->addWidget(settings_card_);
 
   steam_ = new Card("From Steam", overview_);
-  steam_search_ = new QLineEdit(steam_);
-  steam_search_->setPlaceholderText("Find a tag");
-  steam_search_->setClearButtonEnabled(true);
+  steam_search_ = new SearchField("Find a tag", steam_);
   steam_search_->setFixedWidth(180);
   connect(steam_search_, &QLineEdit::textChanged, this, &TagsPage::FilterSteam);
   steam_->AddHeaderWidget(steam_search_);

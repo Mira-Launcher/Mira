@@ -30,6 +30,7 @@
 #include "../components/Scrolling.h"
 #include "../components/Segmented.h"
 #include "../components/SettingRow.h"
+#include "../components/Text.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "RunnerUpdater.h"
@@ -386,11 +387,9 @@ void RunnersPage::RebuildInstalled() {
   // "proton:GE-Proton11-7" reads as "GE-Proton11-7".
   const QString chosen = QString::fromStdString(default_windows_).section(':', 1);
   default_note_->setText(
-      automatic
-          ? "Windows games set to Auto use the newest Proton build, or Wine if there's none."
-          : QString("Windows games set to Auto use %1. <a href=\"auto\" style=\"color:%2\">Pick "
-                    "automatically instead</a>")
-                .arg(chosen.toHtmlEscaped(), tokens.accent.name()));
+      automatic ? "Windows games set to Auto use the newest Proton build, or Wine if there's none."
+                : QString("Windows games set to Auto use %1. %2")
+                      .arg(chosen.toHtmlEscaped(), Anchor("auto", "Pick automatically instead")));
 }
 
 void RunnersPage::RebuildCatalog() {

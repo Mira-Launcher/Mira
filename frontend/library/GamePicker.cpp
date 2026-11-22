@@ -18,6 +18,7 @@
 #include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/Scrolling.h"
+#include "../components/SearchField.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "ArtworkStore.h"
@@ -117,10 +118,8 @@ GamePicker::GamePicker(ArtworkStore* artwork, const QString& back_label, QWidget
   header_->addWidget(title_);
   header_->addSpacing(4);
   header_->addStretch(1);
-  search_ = new QLineEdit(header_box_);
+  search_ = new SearchField("Search games", header_box_);
   search_->setObjectName("library_search");
-  search_->setPlaceholderText("Search games");
-  search_->setClearButtonEnabled(true);
   search_->setFixedWidth(240);
   connect(search_, &QLineEdit::textChanged, this, &GamePicker::Filter);
   header_->addWidget(search_);

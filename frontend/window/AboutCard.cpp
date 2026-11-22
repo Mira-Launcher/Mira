@@ -81,9 +81,8 @@ AboutCard::AboutCard(QWidget* parent) : SheetCard(QString(), parent) {
   AddRow(report);
 
   auto* authors = new SettingRow("Made by", QString(), this);
-  auto* names = Below(authors,
-                      "<a href=\"https://github.com/AriGood\">AriGood</a> and "
-                      "<a href=\"https://github.com/eMondri\">eMondri</a>");
+  auto* names = Below(authors, Anchor("https://github.com/AriGood", "AriGood") + " and " +
+                                   Anchor("https://github.com/eMondri", "eMondri"));
   names->setOpenExternalLinks(true);
   authors->SetBelow(names);
   AddRow(authors);

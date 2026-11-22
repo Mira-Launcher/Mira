@@ -13,6 +13,8 @@ class QToolButton;
 
 namespace mira_gui {
 
+class SearchField;
+
 // A button that opens `menu` below itself, with a chevron centered at its right edge. It opens the
 // menu itself: Qt's own menu indicator on a styled button sits low against the text.
 class DropdownButton : public QPushButton {
@@ -55,7 +57,7 @@ class TabRow : public QWidget {
   // Appends `widget` after the tabs, right-aligned.
   void SetTrailing(QWidget* widget);
   // The page's search box, last in the row and the first to shrink.
-  void SetSearch(QLineEdit* search);
+  void SetSearch(SearchField* search);
   // Shows the search box even when the row only has room for its button.
   void OpenSearch();
 
@@ -93,7 +95,7 @@ class TabRow : public QWidget {
   QList<QWidget*> trailing_;
   DropdownButton* more_ = nullptr;
   QMenu* more_menu_ = nullptr;
-  QLineEdit* search_ = nullptr;
+  SearchField* search_ = nullptr;
   QToolButton* search_button_ = nullptr;
   bool search_open_ = false;  // opened from its button while the row is narrow
   bool fitting_ = false;

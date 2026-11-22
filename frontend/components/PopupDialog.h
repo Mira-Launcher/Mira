@@ -70,7 +70,7 @@ class PopupDialog : public QDialog {
   QHBoxLayout* buttons_ = nullptr;
   QLabel* message_ = nullptr;
   QLabel* detail_ = nullptr;
-  QLabel* action_ = nullptr;
+  Button* action_ = nullptr;
   QPushButton* default_ = nullptr;  // has the focus
   QPushButton* last_ = nullptr;     // the default, unless it rejects: it ends the row
 };

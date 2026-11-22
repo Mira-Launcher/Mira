@@ -19,8 +19,10 @@
 #include "../client/api/Stores.h"
 #include "../components/Button.h"
 #include "../components/Labels.h"
+#include "../components/ListRow.h"
 #include "../components/ProgressRail.h"
 #include "../components/Scrolling.h"
+#include "../components/Text.h"
 #include "../runners/RunnerUpdater.h"
 #include "../system/Distro.h"
 #include "../theme/Icons.h"
@@ -45,20 +47,12 @@ std::pair<std::string, std::string> SplitReference(const std::string& reference)
   return {reference.substr(0, colon), reference.substr(colon + 1)};
 }
 
-QFrame* NewRow(bool first) {
-  auto* row = new QFrame();
-  row->setObjectName("download_row");
-  row->setProperty("first", first);
-  return row;
-}
-
 QLabel* ReleaseLink(QWidget* parent, const UpdateInfo& mira) {
-  auto* label = new QLabel(
-      QString("%1 → %2  ·  <a href=\"%3\" style=\"color: %4; text-decoration: none;\">What's "
-              "new</a>")
-          .arg(QString::fromStdString(mira.installed), QString::fromStdString(mira.latest),
-               QString::fromStdString(mira.url), theme::Current().accent.name()),
-      parent);
+  auto* label = new QLabel(QString("%1 → %2  ·  %3")
+                               .arg(QString::fromStdString(mira.installed).toHtmlEscaped(),
+                                    QString::fromStdString(mira.latest).toHtmlEscaped(),
+                                    Anchor(QString::fromStdString(mira.url), "What's new")),
+                           parent);
   SetTextStyle(label, text::kDetail);
   label->setTextFormat(Qt::RichText);
   label->setOpenExternalLinks(true);
@@ -188,7 +182,7 @@ void UpdatesPanel::Rebuild() {
   }
   bool idle_row = false;
   for (const UpdateGroup& group : GroupUpdates(checker_->Updates())) {
-    auto* heading = NewRow(first);
+    auto* heading = new ListRow(first);
     auto* heading_layout = new QVBoxLayout(heading);
     heading_layout->setContentsMargins(18, 10, 18, 2);
     heading_layout->addWidget(MakeGroupHeading(heading, group.heading));
@@ -220,7 +214,7 @@ void UpdatesPanel::Rebuild() {
 
 QWidget* UpdatesPanel::BuildMiraRow() {
   const UpdateInfo entry = *MiraEntry(checker_->Updates());
-  auto* row = NewRow(/*first=*/true);
+  auto* row = new ListRow(/*first=*/true);
   auto* layout = new QHBoxLayout(row);
   layout->setContentsMargins(18, 10, 18, 10);
   layout->setSpacing(12);
@@ -308,7 +302,7 @@ bool UpdatesPanel::Updating(const UpdateRow& update) const {
 }
 
 QWidget* UpdatesPanel::BuildRow(const UpdateRow& update, bool first) {
-  auto* row = NewRow(first);
+  auto* row = new ListRow(first);
   auto* layout = new QHBoxLayout(row);
   layout->setContentsMargins(18, 8, 18, 8);
   layout->setSpacing(12);

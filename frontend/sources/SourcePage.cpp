@@ -45,6 +45,7 @@
 #include "../components/PopupDialog.h"
 #include "../components/ProgressRail.h"
 #include "../components/Scrolling.h"
+#include "../components/SearchField.h"
 #include "../components/TabRow.h"
 #include "../components/WindowCards.h"
 #include "../dialogs/LogWindow.h"
@@ -339,9 +340,7 @@ QWidget* SourcePage::BuildTopRow() {
   tabs_->SetTrailing(more_button_);
   more_button_->setVisible(id_ != "local");
 
-  filter_ = new QLineEdit(tabs_);
-  filter_->setPlaceholderText("Filter…");
-  filter_->setClearButtonEnabled(true);
+  filter_ = new SearchField("Filter…", tabs_);
   connect(filter_, &QLineEdit::textChanged, this, &SourcePage::ApplyFilter);
   tabs_->SetSearch(filter_);
   return tabs_;

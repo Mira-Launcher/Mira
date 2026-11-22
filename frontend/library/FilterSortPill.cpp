@@ -13,6 +13,7 @@
 #include <QVBoxLayout>
 
 #include "../components/Labels.h"
+#include "../components/NavRow.h"
 #include "../components/Popover.h"
 #include "../components/TabRow.h"
 #include "../theme/Icons.h"
@@ -193,8 +194,7 @@ Popover* FilterSortPill::BuildPopover() {
   layout->addWidget(filters_);
 
   // Hidden mode applies on top of the filter, so it's a switch rather than a filter row.
-  hidden_ = new QPushButton("Hidden games", popover);
-  hidden_->setFlat(true);
+  hidden_ = new NavRow("Hidden games", popover);
   hidden_->setCheckable(true);
   connect(hidden_, &QPushButton::clicked, this, [this] {
     hidden_->setChecked(!hidden_->isChecked());  // the mode's own change sets it
@@ -247,8 +247,7 @@ Popover* FilterSortPill::BuildPopover() {
   // to unreadable widths.
   auto* sort_group = new QButtonGroup(popover);
   for (const SortOption& option : SortOptions()) {
-    auto* button = new QPushButton(option.label, popover);
-    button->setFlat(true);
+    auto* button = new NavRow(option.label, popover);
     button->setCheckable(true);
     button->setChecked(option.key == sort_key_);
     const std::string key = option.key;

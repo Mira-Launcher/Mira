@@ -18,7 +18,9 @@
 
 #include "../components/Card.h"
 #include "../components/Metrics.h"
+#include "../components/NavRow.h"
 #include "../components/Scrolling.h"
+#include "../components/SearchField.h"
 #include "../components/SettingRow.h"
 #include "../components/SettingsPage.h"
 #include "../components/Text.h"
@@ -91,17 +93,9 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   left_layout_->setSpacing(10);
   column->addLayout(left_layout_);
 
-  search_ = new QLineEdit(left_);
+  search_ = new SearchField("Search settings…", left_);
   search_->setObjectName("settings_search");
-  search_->setPlaceholderText("Search settings…");
-  // Mira's own glyph rather than the desktop's clear icon, which doesn't match the rest.
-  auto* clear = search_->addAction(QIcon(), QLineEdit::TrailingPosition);
-  icons::Follow(clear, icons::Glyph::Close, &theme::Tokens::text_muted);
-  clear->setToolTip("Clear the search");
-  clear->setVisible(false);
-  connect(clear, &QAction::triggered, search_, &QLineEdit::clear);
-  connect(search_, &QLineEdit::textChanged, this, [this, clear](const QString& text) {
-    clear->setVisible(!text.isEmpty());
+  connect(search_, &QLineEdit::textChanged, this, [this] {
     ApplyFilter();
     jump_->stop();
     jumping_to_ = -1;
@@ -295,7 +289,7 @@ SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph 
   if (current_heading_ != nullptr) page->SetGroupHeading(current_group_);
   sections_->insertWidget(sections_->count() - 1, page);
 
-  auto* button = new QPushButton(title, nav_);
+  auto* button = new NavRow(title, nav_);
   button->setCheckable(true);
   button->setCursor(Qt::PointingHandCursor);
   auto* count = new QLabel(button);

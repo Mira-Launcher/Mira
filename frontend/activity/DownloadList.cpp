@@ -15,6 +15,7 @@
 #include "../components/Button.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
+#include "../components/ListRow.h"
 #include "../components/ProgressRail.h"
 #include "../library/ArtworkStore.h"
 #include "../theme/Icons.h"
@@ -214,12 +215,10 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   const theme::Tokens& tokens = theme::Current();
   const QString name = tracker_->NameFor(entry);
 
-  auto* row = new QFrame();
-  row->setObjectName("download_row");
+  auto* row = new ListRow(first);
   row->setProperty("download_key", entry.key);
   row->setProperty("download_running", entry.state == State::Running);
   row->setProperty("link_state", entry.link_state);
-  row->setProperty("first", first);
   auto* layout = new QHBoxLayout(row);
   layout->setContentsMargins(18, 10, 18, 10);
   layout->setSpacing(12);

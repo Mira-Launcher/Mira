@@ -29,6 +29,8 @@ class QVBoxLayout;
 
 namespace mira_gui {
 
+class SearchField;
+
 class StatusLine;
 
 class ArtworkStore;
@@ -204,7 +206,7 @@ class SourcePage : public QWidget {
   StatusLine* status_line_ = nullptr;
   QPushButton* banner_primary_ = nullptr;  // Open launcher / Sign out
   TabRow* tabs_ = nullptr;
-  QLineEdit* filter_ = nullptr;
+  SearchField* filter_ = nullptr;
   QToolButton* settings_button_ = nullptr;
   QToolButton* more_button_ = nullptr;
   QWidget* content_ = nullptr;

@@ -33,6 +33,7 @@
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
+#include "../components/SearchField.h"
 #include "../components/Segmented.h"
 #include "../components/SettingRow.h"
 #include "../components/SheetCard.h"
@@ -662,9 +663,7 @@ void AddGamesCard::ShowAppMenu() {
   page->SetBack([this] { ShowMenu(); });
   page->SetHeading("From your app menu");
   page->SetClose("Close", [this] { Close(); });
-  auto* search = new QLineEdit(page);
-  search->setPlaceholderText("Search");
-  search->setClearButtonEnabled(true);
+  auto* search = new SearchField("Search", page);
   search->setFixedWidth(170);
   page->AddHeaderWidget(search);
 

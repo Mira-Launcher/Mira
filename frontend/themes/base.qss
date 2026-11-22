@@ -168,11 +168,11 @@ mira_gui--Popover QScrollArea > QWidget > QWidget {
   background: transparent;
 }
 
-QFrame#download_row {
+mira_gui--ListRow {
   border-top: 1px solid @border;
 }
 
-QFrame#download_row[first="true"] {
+mira_gui--ListRow[first="true"] {
   border-top: none;
 }
 
@@ -187,23 +187,7 @@ QWidget#filter_sort_popover QToolButton:hover {
   background: @surface_alt;
 }
 
-/* The sort rows -- same flat, full-width, icon-optional treatment as the
- * left sidebar's own nav rows (QWidget#left_sidebar QPushButton), just
- * scoped to the popover instead since these live outside the sidebar. */
-QWidget#filter_sort_popover QPushButton {
-  background: transparent;
-  border: none;
-  border-radius: @radius_control;
-  padding: 7px 10px;
-  text-align: left;
-}
-
-QWidget#filter_sort_popover QPushButton:hover {
-  background: @surface_alt;
-}
-
-QWidget#filter_sort_popover QToolButton:checked,
-QWidget#filter_sort_popover QPushButton:checked {
+QWidget#filter_sort_popover QToolButton:checked {
   background: @accent;
   color: @on_accent;
 }
@@ -253,46 +237,13 @@ QLabel#brand_title {
 }
 
 /* --- Left sidebar ---------------------------------------------------------
- * The nav, source and recently played rows are plain QPushButtons made to read as rows
- * (see library/GameTileDelegate.cpp's own status-dot styling for the same
- * "flatten it, then restyle by objectName" approach elsewhere). */
-
-/* The sidebar paints no background of its own: it shows the window's color, and
+ * The sidebar paints no background of its own: it shows the window's color, and
  * the splitter's handle is its divider. */
 
 /* The pinned/sources/recent list scrolls; it shows the sidebar's own surface. */
 QWidget#left_sidebar QScrollArea,
 QWidget#left_sidebar QScrollArea > QWidget > QWidget {
   background: transparent;
-}
-
-QWidget#left_sidebar QPushButton {
-  background: transparent;
-  border: none;
-  border-radius: @radius_control;
-  padding: 7px 10px;
-  text-align: left;
-}
-
-/* The pinned/sources/recent rows scroll; their area takes the sidebar's own
- * background instead of drawing a darker box. */
-QWidget#left_sidebar QScrollArea,
-QWidget#left_sidebar QScrollArea > QWidget > QWidget {
-  background: transparent;
-}
-
-
-QWidget#left_sidebar QPushButton:hover {
-  background: @surface_alt;
-}
-
-QWidget#left_sidebar QPushButton:pressed {
-  background: @border;
-}
-
-QWidget#left_sidebar QPushButton:checked {
-  background: @accent;
-  color: @on_accent;
 }
 
 /* setItemWidget rows (LibraryWindow.cpp's MakeFilterRow) draw their own
@@ -332,6 +283,33 @@ QPushButton:pressed {
 QPushButton:disabled {
   color: @text_muted;
   border-color: @border;
+}
+
+/* components/NavRow: the sidebar's and Settings' rows, alike. After the plain QPushButton's rules,
+ * which match it as specifically and would otherwise win. */
+mira_gui--NavRow {
+  background: transparent;
+  border: none;
+  border-radius: @radius_control;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+mira_gui--NavRow:hover {
+  background: @surface_alt;
+}
+
+mira_gui--NavRow:pressed {
+  background: @border;
+}
+
+mira_gui--NavRow:checked {
+  background: @accent;
+  color: @on_accent;
+}
+
+mira_gui--NavRow:disabled {
+  color: @text_muted;
 }
 
 /* components/Button's kinds; a plain QPushButton is the Secondary look above. */
@@ -690,33 +668,12 @@ QWidget#settings_nav QScrollArea > QWidget > QWidget {
   background: transparent;
 }
 
-QWidget#settings_nav QPushButton {
-  background: transparent;
-  border: none;
-  border-radius: @radius_control;
-  padding: 7px 10px;
-  text-align: left;
-}
-
-QWidget#settings_nav QPushButton:hover {
-  background: @surface_alt;
-}
-
-QWidget#settings_nav QPushButton:checked {
-  background: @accent;
-  color: @on_accent;
-}
-
 QLabel[role="nav_heading"] {
   color: @text_muted;
   font-size: @font_size_small;
   font-weight: 600;
   letter-spacing: 0.04em;
   padding: 12px 4px 3px 4px;
-}
-
-QWidget#settings_nav QPushButton:disabled {
-  color: @text_muted;
 }
 
 QScrollArea#settings_page,

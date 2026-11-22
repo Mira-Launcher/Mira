@@ -31,6 +31,8 @@
 #include "../components/Dot.h"
 #include "../components/FramelessRoot.h"
 #include "../components/Labels.h"
+#include "../components/SearchField.h"
+#include "../components/WindowChrome.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 
@@ -44,33 +46,6 @@ std::map<QString, QPointer<LogWindow>>& Windows() {
   static std::map<QString, QPointer<LogWindow>> windows;
   return windows;
 }
-
-void ToggleMaximized(QWidget* window) {
-  window->isMaximized() ? window->showNormal() : window->showMaximized();
-}
-
-// The window's own title bar: dragging it moves the window, a double click maximizes it.
-class LogBar : public QWidget {
- public:
-  explicit LogBar(QWidget* parent) : QWidget(parent) {
-    setObjectName("top_bar");
-    setAttribute(Qt::WA_StyledBackground);
-  }
-
- protected:
-  void mousePressEvent(QMouseEvent* event) override {
-    if (event->button() == Qt::LeftButton && window()->windowHandle() != nullptr) {
-      window()->windowHandle()->startSystemMove();
-      event->accept();
-      return;
-    }
-    QWidget::mousePressEvent(event);
-  }
-  void mouseDoubleClickEvent(QMouseEvent* event) override {
-    ToggleMaximized(window());
-    event->accept();
-  }
-};
 
 }  // namespace
 
@@ -117,7 +92,7 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   root->setSpacing(0);
 
   // Mira's own bar: what the log is and whether it's live, then the window's buttons.
-  auto* bar = new LogBar(frame);
+  auto* bar = new TitleBar(frame);
   bar->setCursor(Qt::ArrowCursor);
   auto* bar_layout = new QHBoxLayout(bar);
   bar_layout->setContentsMargins(12, 4, 6, 4);
@@ -133,20 +108,7 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   state_ = new StatusLine(bar);
   bar_layout->addWidget(state_);
   bar_layout->addStretch(1);
-  const auto window_button = [bar, bar_layout](const QString& tooltip) {
-    auto* button = new QToolButton(bar);
-    button->setAutoRaise(true);
-    button->setToolTip(tooltip);
-    bar_layout->addWidget(button);
-    return button;
-  };
-  minimize_ = window_button("Minimize");
-  connect(minimize_, &QToolButton::clicked, this, &QWidget::showMinimized);
-  maximize_ = window_button("Maximize");
-  connect(maximize_, &QToolButton::clicked, this, [this] { ToggleMaximized(this); });
-  close_ = window_button("Close");
-  close_->setObjectName("close_button");
-  connect(close_, &QToolButton::clicked, this, &QWidget::close);
+  bar_layout->addWidget(new WindowButtons(bar));
   root->addWidget(bar);
 
   auto* body = new QWidget(frame);
@@ -156,9 +118,7 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   body_layout->setSpacing(8);
   auto* tools = new QHBoxLayout();
   tools->setSpacing(6);
-  filter_ = new QLineEdit(body);
-  filter_->setPlaceholderText("Filter");
-  filter_->setClearButtonEnabled(true);
+  filter_ = new SearchField("Filter", body);
   filter_->setMaximumWidth(240);
   // Each render redraws every kept line, so it waits for a pause in typing.
   auto* refilter = new QTimer(this);
@@ -245,17 +205,8 @@ void LogWindow::closeEvent(QCloseEvent* event) {
   QWidget::closeEvent(event);
 }
 
-void LogWindow::changeEvent(QEvent* event) {
-  if (event->type() == QEvent::WindowStateChange) ApplyIcons();
-  QWidget::changeEvent(event);
-}
-
 void LogWindow::ApplyIcons() {
   using icons::Glyph;
-  minimize_->setIcon(icons::For(Glyph::Minimize));
-  maximize_->setIcon(icons::For(isMaximized() ? Glyph::Restore : Glyph::Maximize));
-  maximize_->setToolTip(isMaximized() ? "Restore" : "Maximize");
-  close_->setIcon(icons::For(Glyph::Close));
   copy_->setIcon(copied_ ? icons::For(Glyph::CheckCircle, theme::Current().success)
                          : icons::For(Glyph::Copy));
   save_->setIcon(icons::For(Glyph::Download));

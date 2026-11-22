@@ -40,4 +40,8 @@ void SetTextStyle(QWidget* widget, TextStyle style) {
   }
 }
 
+QString Anchor(const QString& href, const QString& text) {
+  return QString("<a href=\"%1\">%2</a>").arg(href.toHtmlEscaped(), text.toHtmlEscaped());
+}
+
 }  // namespace mira_gui

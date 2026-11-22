@@ -123,14 +123,12 @@ void PopupDialog::SetAction(const QString& label, const QString& url) {
 
 void PopupDialog::SetAction(const QString& label, std::function<void()> activated) {
   if (action_ == nullptr) {
-    action_ = new QLabel(this);
-    action_->setTextFormat(Qt::RichText);
-    action_->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    action_->setOpenExternalLinks(false);
-    body_->addWidget(action_);
+    action_ = new Button({}, ButtonKind::Link, this);
+    body_->addWidget(action_, 0, Qt::AlignLeft);
   }
-  action_->setText(QString("<a href=\"#\">%1</a>").arg(label.toHtmlEscaped()));
-  connect(action_, &QLabel::linkActivated, this, [this, activated = std::move(activated)] {
+  action_->setText(label);
+  action_->disconnect(this);  // a second SetAction replaces the first
+  connect(action_, &QPushButton::clicked, this, [this, activated = std::move(activated)] {
     activated();
     accept();
   });

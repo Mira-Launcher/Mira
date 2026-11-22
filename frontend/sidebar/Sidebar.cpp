@@ -30,6 +30,7 @@
 #include "../components/Dot.h"
 #include "../components/HoverDwell.h"
 #include "../components/Labels.h"
+#include "../components/NavRow.h"
 #include "../components/Scrolling.h"
 #include "../components/TabRow.h"
 #include "../components/WindowCards.h"
@@ -93,23 +94,20 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
 
   // Always visible (not just a "back" affordance): checked exactly when the
   // grid is the current content.
-  library_nav_ = new QPushButton("Library", this);
+  library_nav_ = new NavRow("Library", this);
   library_nav_->setObjectName("library_nav");
-  library_nav_->setFlat(true);
   library_nav_->setCheckable(true);
   library_nav_->setChecked(true);
   connect(library_nav_, &QPushButton::clicked, this, &Sidebar::LibraryClicked);
   layout->addWidget(library_nav_);
 
-  runners_nav_ = new QPushButton("Runners", this);
-  runners_nav_->setFlat(true);
+  runners_nav_ = new NavRow("Runners", this);
   runners_nav_->setCheckable(true);
   connect(runners_nav_, &QPushButton::clicked, this, &Sidebar::RunnersClicked);
   layout->addWidget(runners_nav_);
 
-  settings_button_ = new QPushButton("Settings", this);
+  settings_button_ = new NavRow("Settings", this);
   settings_button_->setObjectName("sidebar_settings");
-  settings_button_->setFlat(true);
   connect(settings_button_, &QPushButton::clicked, this,
           [this] { emit SettingsRequested(QString()); });
   layout->addWidget(settings_button_);
@@ -144,9 +142,8 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
   connect(manage_sources_button_, &QToolButton::clicked, this, &Sidebar::ManageSourcesRequested);
   sources_heading_layout->addWidget(manage_sources_button_, 0, Qt::AlignVCenter);
   nav_layout->addWidget(sources_heading_);
-  add_source_button_ = new QPushButton("Add source", nav_content);
+  add_source_button_ = new NavRow("Add source", nav_content);
   add_source_button_->setObjectName("add_source");
-  add_source_button_->setFlat(true);
   connect(add_source_button_, &QPushButton::clicked, this, &Sidebar::ManageSourcesRequested);
   nav_layout->addWidget(add_source_button_);
 
@@ -291,8 +288,7 @@ Sidebar::SourceRow& Sidebar::BuildSourceRow(int index) {
   if (built.nav != nullptr) return built;
   const SourceInfo& source = AllSources()[index];
   // Its parts are labels, so the name can elide and carry a second line.
-  auto* nav = new QPushButton(source_nav_container_);
-  nav->setFlat(true);
+  auto* nav = new NavRow({}, source_nav_container_);
   nav->setCheckable(true);
   nav->setObjectName("source_nav");
   nav->setAccessibleName(source.name);
