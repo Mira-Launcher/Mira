@@ -82,9 +82,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   scroll_ = new QScrollArea(this);
   scroll_->setWidgetResizable(true);
   scroll_->setFrameShape(QFrame::NoFrame);
-  scroll_->setStyleSheet(
-      "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
-  scroll_->viewport()->setAutoFillBackground(false);
+  SeeThrough(scroll_);
   SetUpScrolling(scroll_);
   auto* cards_page = new QWidget();
   cards_layout_ = new QVBoxLayout(cards_page);

@@ -27,6 +27,7 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
+#include "../components/Dot.h"
 #include "../components/HoverDwell.h"
 #include "../components/Labels.h"
 #include "../components/Scrolling.h"
@@ -206,7 +207,16 @@ Sidebar::Sidebar(GameLibraryModel* library, ArtworkStore* artwork, UpdateChecker
   SetTextStyle(footer_, text::kDetail);
   footer_->setContentsMargins(6, 0, 6, 0);
   footer_->setWordWrap(true);
-  footer_row->addWidget(footer_, /*stretch=*/1);
+  offline_ = new StatusLine(this);
+  SetTextStyle(offline_->Label(), text::kDetail);
+  offline_->setContentsMargins(6, 0, 6, 0);
+  offline_->Set(Tone::Danger, "mirad isn't running");
+  offline_->hide();
+  auto* footer_lines = new QVBoxLayout();
+  footer_lines->setSpacing(0);
+  footer_lines->addWidget(footer_);
+  footer_lines->addWidget(offline_);
+  footer_row->addLayout(footer_lines, /*stretch=*/1);
   tags_ = new QToolButton(this);
   tags_->setObjectName("sidebar_square");
   tags_->setCheckable(true);
@@ -302,6 +312,9 @@ Sidebar::SourceRow& Sidebar::BuildSourceRow(int index) {
   row->addLayout(lines, /*stretch=*/1);
   auto* count = new QLabel(nav);
   SetTextStyle(count, text::kDetail);
+  auto* signed_out = new Dot(Tone::Warning, nav, count);
+  signed_out->hide();
+  row->addWidget(signed_out);
   row->addWidget(count);
   for (QLabel* label : nav->findChildren<QLabel*>())
     label->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -312,7 +325,12 @@ Sidebar::SourceRow& Sidebar::BuildSourceRow(int index) {
   });
   nav->installEventFilter(this);
   source_nav_layout_->addWidget(nav);
-  built = {.nav = nav, .deck = deck, .name = name, .detail = detail, .count = count};
+  built = {.nav = nav,
+           .deck = deck,
+           .name = name,
+           .detail = detail,
+           .count = count,
+           .signed_out = signed_out};
   return built;
 }
 
@@ -366,11 +384,8 @@ void Sidebar::ShowActive() {
 
 void Sidebar::SetFooter(const QString& shown, bool mirad_reachable) {
   // The connection only earns a line when it's gone.
-  QString text = shown + " shown";
-  if (!mirad_reachable) {
-    text += "<br>" + StatusDot(theme::Current().error) + "mirad isn't running";
-  }
-  footer_->setText(text);
+  footer_->setText(shown + " shown");
+  offline_->setVisible(!mirad_reachable);
 }
 
 void Sidebar::SetActionsEnabled(bool enabled) {
@@ -654,6 +669,7 @@ void Sidebar::UpdateSources() {
       source_row.detail->setText(detail);
       source_row.detail->setVisible(!detail.isEmpty());
       source_row.count->hide();
+      source_row.signed_out->hide();
     } else {
       source_row.nav->setFixedHeight(38);
       row->setContentsMargins(10, 0, 10, 0);
@@ -662,7 +678,7 @@ void Sidebar::UpdateSources() {
       source_row.detail->hide();
       QString label = show_source_counts_ ? counted : QString();
       if (off) label = "Off";
-      if (signed_out && !off) label = StatusDot(theme::Current().warning) + label;
+      source_row.signed_out->setVisible(signed_out && !off);
       source_row.count->setText(label);
       source_row.count->show();
     }

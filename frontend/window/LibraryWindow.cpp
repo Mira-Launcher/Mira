@@ -359,16 +359,16 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   drop_overlay_ = new QLabel("Drop to add to Mira", this);
   drop_overlay_->setAlignment(Qt::AlignCenter);
   drop_overlay_->setAttribute(Qt::WA_TransparentForMouseEvents);
-  QFont overlay_font = drop_overlay_->font();
-  overlay_font.setBold(true);
-  overlay_font.setPointSizeF(overlay_font.pointSizeF() * 2);
-  drop_overlay_->setFont(overlay_font);
-  const mira_gui::theme::Tokens& tokens = mira_gui::theme::Current();
-  QColor overlay_background = tokens.window;
-  overlay_background.setAlpha(220);
-  drop_overlay_->setStyleSheet(QString("QLabel { background: %1; color: %2; }")
-                                   .arg(mira_gui::theme::ColorToQss(overlay_background),
-                                        mira_gui::theme::ColorToQss(tokens.text)));
+  drop_overlay_->setObjectName("drop_overlay");
+  const auto size_drop_text = [this] {
+    QFont font = QApplication::font();
+    font.setBold(true);
+    font.setPointSizeF(mira_gui::theme::TextPoints() * 2);
+    drop_overlay_->setFont(font);
+  };
+  size_drop_text();
+  connect(mira_gui::theme::Notifier::Instance(), &mira_gui::theme::Notifier::Changed, drop_overlay_,
+          size_drop_text);
   drop_overlay_->hide();
 
   BuildShortcuts();
@@ -1937,11 +1937,6 @@ QWidget* LibraryWindow::BuildGameEditOverlay() {
   // to central, same as any other widget added to a layout.
   auto* overlay = new mira_gui::ModalOverlay(nullptr);
   overlay->setObjectName("game_edit_overlay");
-  // Plain black, not mira_gui::theme::window -- the theme's dark surfaces already
-  // sit close to black, so tinting toward window barely dims anything.
-  QColor scrim(0, 0, 0, mira_gui::theme::Current().modal_scrim_alpha);
-  overlay->setStyleSheet(QString("QWidget#game_edit_overlay { background: %1; }")
-                             .arg(mira_gui::theme::ColorToQss(scrim)));
   overlay->hide();
   overlay->on_backdrop_clicked = [this] { RequestCloseGameEdit(); };
 
@@ -1952,7 +1947,6 @@ QWidget* LibraryWindow::BuildGameEditOverlay() {
 
 QWidget* LibraryWindow::BuildSidebarCardOverlay() {
   auto* overlay = new mira_gui::ModalOverlay(nullptr);
-  overlay->scrim = QColor(0, 0, 0, mira_gui::theme::Current().modal_scrim_alpha);
   // The sidebar stays bright: it is the preview.
   overlay->clear = [this, overlay] {
     QWidget* sidebar = splitter_->widget(0);

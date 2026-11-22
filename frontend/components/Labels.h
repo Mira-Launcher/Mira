@@ -38,7 +38,4 @@ class ElidedLabel : public QLabel {
   void paintEvent(QPaintEvent* event) override;
 };
 
-// "● " in `color`, for a status line.
-QString StatusDot(const QColor& color);
-
 }  // namespace mira_gui

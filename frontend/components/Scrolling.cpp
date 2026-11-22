@@ -194,4 +194,9 @@ void SettleLayout(QWidget* page) {
   QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
 }
 
+void SeeThrough(QAbstractScrollArea* area, SeeThroughPart part) {
+  area->setProperty("see_through", part == SeeThroughPart::Page ? "page" : "viewport");
+  area->viewport()->setAutoFillBackground(false);
+}
+
 }  // namespace mira_gui

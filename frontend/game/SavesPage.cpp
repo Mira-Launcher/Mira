@@ -23,6 +23,7 @@
 #include "../client/api/Games.h"
 #include "../components/Button.h"
 #include "../components/Card.h"
+#include "../components/Dot.h"
 #include "../components/Format.h"
 #include "../components/IconButton.h"
 #include "../components/Labels.h"
@@ -101,9 +102,7 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   scroll_->setWidgetResizable(true);
   scroll_->setFrameShape(QFrame::NoFrame);
   scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  scroll_->setStyleSheet(
-      "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
-  scroll_->viewport()->setAutoFillBackground(false);
+  SeeThrough(scroll_);
   SetUpScrolling(scroll_, this);
   auto* content = new QWidget();
   auto* content_layout = new QVBoxLayout(content);
@@ -334,7 +333,6 @@ void SavesPage::FillCloud() {
   cloud_->setVisible(saves_.cloud.has_value());
   if (!saves_.cloud) return;
   const CloudSaves& cloud = *saves_.cloud;
-  const theme::Tokens& tokens = theme::Current();
   const QDateTime now = QDateTime::currentDateTime();
   QHBoxLayout* line = nullptr;
 
@@ -343,13 +341,13 @@ void SavesPage::FillCloud() {
   // is about to change, so the work is what the line says.
   const bool working = !doing_.empty();
   const bool conflict = !working && cloud.state == "conflict";
-  const QColor dot = working                   ? tokens.info
-                     : conflict                ? tokens.warning
-                     : cloud.state == "synced" ? tokens.success
-                                               : tokens.text_muted;
-  auto* state = MakeLabel(state_row, StatusDot(dot) + (working ? SavesDoingLabel(doing_)
-                                                               : saves_text::CloudState(cloud)));
-  state->setTextFormat(Qt::RichText);
+  const Tone tone = working                   ? Tone::Info
+                    : conflict                ? Tone::Warning
+                    : cloud.state == "synced" ? Tone::Success
+                                              : Tone::Muted;
+  auto* state = new StatusLine(state_row);
+  state->Label()->setWordWrap(true);
+  state->Set(tone, working ? SavesDoingLabel(doing_) : saves_text::CloudState(cloud));
   QWidget* text = new QWidget(state_row);
   auto* lines = new QVBoxLayout(text);
   lines->setContentsMargins(0, 0, 0, 0);

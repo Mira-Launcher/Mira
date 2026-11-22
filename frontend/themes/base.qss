@@ -802,11 +802,6 @@ mira_gui--Card QComboBox:!editable:focus {
   background: @surface_alt;
 }
 
-/* A card whose rows scroll inside it shows the card's surface behind them. */
-QScrollArea#card_scroll,
-QScrollArea#card_scroll > QWidget > QWidget {
-  background: transparent;
-}
 
 /* Fields sit a step darker than the card they are on, as in the grid. */
 mira_gui--Card QLineEdit,
@@ -978,6 +973,21 @@ QGroupBox::title {
 
 QScrollArea {
   border: none;
+}
+
+/* components/Scrolling's SeeThrough: the area shows what's behind it. */
+QAbstractScrollArea[see_through="viewport"],
+QAbstractScrollArea[see_through="viewport"] > QWidget,
+QAbstractScrollArea[see_through="page"],
+QAbstractScrollArea[see_through="page"] > QWidget,
+QAbstractScrollArea[see_through="page"] > QWidget > QWidget {
+  background: transparent;
+  border: none;
+}
+
+QLabel#drop_overlay {
+  background: @window_veil;
+  color: @text;
 }
 
 /* --- Game-edit overlay ---------------------------------------------------

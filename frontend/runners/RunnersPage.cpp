@@ -22,6 +22,7 @@
 #include "../components/Button.h"
 #include "../components/Card.h"
 #include "../components/FlatCombo.h"
+#include "../components/Format.h"
 #include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/PageHeader.h"
@@ -322,7 +323,7 @@ void RunnersPage::RebuildInstalled() {
     }
 
     QStringList facts;
-    facts << (used == 1 ? QString("Used by 1 game") : QString("Used by %1 games").arg(used));
+    facts << "Used by " + Counted(used, "game");
     // Some builds only report a bare build timestamp, which means nothing here.
     const QString version = QString::fromStdString(runner.version);
     bool numeric = false;

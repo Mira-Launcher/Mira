@@ -27,6 +27,9 @@ class QVBoxLayout;
 
 namespace mira_gui {
 
+class Dot;
+class StatusLine;
+
 class ArtworkStore;
 class GameLibraryModel;
 class OwnedTitles;
@@ -153,6 +156,7 @@ class Sidebar : public QWidget {
   QToolButton* tags_ = nullptr;       // beside the count of games, checked on the Tags page
   QToolButton* downloads_ = nullptr;  // beside Add games, checked on the Downloads page
   QLabel* footer_ = nullptr;
+  StatusLine* offline_ = nullptr;  // under the count while mirad can't be reached
   bool library_active_ = true;
   bool runners_active_ = false;
   QString active_source_;
@@ -165,7 +169,8 @@ class Sidebar : public QWidget {
     QLabel* name = nullptr;
     QLabel* detail = nullptr;
     QLabel* count = nullptr;
-    QString deck_key;  // what the deck shows; see SetDeck
+    Dot* signed_out = nullptr;  // before the count
+    QString deck_key;           // what the deck shows; see SetDeck
   };
   // Gives the row's deck what `draw` makes, unless it already shows `key`. Rows update for every
   // cover that lands, and a QLabel keeps each new pixmap in QPixmapCache (Qt 6.9 and later).

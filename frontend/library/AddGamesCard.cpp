@@ -263,8 +263,7 @@ void AddGamesCard::FillMenuDetails() {
     } else if (count == 0) {
       menu_detail_->setText("Every entry is already in Mira");
     } else {
-      menu_detail_->setText(count == 1 ? QString("1 entry, Flatpaks included")
-                                       : QString("%1 entries, Flatpaks included").arg(count));
+      menu_detail_->setText(Counted(count, "entry", "entries") + ", Flatpaks included");
     }
     menu_choose_->setEnabled(candidates_->ok && count > 0);
   }

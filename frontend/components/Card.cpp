@@ -103,7 +103,7 @@ void Card::SetScrollable() {
   if (scroll_ != nullptr) return;
   auto* layout = static_cast<QVBoxLayout*>(this->layout());
   scroll_ = new QScrollArea(this);
-  scroll_->setObjectName("card_scroll");
+  SeeThrough(scroll_);
   scroll_->setFrameShape(QFrame::NoFrame);
   scroll_->setWidgetResizable(true);
   scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);

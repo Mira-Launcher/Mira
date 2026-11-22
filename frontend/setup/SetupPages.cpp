@@ -407,8 +407,7 @@ void WelcomePage::ShowPackages() {
   for (const std::string& package : packages_.missing) {
     if (!unticked_.contains(package)) chosen << QString::fromStdString(package);
   }
-  const QString count = chosen.size() == 1 ? QString("1 system package")
-                                           : QString("%1 system packages").arg(chosen.size());
+  const QString count = Counted(chosen.size(), "system package");
   if (!can_install) {
     QStringList all;
     for (const std::string& package : packages_.missing) all << QString::fromStdString(package);
@@ -645,8 +644,7 @@ void FoundPage::Show() {
     text->addWidget(Bold(card, "Steam"));
     QString detail;
     if (steam_games > 0) {
-      detail = steam_games == 1 ? QString("1 game in your library")
-                                : QString("%1 games in your library").arg(steam_games);
+      detail = Counted(steam_games, "game") + " in your library";
     } else if (games.empty()) {
       detail = "No games installed yet. Games you install in Steam show up by themselves.";
     } else {

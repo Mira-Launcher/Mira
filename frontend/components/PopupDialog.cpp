@@ -16,6 +16,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "Button.h"
+#include "ModalOverlay.h"
 #include "SheetCard.h"
 #include "Text.h"
 
@@ -182,7 +183,7 @@ void PopupDialog::showEvent(QShowEvent* event) {
 void PopupDialog::paintEvent(QPaintEvent*) {
   if (!overlay_) return;
   QPainter painter(this);
-  painter.fillRect(rect(), QColor(0, 0, 0, theme::Current().modal_scrim_alpha));
+  painter.fillRect(rect(), ModalScrim());
 }
 
 bool PopupDialog::eventFilter(QObject* watched, QEvent* event) {

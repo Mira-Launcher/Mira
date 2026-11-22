@@ -83,7 +83,7 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   outer->addWidget(MakeDivider(this, Qt::Horizontal));
 
   auto* scroll = new QScrollArea(this);
-  scroll->setObjectName("card_scroll");
+  SeeThrough(scroll);
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -304,7 +304,6 @@ void SourcesPage::OpenSetup(const QString& id) {
 
   if (setup_overlay_ == nullptr) {
     setup_overlay_ = new ModalOverlay(this);
-    setup_overlay_->scrim = QColor(0, 0, 0, 150);
     setup_overlay_->setFocusPolicy(Qt::StrongFocus);
     setup_overlay_->on_backdrop_clicked = [this] { CloseSetup(); };
     setup_scroll_ = new QScrollArea(setup_overlay_);
@@ -313,7 +312,7 @@ void SourcesPage::OpenSetup(const QString& id) {
     setup_scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     SetUpScrolling(setup_scroll_, setup_overlay_);  // set up after the page's, so it's asked first
     // Only the viewport: the card keeps its own background.
-    setup_scroll_->setStyleSheet("QScrollArea, QScrollArea > QWidget { background: transparent; }");
+    SeeThrough(setup_scroll_, SeeThroughPart::Viewport);
     auto* column = new QVBoxLayout(setup_overlay_);
     column->setContentsMargins(32, 32, 32, 32);
     column->addStretch(1);

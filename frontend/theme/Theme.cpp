@@ -351,6 +351,10 @@ QHash<QString, QString> QssValues(const Tokens& tokens) {
   QColor accent_soft = tokens.accent;
   accent_soft.setAlphaF(0.3);
   values.insert("accent_soft", ColorToQss(accent_soft));
+  // Over the whole window while files are dragged onto it, the library still faintly behind.
+  QColor window_veil = tokens.window;
+  window_veil.setAlpha(220);
+  values.insert("window_veil", ColorToQss(window_veil));
   // A filled button's hover and press: a step lighter and a step darker.
   values.insert("accent_hover", ColorToQss(Mix(tokens.accent, Qt::white, 0.12)));
   values.insert("accent_pressed", ColorToQss(Mix(tokens.accent, Qt::black, 0.15)));

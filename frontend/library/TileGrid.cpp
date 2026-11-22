@@ -7,6 +7,7 @@
 #include <QWheelEvent>
 #include <algorithm>
 
+#include "../components/Scrolling.h"
 #include "ArtworkStore.h"
 #include "GameTileDelegate.h"
 
@@ -28,8 +29,7 @@ TileGrid::TileGrid(QSize tile, ArtworkStore* artwork, QWidget* parent)
   setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  viewport()->setAutoFillBackground(false);
-  setStyleSheet("QListView { background: transparent; border: none; }");
+  SeeThrough(this, SeeThroughPart::Viewport);
 }
 
 void TileGrid::paintEvent(QPaintEvent* event) {

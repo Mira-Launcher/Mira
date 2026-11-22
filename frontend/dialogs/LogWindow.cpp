@@ -28,6 +28,7 @@
 #include "../app/Notify.h"
 #include "../client/api/Logs.h"
 #include "../components/Chip.h"
+#include "../components/Dot.h"
 #include "../components/FramelessRoot.h"
 #include "../components/Labels.h"
 #include "../theme/Icons.h"
@@ -129,8 +130,7 @@ LogWindow::LogWindow(QWidget* parent, QString channel, QString title)
   auto* name = new QLabel(title_, bar);
   name->setObjectName("log_title");
   bar_layout->addWidget(name);
-  state_ = new QLabel(bar);
-  state_->setTextFormat(Qt::RichText);
+  state_ = new StatusLine(bar);
   bar_layout->addWidget(state_);
   bar_layout->addStretch(1);
   const auto window_button = [bar, bar_layout](const QString& tooltip) {
@@ -381,15 +381,14 @@ void LogWindow::Render() {
 }
 
 void LogWindow::UpdateStatus() {
-  const theme::Tokens& tokens = theme::Current();
   if (failed_) {
-    state_->setText(StatusDot(tokens.error) + "Can't reach Mira's service");
+    state_->Set(Tone::Danger, "Can't reach Mira's service");
   } else if (paused_) {
-    state_->setText(StatusDot(tokens.warning) + "Paused");
+    state_->Set(Tone::Warning, "Paused");
   } else if (active_) {
-    state_->setText(StatusDot(tokens.success) + "Live");
+    state_->Set(Tone::Success, "Live");
   } else {
-    state_->setText(StatusDot(tokens.text_muted) + "Not running");
+    state_->Set(Tone::Muted, "Not running");
   }
 }
 

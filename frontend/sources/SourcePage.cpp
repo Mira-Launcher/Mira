@@ -36,6 +36,7 @@
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
 #include "../components/Button.h"
+#include "../components/Dot.h"
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
 #include "../components/IconButton.h"
@@ -254,9 +255,8 @@ QWidget* SourcePage::BuildTopRow() {
   tabs_ = new TabRow(this);
   tabs_->SetTabsVisible(false);
 
-  status_line_ = new QLabel(tabs_);
-  status_line_->setObjectName("page_status");
-  status_line_->setTextFormat(Qt::RichText);
+  status_line_ = new StatusLine(tabs_);
+  status_line_->Label()->setObjectName("page_status");
   status_line_->setToolTip(CopyFor(id_).blurb);
   tabs_->SetTrailing(status_line_);
 
@@ -375,7 +375,6 @@ void SourcePage::OpenCollectionsModal() {
 void SourcePage::ShowModal(mira_gui::Card* card) {
   if (settings_overlay_ == nullptr) {
     settings_overlay_ = new ModalOverlay(this);
-    settings_overlay_->scrim = QColor(0, 0, 0, 150);
     settings_overlay_->setFocusPolicy(Qt::StrongFocus);
     settings_overlay_->on_backdrop_clicked = [this] { CloseSettingsModal(); };
     auto* scroll = new QScrollArea(settings_overlay_);
@@ -384,7 +383,7 @@ void SourcePage::ShowModal(mira_gui::Card* card) {
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     SetUpScrolling(scroll, settings_overlay_);  // set up after the page's, so it's asked first
     // Only the viewport: the card keeps its own background.
-    scroll->setStyleSheet("QScrollArea, QScrollArea > QWidget { background: transparent; }");
+    SeeThrough(scroll, SeeThroughPart::Viewport);
     // Centered both ways; FitSettingsModal sizes it, and a card taller than the window scrolls.
     settings_scroll_ = scroll;
     auto* column = new QVBoxLayout(settings_overlay_);
@@ -948,9 +947,9 @@ void SourcePage::AddToGames(const std::vector<std::string>& ids) {
           if (!failed->empty()) {
             const auto& [first, error] = failed->front();
             const size_t more = failed->size() - 1;
-            const QString others = more == 0   ? QString()
-                                   : more == 1 ? QString(" and 1 other game")
-                                               : QString(" and %1 other games").arg(more);
+            const QString others =
+                more == 0 ? QString()
+                          : " and " + Counted(static_cast<qsizetype>(more), "other game");
             return ShowError(import_result_, "Could not add it to " + first + others + ".", error);
           }
           ShowLine(import_result_,
@@ -1075,42 +1074,52 @@ void SourcePage::ApplyLauncher(const LauncherInfo& launcher) {
 }
 
 void SourcePage::UpdateStatusLine() {
-  const theme::Tokens& tokens = theme::Current();
+  std::optional<Tone> tone;
   QStringList parts;
+  const auto state = [&](Tone of, const QString& text) {
+    tone = of;
+    parts << text;
+  };
   if (IsStore()) {
     if (tool_updating_) {
-      parts << StatusDot(tokens.info) + "Updating " + ToolNames() + "…";
+      state(Tone::Info, "Updating " + ToolNames() + "…");
     } else if (!tool_installed_) {
-      parts << StatusDot(tokens.warning) + "Not set up";
+      state(Tone::Warning, "Not set up");
     } else if (!authenticated_) {
-      parts << StatusDot(tokens.warning) + "Not signed in";
+      state(Tone::Warning, "Not signed in");
     } else {
-      parts << StatusDot(tokens.success) +
-                   (account_.empty()
-                        ? QString("Signed in")
-                        : "Signed in as " + QString::fromStdString(account_).toHtmlEscaped());
+      state(Tone::Success, account_.empty() ? QString("Signed in")
+                                            : "Signed in as " + QString::fromStdString(account_));
     }
   } else if (IsLauncher()) {
-    parts << (launcher_installing_  ? StatusDot(tokens.info) + "Installing…"
-              : launcher_installed_ ? StatusDot(tokens.success) + "Installed"
-                                    : StatusDot(tokens.warning) + "Not installed");
+    if (launcher_installing_) {
+      state(Tone::Info, "Installing…");
+    } else {
+      state(launcher_installed_ ? Tone::Success : Tone::Warning,
+            launcher_installed_ ? "Installed" : "Not installed");
+    }
   } else if (IsEmulator()) {
-    parts << (emulator_.installed ? StatusDot(tokens.success) + "Installed"
-                                  : StatusDot(tokens.warning) + "Not installed");
+    state(emulator_.installed ? Tone::Success : Tone::Warning,
+          emulator_.installed ? "Installed" : "Not installed");
   } else if (IsModManager()) {
-    parts << (manager_unknown_     ? StatusDot(tokens.warning) + "Could not check"
-              : manager_.installed ? StatusDot(tokens.success) + "Installed"
-                                   : StatusDot(tokens.info) + "Installing…");
+    if (manager_unknown_) {
+      state(Tone::Warning, "Could not check");
+    } else {
+      state(manager_.installed ? Tone::Success : Tone::Info,
+            manager_.installed ? "Installed" : "Installing…");
+    }
   }
   if (IsModManager()) {
     parts << "On " + Counted(library_count_, "game");
   } else if (id_ != "humble") {
     const QString item = CopyFor(id_).item;
-    parts << (library_count_ == 1
-                  ? QString("1 %1 in your library").arg(item)
-                  : QString("%1 %2s in your library").arg(library_count_).arg(item));
+    parts << Counted(library_count_, item) + " in your library";
   }
-  status_line_->setText(parts.join("  ·  "));
+  if (tone) {
+    status_line_->Set(*tone, parts.join("  ·  "));
+  } else {
+    status_line_->SetPlain(parts.join("  ·  "));
+  }
 
   if (IsLauncher() && owned_note_ != nullptr) {
     const QString items = CopyFor(id_).item + "s";

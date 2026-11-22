@@ -18,6 +18,8 @@ class QToolButton;
 
 namespace mira_gui {
 
+class StatusLine;
+
 class Chip;
 
 // A task's live log in a window of its own (GET /v1/logs/<channel>), frameless with Mira's own
@@ -56,7 +58,7 @@ class LogWindow : public QWidget {
   QString channel_;
   QString title_;
   QPlainTextEdit* view_ = nullptr;
-  QLabel* state_ = nullptr;
+  StatusLine* state_ = nullptr;
   QLabel* count_ = nullptr;
   QLineEdit* filter_ = nullptr;
   Chip* pause_ = nullptr;

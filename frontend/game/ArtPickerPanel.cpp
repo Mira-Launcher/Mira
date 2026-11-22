@@ -43,6 +43,7 @@
 #include "../client/api/Artwork.h"
 #include "../components/Chip.h"
 #include "../components/FlowLayout.h"
+#include "../components/Scrolling.h"
 #include "../components/TabRow.h"
 #include "../components/Text.h"
 #include "../theme/Theme.h"
@@ -396,8 +397,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   grid_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   grid_->setFrameShape(QFrame::NoFrame);
   grid_->setMouseTracking(true);
-  grid_->setStyleSheet("QListWidget { background: transparent; border: none; }");
-  grid_->viewport()->setAutoFillBackground(false);
+  SeeThrough(grid_, SeeThroughPart::Viewport);
   FadeTop(grid_);  // covers scrolling up under the bar dissolve rather than ending on a line
   delegate_ = new ThumbDelegate(pulse_, grid_);
   grid_->setItemDelegate(delegate_);

@@ -20,4 +20,9 @@ void SetUpSmoothWheel();
 // that.
 void SettleLayout(QWidget* page);
 
+// What a scroll area stops painting, so what's behind it shows: the area and its viewport, or the
+// page in it too.
+enum class SeeThroughPart { Viewport, Page };
+void SeeThrough(QAbstractScrollArea* area, SeeThroughPart part = SeeThroughPart::Page);
+
 }  // namespace mira_gui

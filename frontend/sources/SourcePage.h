@@ -29,6 +29,8 @@ class QVBoxLayout;
 
 namespace mira_gui {
 
+class StatusLine;
+
 class ArtworkStore;
 class DownloadTracker;
 class GameFilterProxy;
@@ -199,7 +201,7 @@ class SourcePage : public QWidget {
   bool checking_ = false;       // mirad is re-checking the store behind the list shown
   int owned_generation_ = 0;
 
-  QLabel* status_line_ = nullptr;
+  StatusLine* status_line_ = nullptr;
   QPushButton* banner_primary_ = nullptr;  // Open launcher / Sign out
   TabRow* tabs_ = nullptr;
   QLineEdit* filter_ = nullptr;

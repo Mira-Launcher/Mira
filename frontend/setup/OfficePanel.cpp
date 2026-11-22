@@ -13,6 +13,7 @@
 #include "../client/api/Config.h"
 #include "../client/api/Stores.h"
 #include "../components/Button.h"
+#include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/ProgressRail.h"
 #include "../sources/SourceText.h"
@@ -228,7 +229,7 @@ void OfficePanel::ShowState() {
     grid->addWidget(tile, i / 4, i % 4);
     if (!app.installed && picked_.contains(ref)) ++to_add;
   }
-  add_->setText(to_add == 1 ? "Add 1 app" : QString("Add %1 apps").arg(to_add));
+  add_->setText("Add " + Counted(to_add, "app"));
   add_->setVisible(to_add > 0 || !queue_.empty());
   add_->setEnabled(queue_.empty());
   if (!queue_.empty())

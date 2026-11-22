@@ -189,9 +189,7 @@ AchievementsPage::AchievementsPage(std::string id, QWidget* parent)
   scroll_->setWidgetResizable(true);
   scroll_->setFrameShape(QFrame::NoFrame);
   scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  scroll_->setStyleSheet(
-      "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }");
-  scroll_->viewport()->setAutoFillBackground(false);
+  SeeThrough(scroll_);
   SetUpScrolling(scroll_, this);
   auto* content = new QWidget();
   auto* content_layout = new QVBoxLayout(content);

@@ -52,8 +52,4 @@ void ElidedLabel::paintEvent(QPaintEvent*) {
   painter.drawText(rect(), alignment(), shown);
 }
 
-QString StatusDot(const QColor& color) {
-  return QString("<span style='color:%1'>●</span> ").arg(color.name());
-}
-
 }  // namespace mira_gui

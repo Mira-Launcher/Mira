@@ -44,7 +44,6 @@ void Show(QWidget* from, QWidget* card) {
     return;
   }
   auto* overlay = new ModalOverlay(window);
-  overlay->scrim = QColor(0, 0, 0, theme::Current().modal_scrim_alpha);
   overlay->setGeometry(window->rect());
   new FollowWindow(window, overlay);
   QPointer<QWidget> guarded(card);
