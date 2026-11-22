@@ -47,7 +47,8 @@ std::map<std::string, std::string> GpuEnv(std::string_view choice, const fs::pat
   if (gpus.size() < 2) return {};
   const auto pick = std::ranges::find_if(
       gpus, [&](const Gpu& gpu) { return gpu.boot == (choice == "integrated"); });
-  if (pick == gpus.end()) return {};
+  // An NVIDIA card is never the integrated one, nor is the GPU the PC booted on a dedicated one.
+  if (pick == gpus.end() || (choice == "integrated" && pick->vendor == "10de")) return {};
   std::map<std::string, std::string> env;
   if (pick->vendor == "10de") {
     env["__NV_PRIME_RENDER_OFFLOAD"] = "1";

@@ -83,13 +83,15 @@ std::optional<std::string> WineUnhandled(std::string_view log) {
 // The DLL in Wine's "Library X.dll (which is needed by ...) not found" line, lowercased.
 std::string MissingDll(std::string_view log) {
   constexpr std::string_view kMarker = "err:module:import_dll Library ";
-  const std::size_t at = log.rfind(kMarker);
-  if (at == std::string_view::npos) return {};
-  const std::string_view rest = log.substr(at + kMarker.size());
-  const std::string_view name = rest.substr(0, rest.find_first_of(" \n"));
-  const std::size_t line_end = rest.find('\n');
-  if (rest.substr(0, line_end).find("not found") == std::string_view::npos) return {};
-  return strings::ToLower(name);
+  std::string found;
+  for (std::size_t at = log.find(kMarker); at != std::string_view::npos;
+       at = log.find(kMarker, at + 1)) {
+    const std::string_view rest = log.substr(at + kMarker.size());
+    const std::string_view line = rest.substr(0, rest.find('\n'));
+    if (line.find("not found") == std::string_view::npos) continue;
+    found = strings::ToLower(line.substr(0, line.find(' ')));
+  }
+  return found;
 }
 
 // The winetricks verb that installs `dll`; empty when Mira doesn't know one.
@@ -156,8 +158,7 @@ std::optional<LogDiagnosis> DiagnoseLog(std::string_view log) {
                     : std::format("Installing {} with winetricks usually fixes this.", verb),
         .verb = verb};
   }
-  if (LineWithBoth(log, "vkcreateinstance", "fail") || LineWithBoth(log, "vulkan", "no suitable") ||
-      LineWithBoth(log, "vulkan", "not supported")) {
+  if (LineWithBoth(log, "vkcreateinstance", "fail") || LineWithBoth(log, "vulkan", "no suitable")) {
     return LogDiagnosis{.cause = "Vulkan couldn't start",
                         .hint = "Update the graphics driver, including its 32-bit Vulkan driver.",
                         .verb = {}};
@@ -236,7 +237,12 @@ ExitOutcome ClassifyByCode(const ExitInfo& info) {
 ExitOutcome ClassifyExit(const ExitInfo& info) {
   ExitOutcome outcome = ClassifyByCode(info);
   if (info.requested_stop || outcome.code == "killed") return outcome;
-  if (!outcome.crashed && info.exit_code <= 0) return outcome;
+  // A quit that wasn't a crash only counts as a failure soon after starting: a log keeps lines a
+  // game recovered from, and plenty of games quit with a non-zero code.
+  constexpr std::int64_t kFailedStart = 60;
+  if (!outcome.crashed &&
+      (info.exit_code <= 0 || info.played_seconds > kFailedStart || info.exit_code > 128))
+    return outcome;
   const std::optional<LogDiagnosis> found = DiagnoseLog(info.log_tail);
   if (!found) return outcome;
   if (!outcome.crashed) {

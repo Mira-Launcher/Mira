@@ -124,9 +124,10 @@ Result<fs::path> RuntimeDir(const config::Config& config, const Runtime& runtime
                std::format("the download from {} isn't {}", url, runtime.steam_dir));
   }
   fs::remove_all(dir, ec);
-  fs::rename(unpack / runtime.archive_dir, dir, ec);
+  std::error_code renamed;
+  fs::rename(unpack / runtime.archive_dir, dir, renamed);
   fs::remove_all(unpack, ec);
-  if (ec) return Err("runtime_unavailable", ec.message());
+  if (renamed) return Err("runtime_unavailable", renamed.message());
   return dir;
 }
 

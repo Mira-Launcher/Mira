@@ -132,6 +132,10 @@ TEST_CASE("A log naming a missing DLL makes a quit a failure, with the verb that
   CHECK(Says(ClassifyExit(info).error, ".NET"));
   info.exit_code = 0;
   CHECK_FALSE(ClassifyExit(info).crashed);
+  // Long after it started, a non-zero quit is a quit, whatever the log kept.
+  info.exit_code = 1;
+  info.played_seconds = 7200;
+  CHECK_FALSE(ClassifyExit(info).crashed);
 }
 
 TEST_CASE("DescribeDuration reads like a person would say it") {
