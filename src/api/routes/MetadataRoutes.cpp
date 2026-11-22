@@ -14,6 +14,7 @@
 #include "library/SourceRegistry.h"
 #include "metadata/ImageFit.h"
 #include "metadata/MetadataFetcher.h"
+#include "runner/AntiCheat.h"
 
 namespace mira::api {
 namespace {
@@ -77,7 +78,15 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     if (!s.games.Metadata().Has(req.matches[1])) {
       return SendError(res, 404, "metadata_not_found", "no metadata cached for this game yet");
     }
-    SendJson(res, s.games.Metadata().Read(req.matches[1]));
+    json body = s.games.Metadata().Read(req.matches[1]);
+    if (const auto game = s.games.Find(req.matches[1])) {
+      if (const auto anticheat = runner::FindAntiCheat(s.config, *game)) {
+        body["anticheat"] = {{"status", anticheat->status},
+                             {"anticheats", anticheat->anticheats},
+                             {"url", anticheat->url}};
+      }
+    }
+    SendJson(res, body);
   });
 
   http.Get(R"(/v1/games/([^/]+)/artwork)", [&s](const Request& req, Response& res) {

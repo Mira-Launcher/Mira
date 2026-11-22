@@ -104,6 +104,8 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `runner_config` belongs to the runner named by `runner_ref`.
 - `default_runner`, on this call only, is the `kind:name` the game would run with if `runner_ref` were empty (its source's runner, else `default_runner.*`, with `auto` resolved to a kind), so an editor knows whose options to show for "Default runner".
 - `umu_match`, on this call only and when the umu database lists the game, is `{"gameid", "store", "title"}`: what a Proton run sets as `GAMEID` and `STORE` so protonfixes apply, unless `runner_config.gameid`/`store` say otherwise (`gameid: "none"` turns the match off). A Windows game matches by its store and id there (GOG, Epic, Amazon, Humble, itch.io, the launchers, Heroic's), else by its exact title when only one game has it; apps don't match by title. `umu.match` turns matching off; the database is downloaded from `umu.database_url` when Mira starts and its copy is over a week old.
+- `protonfix`, on this call only, for a Proton game that an installed build has a protonfix for: `{"gameid", "applies": true, "build"}` when its own build has it, else `{"gameid", "applies": false, "fixed_in": "proton:<name>"}`, a build to switch to.
+- `proton_log`, on this call only, is the newest Proton log `launch.proton_log` had written, as a path.
 - `runner_config.auto_picked` is true when the pinned build was picked by `auto`, not by hand. With `runners.pick_per_game` on, `auto` picks a Proton build that has the game's protonfix first, then the Proton Steam's own Steam Play config picks for its Steam appid when that's installed, then the usual order. A game picked by `auto` moves to such a build when it next launches; choosing its runner by hand clears `auto_picked`, and its runner is never changed again.
 - `data_dir` is the game's prefix.
 - `installer_dir` is the folder the game's installer was in, once the game was installed somewhere else (usually its prefix). A scan treats that folder as this game's and doesn't add it again.
@@ -201,7 +203,7 @@ Resolves `runner_ref` (or the platform's `default_runner.*`) and starts the game
 
 The game runs under `mira-run`, which owns the scripts, the game's output log and the session record, so a session survives `mirad` restarting. If `mira-run` is missing, the game is started directly without a session record or log.
 
-The reply's `tracked` says whether `game.state` events will follow. It is false for a Steam game under `steam.launch_mode: "steam"` (the default), which is started through `steam -silent -applaunch <appid>` (`-silent`, on unless `steam.launch_silent` is off, keeps a Steam that wasn't running from opening its window). With `steam.track_process` on, Mira still finds the game's process by its `SteamAppId`/`SteamGameId` and records playtime, but gets no exit code. `steam.launch_mode: "direct"` runs the game through Steam's Proton build and prefix with full tracking, but needs `exe_path` set by hand.
+The reply's `tracked` says whether `game.state` events will follow. It is false for a Steam game under `steam.launch_mode: "steam"` (the default), which is started through `steam -silent -applaunch <appid>` (`-silent`, on unless `steam.launch_silent` is off, keeps a Steam that wasn't running from opening its window). With `steam.track_process` on, Mira still finds the game's process by its `SteamAppId`/`SteamGameId` and records playtime, but gets no exit code. `steam.launch_mode: "direct"` runs the game through Steam's Proton build and prefix with full tracking, but needs `exe_path` set by hand. `warning`, when present, is a sentence to show the player: the game's anti-cheat doesn't run on Linux, so online play may not work (AreWeAntiCheatYet says `Broken` or `Denied`). With `launch.proton_log` on, Proton writes a log of each run into the game's own folder of logs.
 
 Launching a store launcher game (Battle.net, Ubisoft, EA) asks the launcher to start it and tracks the game's own processes.
 
@@ -446,7 +448,7 @@ Download sources, preferred first: `[{"id": "proton_ge", "kind": "proton", "labe
 GE-Proton and Wine-GE read their repo and asset pattern from `runner_sources.*`.
 
 ### `GET /v1/runners/catalog?kind=&source=`
-Releases from one source (the kind's first by default), newest first, cached for 10 minutes to stay under GitHub's rate limit:
+Every release from one source (the kind's first by default, UMU-Proton for Proton), up to the newest 500, newest first, cached for 10 minutes to stay under GitHub's rate limit:
 
 ```json
 [{ "tag": "GE-Proton11-7", "name": "GE-Proton11-7", "label": "GE-Proton11-7", "source": "proton_ge",
@@ -457,7 +459,7 @@ Releases from one source (the kind's first by default), newest first, cached for
 `name` identifies the release in events: the tag for Proton, the archive name for Wine.
 
 ### `POST /v1/runners/download`
-Body `{"kind", "tag", "source"?}`. Downloads a release into the first search path of its kind, checking its `.sha512sum`, `.sha256sum` or `sha256sums.txt` when there is one; a mismatch discards the download. A job (kind `runner`). Events: `runners.download.started`/`finished`/`failed` with `{kind, tag, name, label, source}`, and `runners.download.progress` with those plus `progress` (0 to 1) as each percent arrives, when the release's size is known. When a download finishes, games left broken by a missing runner are provisioned again.
+Body `{"kind", "tag", "source"?}`. Without `source`, the source whose builds `tag` is named like (`GE-Proton10-1` is GE-Proton's), else the kind's first. Downloads a release into the first search path of its kind, checking its `.sha512sum`, `.sha256sum` or `sha256sums.txt` when there is one; a mismatch discards the download. A job (kind `runner`). Events: `runners.download.started`/`finished`/`failed` with `{kind, tag, name, label, source}`, and `runners.download.progress` with those plus `progress` (0 to 1) as each percent arrives, when the release's size is known. When a download finishes, games left broken by a missing runner are provisioned again.
 
 ### `GET /v1/runners/updates`
 Removable builds whose source has a newer release:
@@ -808,7 +810,7 @@ New games are fetched when first added, through a queue of three workers. Tracke
 The routes below that take a game's `{id}` (metadata, artwork, candidates, thumbs, matches and match) also take a store title that isn't installed, by the id it gets once installed (`<source>-<ref>`), as long as that source's stored list (`GET /v1/library`) has it; `404 game_not_found` otherwise. A title's art is picked, uploaded and removed like a game's. With no SteamGridDB match recorded yet (its cover came from its store), its candidates are looked up by its title.
 
 ### `GET /v1/games/{id}/metadata`
-The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. A refetch keeps the art SteamGridDB's top result gave a slot while the match (`steamgriddb_id`) stays the same, since that order changes as art is added and voted on. `steam` includes `controller_support` (`"full"`, `"partial"` or `""`) from Steam's store. `404` when nothing is cached.
+The cached JSON: `source`, `fetched_at`, `details_fetched`, and whichever of `steam`, `steam_reviews`, `epic`, `protondb`, `artwork` (the cover), `hero`, `logo` and `icon` were found. Art entries look like `{"file", "content_type", "source", "candidate_id"?, "chosen"?}`; `chosen` marks a slot the user picked. `art_candidates` maps each slot to `[{"id", "url", "thumb", "width", "height", "style", "nsfw"}]`; adult art is only listed with `steamgriddb.nsfw` on and is never picked by default. A refetch keeps the art SteamGridDB's top result gave a slot while the match (`steamgriddb_id`) stays the same, since that order changes as art is added and voted on. `steam` includes `controller_support` (`"full"`, `"partial"` or `""`) from Steam's store. `anticheat`, when AreWeAntiCheatYet lists the game (by its Steam appid, a Steam game's or its umu `GAMEID`'s, else its exact title) and `anticheat.check` is on, is `{"status", "anticheats", "url"}`: `status` is `Supported`, `Running`, `Planned`, `Broken` or `Denied`. The list is downloaded from `anticheat.database_url` when Mira starts and its copy is over a week old. `404` when nothing is cached.
 
 ### `GET /v1/games/{id}/artwork?type=`
 The cached image for a slot (`cover` by default). `404` if that slot isn't cached.

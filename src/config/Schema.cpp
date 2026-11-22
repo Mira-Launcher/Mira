@@ -869,6 +869,29 @@ Schema::Schema() {
          .doc = "For a game with no runner chosen, prefer a Proton build that has a fix for it, "
                 "else the Proton Steam uses for it. A runner you choose is always kept."});
 
+  s.Add({.key = "anticheat.check",
+         .label = "Warn about anti-cheat",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Show whether a game's anti-cheat works on Linux, from AreWeAntiCheatYet, and warn "
+                "when one that doesn't is launched. The list is downloaded weekly."});
+
+  s.Add({.key = "anticheat.database_url",
+         .label = "Anti-cheat list",
+         .type = Type::String,
+         .default_value = "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/"
+                          "master/games.json",
+         .doc = "Where the AreWeAntiCheatYet list is downloaded from."});
+
+  s.Add({.key = "launch.proton_log",
+         .label = "Write a Proton log",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "Have Proton write a detailed log of each run (PROTON_LOG), for working out why a "
+                "game won't start. The game menu opens the newest one. Logs get large.",
+         .applies = {.platforms = {"windows"}}});
+
   s.Group("Per store");
 
   for (const auto& [id, name] :

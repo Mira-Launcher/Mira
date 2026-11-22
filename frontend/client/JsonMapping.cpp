@@ -236,6 +236,12 @@ GameDetail ToGameDetail(const json& entry) {
     game.umu_gameid = umu->value("gameid", std::string());
     game.umu_store = umu->value("store", std::string());
   }
+  if (const auto fix = entry.find("protonfix"); fix != entry.end() && fix->is_object()) {
+    game.protonfix_known = true;
+    game.protonfix_applies = fix->value("applies", false);
+    game.protonfix_fixed_in = fix->value("fixed_in", std::string());
+  }
+  game.proton_log = entry.value("proton_log", std::string());
   game.tags = ReadTags(entry);
   ReadSorting(entry, game.sort_root, game.folder_tags, game.folder_tag);
 

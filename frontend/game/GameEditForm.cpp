@@ -38,6 +38,7 @@
 #include "../components/Scrolling.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
+#include "../components/Text.h"
 #include "../settings/SettingEditor.h"
 #include "../sources/Sources.h"
 #include "HeroBackdrop.h"
@@ -158,6 +159,16 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   runner_row_->AddControl(runner_combo_);
   runner_options_ = new ExpanderRow(QString(), this);  // titled and filled per runner kind
   runner_options_->hide();
+  fix_row_ = new SettingRow("Game fix",
+                            "Proton's protonfixes for this game, found by its umu game ID", this);
+  fix_text_ = new QLabel(fix_row_);
+  SetTextStyle(fix_text_, text::kSubtle);
+  fix_row_->AddControl(fix_text_);
+  fix_use_ = new QPushButton(fix_row_);
+  fix_row_->AddControl(fix_use_);
+  connect(fix_use_, &QPushButton::clicked, this,
+          [this] { SelectOrKeep(runner_combo_, QString::fromStdString(fix_build_)); });
+  fix_row_->hide();
 
   emulator_row_ = new SettingRow(
       "Emulator", "Picking another moves its files to that emulator's games folder.", this);
@@ -392,8 +403,9 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
   } else {
     add_card("Launch", {exe_row_, args_row_, working_dir_row_, launch_options_row_,
                         play_starts_row_, only_choice_row_});
-    Card* runner = add_card("Runner", {runner_row_, runner_options_});
+    Card* runner = add_card("Runner", {runner_row_, fix_row_, runner_options_});
     runner_options_->hide();  // until the runner kind has options
+    ShowFixStatus();
     overrides_->PlaceRow("launch.env", runner);
     if (!store_keys.empty()) {
       const SourceInfo* store = FindSourceInfo(QString::fromStdString(game.source));
@@ -486,6 +498,10 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   patch.runner_config_json = game.runner_config_json;
   patch.launch = game.launch;
   default_runner_ = game.default_runner;
+  fix_known_ = game.protonfix_known;
+  fix_applies_ = game.protonfix_applies;
+  fix_build_ = game.protonfix_fixed_in;
+  ShowFixStatus();
   runner_defaults_.clear();
   if (!game.umu_gameid.empty()) {
     runner_defaults_["gameid"] = game.umu_gameid + " (umu database)";
@@ -622,6 +638,14 @@ void GameEditForm::BuildRunnerFields(const std::vector<RunnerOption>& options) {
   runner_options_->setVisible(!options.empty() && runner_row_->parentWidget() != this);
   ShowRunnerFieldValues();
   UpdateModified();
+}
+
+void GameEditForm::ShowFixStatus() {
+  fix_row_->setVisible(fix_known_ && arranged_);
+  fix_text_->setText(fix_applies_ ? "Applied by its Proton" : "Not in its Proton");
+  // "proton:GE-Proton9-1" reads "Use GE-Proton9-1".
+  fix_use_->setText("Use " + QString::fromStdString(fix_build_).section(':', 1));
+  fix_use_->setVisible(!fix_applies_ && !fix_build_.empty());
 }
 
 void GameEditForm::ShowRunnerFieldValues() {

@@ -37,6 +37,7 @@
 #include "library/SourceRegistry.h"
 #include "library/WinePrefix.h"
 #include "proc/Session.h"
+#include "runner/AntiCheat.h"
 #include "runner/Exec.h"
 #include "runner/RunnerRegistry.h"
 #include "runner/WindowsTheme.h"
@@ -293,6 +294,13 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
   ApplyMangoHud(*command, resolver, game, game_mangohud);
   ApplyShaderCache(*command, resolver, game);
   ApplyHdr(*command, resolver);
+  if (resolved->runner->kind() == "proton" && resolver.GetBool("launch.proton_log")) {
+    const std::filesystem::path logs = proc::ProtonLogDir(s.games.Dir(), game.id);
+    std::error_code ec;
+    std::filesystem::create_directories(logs, ec);
+    command->env["PROTON_LOG"] = "1";
+    command->env["PROTON_LOG_DIR"] = logs.string();
+  }
   ApplyCommandWrappers(*command, wrappers);
   return command;
 }
@@ -368,6 +376,19 @@ void DiscardExtras(const library::LaunchExtras& extras) {
 
 // Starts `command` under mira-run in its own systemd scope and tracks its session.
 // Sends the response: an error, or "running".
+// A launch reply, with a `warning` when the game's anti-cheat doesn't run on Linux.
+json WithAntiCheatWarning(Services& s, const model::Game& game, json reply) {
+  const auto anticheat = runner::FindAntiCheat(s.config, game);
+  if (!anticheat || !anticheat->Blocks()) return reply;
+  std::string names;
+  for (const std::string& name : anticheat->anticheats) names += (names.empty() ? "" : ", ") + name;
+  if (names.empty()) names = "its anti-cheat";
+  reply["warning"] =
+      std::format("{} may not work online: {} doesn't run on Linux ({})", game.name, names,
+                  anticheat->status == "Denied" ? "the developer refuses" : "not enabled for it");
+  return reply;
+}
+
 void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& game,
                         const Command& command, const std::string& pre_script,
                         const std::string& post_script, const library::LaunchExtras& extras = {}) {
@@ -528,7 +549,8 @@ void LaunchUnderWrapper(Services& s, httplib::Response& res, const model::Game& 
   }
   shared.tracked = true;
   display.tracked = true;
-  SendJson(res, {{"status", "running"}, {"tracked", true}});  // always true: Mira spawned it
+  // always true: Mira spawned it
+  SendJson(res, WithAntiCheatWarning(s, game, {{"status", "running"}, {"tracked", true}}));
 }
 
 }  // namespace
@@ -710,7 +732,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         log::Warn("couldn't start tracking {}: {}", game->id, started.error().message);
       }
       StartAlongside(s, *game);
-      return SendJson(res, {{"status", "launched_via_launcher"}, {"tracked", true}});
+      return SendJson(res, WithAntiCheatWarning(
+                               s, *game, {{"status", "launched_via_launcher"}, {"tracked", true}}));
     }
 
     // Steam games default to a handoff to the Steam client (-applaunch) for overlay, achievements
@@ -747,7 +770,8 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
           }
           StartAlongside(s, *game);
         }
-        return SendJson(res, {{"status", "launched_via_steam"}, {"tracked", track}});
+        return SendJson(res, WithAntiCheatWarning(
+                                 s, *game, {{"status", "launched_via_steam"}, {"tracked", track}}));
       }
     }
 

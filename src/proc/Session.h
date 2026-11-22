@@ -45,6 +45,10 @@ struct SessionRecord {
 std::filesystem::path GameLogPath(const std::filesystem::path& state_dir,
                                   const std::string& game_id);
 
+// Where Proton writes a game's logs with launch.proton_log on.
+std::filesystem::path ProtonLogDir(const std::filesystem::path& state_dir,
+                                   const std::string& game_id);
+
 // Session records live in mira.db's sessions table, keyed by game and start time. mira-run writes
 // one as the session starts and again as it ends, through a connection of its own, so a record
 // survives mirad dying; mirad counts it, which marks it counted. Writing never unmarks a counted

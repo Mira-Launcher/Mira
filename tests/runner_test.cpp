@@ -13,6 +13,7 @@
 #include "config/Config.h"
 #include "config/Schema.h"
 #include "library/GamePatch.h"
+#include "runner/AntiCheat.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
 #include "runner/NativeRunner.h"
@@ -538,4 +539,35 @@ TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked g
       library::ParseGamePatch(game, {{"runner_ref", "proton:UMU-Proton-10.0"}});
   CHECK_FALSE(picked.runner_config.contains(runner::kAutoPicked));
   CHECK_FALSE(registry.BetterAutoPick(picked));
+}
+
+TEST_CASE("a game's anti-cheat status comes by its Steam appid, else its title") {
+  test::TestEnv env("anticheat");
+  REQUIRE(env.config.Set("anticheat.check", true));
+  REQUIRE(env.config.Set("umu.match", true));
+  WriteUmuDatabase(env.dir / "cache");
+  std::ofstream(env.dir / "cache" / "mira" / "anticheat.json") << R"([
+    {"name": "Other Name", "status": "Denied", "anticheats": ["BattlEye"],
+     "storeIds": {"steam": "61500"}},
+    {"name": "Fine Game", "status": "Supported", "anticheats": ["Easy Anti-Cheat"]}])";
+
+  model::Game gog;
+  gog.id = "gog-aow";
+  gog.source = "gog";
+  gog.source_ref = "1207658883";  // umu-61500
+  gog.platform = model::Platform::Windows;
+  const auto denied = runner::FindAntiCheat(env.config, gog);
+  REQUIRE(denied);
+  CHECK(denied->Blocks());
+  CHECK(denied->anticheats == std::vector<std::string>{"BattlEye"});
+
+  model::Game scanned;
+  scanned.id = "fine";
+  scanned.name = "Fine Game";
+  scanned.platform = model::Platform::Windows;
+  const auto fine = runner::FindAntiCheat(env.config, scanned);
+  REQUIRE(fine);
+  CHECK_FALSE(fine->Blocks());
+  scanned.platform = model::Platform::Native;
+  CHECK_FALSE(runner::FindAntiCheat(env.config, scanned));
 }

@@ -21,7 +21,7 @@ namespace {
 
 namespace fs = std::filesystem;
 
-constexpr auto kMaxAge = std::chrono::days(7);
+constexpr std::chrono::hours kMaxAge{24 * 7};
 
 // Stores protonfixes keeps a folder of fixes for; any other runs as "umu".
 constexpr std::array<std::string_view, 10> kFixStores = {
@@ -123,18 +123,10 @@ std::pair<std::string, std::string> StoreCode(const model::Game& game) {
 
 void RefreshUmuDatabase(const config::Config& config) {
   if (!config.GetBool("umu.match")) return;
-  const fs::path file = DatabaseFile();
-  std::error_code ec;
-  const auto modified = fs::last_write_time(file, ec);
-  if (!ec && fs::file_time_type::clock::now() - modified < kMaxAge) return;
-  fs::create_directories(file.parent_path(), ec);
-  const fs::path partial = file.string() + ".part";
-  if (auto got = CurlDownload(config.GetString("umu.database_url"), partial, 16 << 20); !got) {
+  if (auto got =
+          RefreshDownload(config.GetString("umu.database_url"), DatabaseFile(), kMaxAge, 16 << 20);
+      !got)
     log::Warn("could not download the umu database: {}", got.error().message);
-    return;
-  }
-  fs::rename(partial, file, ec);
-  if (ec) log::Warn("could not save the umu database: {}", ec.message());
 }
 
 std::optional<UmuMatch> FindUmu(const config::Config& config, const model::Game& game) {

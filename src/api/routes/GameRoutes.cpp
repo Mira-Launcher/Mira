@@ -42,6 +42,41 @@ json SavesFolder(const config::Config& config, const std::string& id) {
                                                                 : json(nullptr);
 }
 
+// Whether the game's Proton build has its protonfix, and an installed build that does when it
+// doesn't. Nothing for a game no installed build has a fix for.
+std::optional<json> ProtonFixStatus(config::Config& config, const model::Game& game) {
+  const runner::RunnerRegistry registry(config);
+  const std::string ref = registry.ResolveRef(game);
+  if (!ref.starts_with("proton:")) return std::nullopt;
+  const runner::UmuMatch identity = runner::UmuIdentity(config, game);
+  const auto resolved = registry.Resolve(ref, &game);
+  if (resolved && resolved->build && runner::HasProtonFix(resolved->build->path, identity)) {
+    return json{{"gameid", identity.gameid}, {"applies", true}, {"build", resolved->build->name}};
+  }
+  for (const model::RunnerBuild& build : registry.DiscoverAll()) {
+    if (build.kind == "proton" && runner::HasProtonFix(build.path, identity)) {
+      return json{{"gameid", identity.gameid}, {"applies", false}, {"fixed_in", build.Reference()}};
+    }
+  }
+  return std::nullopt;
+}
+
+// The most recently written file in `dir`, or empty.
+std::filesystem::path NewestFile(const std::filesystem::path& dir) {
+  std::filesystem::path newest;
+  std::filesystem::file_time_type newest_at{};
+  std::error_code ec;
+  for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+    if (!entry.is_regular_file(ec)) continue;
+    const auto at = entry.last_write_time(ec);
+    if (!ec && (newest.empty() || at > newest_at)) {
+      newest = entry.path();
+      newest_at = at;
+    }
+  }
+  return newest;
+}
+
 }  // namespace
 
 void RegisterGameRoutes(Router& http, Services& s) {
@@ -95,6 +130,9 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (const auto umu = runner::FindUmu(s.config, *game)) {
       body["umu_match"] = {{"gameid", umu->gameid}, {"store", umu->store}, {"title", umu->title}};
     }
+    if (const auto fix = ProtonFixStatus(s.config, *game)) body["protonfix"] = *fix;
+    if (const auto log = NewestFile(proc::ProtonLogDir(s.games.Dir(), game->id)); !log.empty())
+      body["proton_log"] = log.string();
     SendJson(res, body);
   });
 

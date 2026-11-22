@@ -131,6 +131,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
                                  : "Only available for a game that still needs installing");
   QAction* refresh_metadata = menu.addAction("Refresh metadata && cover art");
   QAction* view_log = menu.addAction(running ? "View live log…" : "View log…");
+  QAction* proton_log = menu.addAction("Open Proton log");
   QAction* winetricks = menu.addAction("Winetricks…");
   QAction* relocate = menu.addAction("Move to Mira's folders…");
   relocate->setToolTip("Move this game's files and prefix into the library and prefix folders");
@@ -141,6 +142,18 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
        {install, run_in_prefix, finish_install, winetricks, relocate, game_details})
     action->setVisible(!emulated);
   winetricks->setEnabled(prefix);
+  proton_log->setVisible(prefix && !emulated);
+  proton_log->setEnabled(false);
+  proton_log->setToolTip("Turn on Write a Proton log in the game's settings, then play it");
+  auto proton_log_path = std::make_shared<QString>();
+  if (prefix && !emulated) {
+    api::GetGameAsync(&menu, id, [proton_log, proton_log_path](GameDetailResult result) {
+      if (!result.ok || result.game.proton_log.empty()) return;
+      *proton_log_path = QString::fromStdString(result.game.proton_log);
+      proton_log->setEnabled(true);
+      proton_log->setToolTip(*proton_log_path);
+    });
+  }
   winetricks->setToolTip(prefix                      ? QString()
                          : game.platform == "native" ? "Native games have no Wine or Proton prefix"
                                                      : "HTML games have no Wine or Proton prefix");
@@ -202,6 +215,8 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
     host_.refresh_metadata(id);
   } else if (chosen == view_log) {
     actions::ViewLog(parent_, id, name);
+  } else if (chosen == proton_log) {
+    QDesktopServices::openUrl(QUrl::fromLocalFile(*proton_log_path));
   } else if (chosen == winetricks) {
     actions::RunWinetricks(parent_, id, name);
   } else if (chosen == desktop_entry) {

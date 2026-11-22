@@ -293,7 +293,12 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
   }
 
   // Reviews and the ProtonDB tier in their own colors, as Steam and ProtonDB show them.
-  std::vector<std::pair<QString, QColor>> chips;
+  struct Chip {
+    QString text;
+    QColor color;
+    Tone tone = Tone::Muted;
+  };
+  std::vector<Chip> chips;
   if (!metadata.review_summary.empty()) {
     QString review = QString::fromStdString(metadata.review_summary);
     if (metadata.review_percent >= 0) {
@@ -301,26 +306,36 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
                     .arg(metadata.review_percent)
                     .arg(QLocale().toString(metadata.review_total));
     }
-    chips.emplace_back(review, ReviewBucketColor(ReviewBucketOf(metadata.review_summary)));
+    chips.push_back({review, ReviewBucketColor(ReviewBucketOf(metadata.review_summary))});
   }
   if (!metadata.protondb_tier.empty()) {
     QString tier = QString::fromStdString(metadata.protondb_tier);
     tier[0] = tier[0].toUpper();
-    chips.emplace_back("ProtonDB " + tier, ProtonDbFilterTier(metadata.protondb_tier).empty()
-                                               ? QColor()
-                                               : ProtonDbTierColor(metadata.protondb_tier));
+    chips.push_back({"ProtonDB " + tier, ProtonDbFilterTier(metadata.protondb_tier).empty()
+                                             ? QColor()
+                                             : ProtonDbTierColor(metadata.protondb_tier)});
+  }
+  if (!metadata.anticheat_status.empty()) {
+    const std::string& status = metadata.anticheat_status;
+    QString text = "Anti-cheat " + QString::fromStdString(status).toLower();
+    if (!metadata.anticheat_names.empty())
+      text += " · " + QString::fromStdString(metadata.anticheat_names);
+    chips.push_back({text, QColor(),
+                     status == "Supported" || status == "Running" ? Tone::Success
+                     : status == "Broken" || status == "Denied"   ? Tone::Danger
+                                                                  : Tone::Warning});
   }
   if (metadata.metacritic_score > 0)
-    chips.emplace_back(QString("Metacritic %1").arg(metadata.metacritic_score), QColor());
+    chips.push_back({QString("Metacritic %1").arg(metadata.metacritic_score), QColor()});
   for (const std::string& descriptor : metadata.content_descriptors)
-    chips.emplace_back(QString::fromStdString(descriptor), QColor());
+    chips.push_back({QString::fromStdString(descriptor), QColor()});
   if (!chips.empty()) {
     auto* row = new QWidget(body);
     auto* flow = new FlowLayout(row, 6);
     flow->setContentsMargins(0, 0, 0, 0);
-    for (const auto& [text, color] : chips) {
-      auto* badge = new Badge(text, Tone::Muted, row);
-      badge->SetColor(color);
+    for (const Chip& chip : chips) {
+      auto* badge = new Badge(chip.text, chip.tone, row);
+      badge->SetColor(chip.color);
       flow->addWidget(badge);
     }
     body_->addWidget(row);
