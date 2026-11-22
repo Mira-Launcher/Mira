@@ -9,6 +9,7 @@
 
 class QBoxLayout;
 class QComboBox;
+class QLineEdit;
 class QLabel;
 class QPushButton;
 
@@ -66,7 +67,8 @@ class RunnersPage : public QWidget {
   QLabel* default_note_ = nullptr;
   Card* catalog_ = nullptr;
   QComboBox* source_ = nullptr;
-  Card* tools_card_ = nullptr;  // shown only while a tool is missing
+  QLineEdit* search_ = nullptr;  // filters releases_; empty shows the newest few
+  Card* tools_card_ = nullptr;   // shown only while a tool is missing
   QLabel* status_ = nullptr;
 
   std::vector<GameSummary> games_;

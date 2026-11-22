@@ -64,7 +64,7 @@ void RegisterRunnerRoutes(Router& http, Services& s) {
     const std::string kind = Param(req, "kind", "proton");
     auto family = runner::FamilyFor(s.config, kind, Param(req, "source"));
     if (!family) return SendError(res, 404, family.error());
-    auto releases = runner::ListFamilyReleases(*family);
+    auto releases = runner::ListFamilyReleases(*family, /*every=*/true);
     if (!releases) return SendError(res, 502, releases.error());
     const runner::RunnerRegistry registry(s.config);
     const std::vector<model::RunnerBuild> installed = runner::BuildsOfKind(registry, kind);
@@ -94,10 +94,10 @@ void RegisterRunnerRoutes(Router& http, Services& s) {
     }
     const std::string kind = b["kind"];
     const std::string tag = b["tag"];
-    auto family = runner::FamilyFor(s.config, kind, b.value("source", std::string()));
+    auto family = runner::FamilyFor(s.config, kind, b.value("source", std::string()), tag);
     if (!family) return SendError(res, 404, family.error());
 
-    auto releases = runner::ListFamilyReleases(*family);
+    auto releases = runner::ListFamilyReleases(*family, /*every=*/true);
     if (!releases) return SendError(res, 502, releases.error());
     const auto match = std::ranges::find(*releases, tag, &runner::ReleaseAsset::tag);
     if (match == releases->end()) {
