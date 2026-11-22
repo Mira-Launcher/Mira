@@ -19,6 +19,8 @@ struct Navigator {
   std::function<void(const std::string& game_id)> view_log;
   std::function<void(const std::string& game_id)> open_game_saves;  // its card's Saves page
   std::function<void(const std::string& game_id)> install;          // open its installer card
+  // its Winetricks card, `verb` filled in
+  std::function<void(const std::string& game_id, const QString& verb)> winetricks;
   std::function<void()> start_daemon;
   std::function<void(const std::string& feature)> install_packages;  // GET /v1/system/packages?for=
   std::function<QString(const std::string& source)> source_name;

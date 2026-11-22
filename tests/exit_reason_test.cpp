@@ -115,6 +115,25 @@ TEST_CASE("Wine's unhandled-exception report names what went wrong, without its 
   CHECK_FALSE(Says(outcome.error, "0000000000000000"));
 }
 
+TEST_CASE("A log naming a missing DLL makes a quit a failure, with the verb that installs it") {
+  ExitInfo info = Exit(53, 3);
+  info.log_tail =
+      "0024:err:module:import_dll Library MSVCP140.dll (which is needed by "
+      "L\"C:\\Game\\game.exe\") "
+      "not found\n";
+  const auto outcome = ClassifyExit(info);
+  CHECK(outcome.crashed);
+  CHECK(Says(outcome.error, "msvcp140.dll"));
+  CHECK(outcome.verb == "vcrun2022");
+
+  // .NET gets a hint but no verb; a clean quit's log isn't read.
+  info.log_tail = "err:module:import_dll Library mscoree.dll (which is needed by x) not found\n";
+  CHECK(ClassifyExit(info).verb.empty());
+  CHECK(Says(ClassifyExit(info).error, ".NET"));
+  info.exit_code = 0;
+  CHECK_FALSE(ClassifyExit(info).crashed);
+}
+
 TEST_CASE("DescribeDuration reads like a person would say it") {
   CHECK(proc::DescribeDuration(1) == "1 second");
   CHECK(proc::DescribeDuration(59) == "59 seconds");

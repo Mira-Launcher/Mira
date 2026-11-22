@@ -80,7 +80,97 @@ std::optional<std::string> WineUnhandled(std::string_view log) {
   return std::string(what);
 }
 
+// The DLL in Wine's "Library X.dll (which is needed by ...) not found" line, lowercased.
+std::string MissingDll(std::string_view log) {
+  constexpr std::string_view kMarker = "err:module:import_dll Library ";
+  const std::size_t at = log.rfind(kMarker);
+  if (at == std::string_view::npos) return {};
+  const std::string_view rest = log.substr(at + kMarker.size());
+  const std::string_view name = rest.substr(0, rest.find_first_of(" \n"));
+  const std::size_t line_end = rest.find('\n');
+  if (rest.substr(0, line_end).find("not found") == std::string_view::npos) return {};
+  return strings::ToLower(name);
+}
+
+// The winetricks verb that installs `dll`; empty when Mira doesn't know one.
+std::string VerbFor(std::string_view dll) {
+  static constexpr std::pair<std::string_view, std::string_view> kPrefixes[] = {
+      {"msvcp140", "vcrun2022"},
+      {"vcruntime140", "vcrun2022"},
+      {"concrt140", "vcrun2022"},
+      {"vcomp140", "vcrun2022"},
+      {"msvcr120", "vcrun2013"},
+      {"msvcp120", "vcrun2013"},
+      {"msvcr110", "vcrun2012"},
+      {"msvcp110", "vcrun2012"},
+      {"msvcr100", "vcrun2010"},
+      {"msvcp100", "vcrun2010"},
+      {"msvcr90", "vcrun2008"},
+      {"msvcp90", "vcrun2008"},
+      {"d3dx9_", "d3dx9"},
+      {"d3dx10_", "d3dx10"},
+      {"d3dx11_", "d3dx11_43"},
+      {"d3dcompiler_43", "d3dcompiler_43"},
+      {"d3dcompiler_47", "d3dcompiler_47"},
+      {"xinput1_", "xinput"},
+      {"physxloader", "physx"},
+      {"xaudio2_", "xact"},
+      {"x3daudio", "xact"},
+      {"xactengine", "xact"},
+  };
+  for (const auto& [prefix, verb] : kPrefixes) {
+    if (dll.starts_with(prefix)) return std::string(verb);
+  }
+  return {};
+}
+
+// Whether one line of `log` has both words, case ignored.
+bool LineWithBoth(std::string_view log, std::string_view a, std::string_view b) {
+  const std::string lower = strings::ToLower(log);
+  for (std::size_t at = lower.find(a); at != std::string::npos; at = lower.find(a, at + 1)) {
+    const std::size_t start = lower.rfind('\n', at);
+    const std::size_t end = lower.find('\n', at);
+    const std::string_view line = std::string_view(lower).substr(
+        start == std::string::npos ? 0 : start + 1,
+        end == std::string::npos ? std::string::npos
+                                 : end - (start == std::string::npos ? 0 : start + 1));
+    if (line.find(b) != std::string_view::npos) return true;
+  }
+  return false;
+}
+
 }  // namespace
+
+std::optional<LogDiagnosis> DiagnoseLog(std::string_view log) {
+  if (const std::string dll = MissingDll(log); !dll.empty()) {
+    if (dll == "mscoree.dll") {
+      return LogDiagnosis{.cause = "it needs .NET, which isn't in its prefix",
+                          .hint = "Try a different Proton build, or install .NET with winetricks.",
+                          .verb = {}};
+    }
+    const std::string verb = VerbFor(dll);
+    return LogDiagnosis{
+        .cause = std::format("it needs {}, which isn't in its prefix", dll),
+        .hint = verb.empty()
+                    ? "Installing the program that provides it in the game's prefix may help."
+                    : std::format("Installing {} with winetricks usually fixes this.", verb),
+        .verb = verb};
+  }
+  if (LineWithBoth(log, "vkcreateinstance", "fail") || LineWithBoth(log, "vulkan", "no suitable") ||
+      LineWithBoth(log, "vulkan", "not supported")) {
+    return LogDiagnosis{.cause = "Vulkan couldn't start",
+                        .hint = "Update the graphics driver, including its 32-bit Vulkan driver.",
+                        .verb = {}};
+  }
+  for (const char* anticheat : {"easyanticheat", "battleye"}) {
+    if (LineWithBoth(log, anticheat, "error") || LineWithBoth(log, anticheat, "fail")) {
+      return LogDiagnosis{.cause = "its anti-cheat stopped it",
+                          .hint = "Its anti-cheat may not allow Linux; its details say.",
+                          .verb = {}};
+    }
+  }
+  return std::nullopt;
+}
 
 std::string DescribeDuration(std::int64_t seconds) {
   const auto plural = [](std::int64_t n, std::string_view unit) {
@@ -93,7 +183,9 @@ std::string DescribeDuration(std::int64_t seconds) {
                       : plural(seconds / 3600, "hour") + " " + plural(minutes, "minute");
 }
 
-ExitOutcome ClassifyExit(const ExitInfo& info) {
+namespace {
+
+ExitOutcome ClassifyByCode(const ExitInfo& info) {
   // Stop() sends SIGTERM, then SIGKILL, and a game may answer either with any exit code.
   if (info.requested_stop) return {};
 
@@ -137,6 +229,27 @@ ExitOutcome ClassifyExit(const ExitInfo& info) {
     }
   }
   return {};
+}
+
+}  // namespace
+
+ExitOutcome ClassifyExit(const ExitInfo& info) {
+  ExitOutcome outcome = ClassifyByCode(info);
+  if (info.requested_stop || outcome.code == "killed") return outcome;
+  if (!outcome.crashed && info.exit_code <= 0) return outcome;
+  const std::optional<LogDiagnosis> found = DiagnoseLog(info.log_tail);
+  if (!found) return outcome;
+  if (!outcome.crashed) {
+    outcome = {.crashed = true,
+               .code = "crashed",
+               .error = std::format("Quit after {}: {}", DescribeDuration(info.played_seconds),
+                                    found->cause),
+               .hint = {},
+               .verb = {}};
+  }
+  outcome.hint = found->hint;
+  outcome.verb = found->verb;
+  return outcome;
 }
 
 std::string ReadLogTail(const std::filesystem::path& log, std::size_t max_bytes) {

@@ -38,6 +38,11 @@ std::optional<Action> ActionFor(const ApiError& error) {
   if (fix.kind == "game" && fix.step == "saves" && nav.open_game_saves) {
     return Action{"Open saves", [id = fix.target] { Nav().open_game_saves(id); }};
   }
+  // "winetricks:vcrun2022": a verb that installs what the game's log says is missing.
+  if (fix.kind == "game" && fix.step.starts_with("winetricks:") && nav.winetricks) {
+    const QString verb = QString::fromStdString(fix.step.substr(11));
+    return Action{"Install " + verb, [id = fix.target, verb] { Nav().winetricks(id, verb); }};
+  }
   if (fix.kind == "game" && fix.step == "install" && nav.install) {
     return Action{"Install…", [id = fix.target] { Nav().install(id); }};
   }

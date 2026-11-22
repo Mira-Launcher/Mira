@@ -1205,6 +1205,12 @@ void LibraryWindow::InstallErrorNavigator() {
     mira_gui::actions::ViewLog(self, id,
                                game != nullptr ? QString::fromStdString(game->name) : QString());
   };
+  nav.winetricks = [self](const std::string& id, const QString& verb) {
+    if (!self) return;
+    const mira_gui::GameSummary* game = self->FindGame(id);
+    mira_gui::actions::RunWinetricks(
+        self, id, game != nullptr ? QString::fromStdString(game->name) : QString(), verb);
+  };
   nav.install = [self](const std::string& id) {
     if (self) self->OfferInstall(id);
   };

@@ -184,8 +184,9 @@ void ViewLog(QWidget* parent, const std::string& id, const QString& name) {
                   name.isEmpty() ? QString::fromStdString(id) : name);
 }
 
-void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) {
-  api::GetGameAsync(parent, id, [parent, id, name](GameDetailResult result) {
+void RunWinetricks(QWidget* parent, const std::string& id, const QString& name,
+                   const QString& verb) {
+  api::GetGameAsync(parent, id, [parent, id, name, verb](GameDetailResult result) {
     if (!result.ok) {
       notify::FailedRequest(parent, "Could not run winetricks", result.error);
       return;
@@ -197,7 +198,7 @@ void RunWinetricks(QWidget* parent, const std::string& id, const QString& name) 
                              "provisions one on demand.");
       return;
     }
-    cards::Show(parent, new WinetricksCard(id, name));
+    cards::Show(parent, new WinetricksCard(id, name, verb));
   });
 }
 

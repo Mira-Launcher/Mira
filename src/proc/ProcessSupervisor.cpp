@@ -66,6 +66,9 @@ void AddExit(json& event, const ExitOutcome& outcome, const ExitInfo& info,
             : "The game's log usually says why.";
   }
   event["fix"] = {{"kind", "game"}, {"target", game_id}, {"step", "log"}};
+  // What its log says to try, and a winetricks verb that installs what's missing.
+  if (!outcome.hint.empty()) event["hint"] = outcome.hint;
+  if (!outcome.verb.empty()) event["fix"]["step"] = "winetricks:" + outcome.verb;
 }
 
 void RunScript(const std::string& script, const std::string& game_id, std::int64_t timeout_s) {
