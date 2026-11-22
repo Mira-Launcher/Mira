@@ -12,8 +12,10 @@
 #include "../activity/DownloadTracker.h"
 #include "../app/Notify.h"
 #include "../client/api/Downloads.h"
+#include "../components/Button.h"
 #include "../components/Card.h"
 #include "../components/Format.h"
+#include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/ListEdit.h"
 #include "../components/PageHeader.h"
@@ -73,10 +75,8 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
   passwords->setToolTip("The archive passwords Mira tries on what it downloads");
   connect(passwords, &QPushButton::clicked, this, &DownloadsPage::EditPasswords);
   header_->AddControl(passwords);
-  auto* settings = new QToolButton(this);
-  settings->setAutoRaise(true);
-  icons::Follow(settings, icons::Glyph::Settings);
-  settings->setToolTip("Download settings: speed limit, how many at once");
+  auto* settings = new IconButton(icons::Glyph::Settings,
+                                  "Download settings: speed limit, how many at once", this);
   connect(settings, &QToolButton::clicked, this, &DownloadsPage::SettingsRequested);
   header_->AddControl(settings);
   outer->addWidget(header_);
@@ -146,8 +146,7 @@ DownloadsPage::DownloadsPage(LinkDownloads* links, DownloadTracker* tracker, Art
   });
   Section& finished =
       add_section("Finished", [](const Entry& entry) { return entry.state == State::Finished; });
-  auto* clear = new QPushButton("Clear", finished.card);
-  clear->setObjectName("text_button");
+  auto* clear = new Button("Clear", ButtonKind::Link, finished.card);
   connect(clear, &QPushButton::clicked, this, [this] {
     tracker_->ClearFinished();
     links_->ClearFinished();

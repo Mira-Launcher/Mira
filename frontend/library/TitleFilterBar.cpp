@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 
+#include "../components/Button.h"
 #include "../components/Labels.h"
 #include "../components/TabRow.h"
 #include "../sources/Sources.h"
@@ -126,8 +127,7 @@ TitleFilterBar::TitleFilterBar(QWidget* parent) : QWidget(parent) {
   sort_button_ = Dropdown(this, sort_menu);
   layout->addWidget(sort_button_);
 
-  clear_ = new QPushButton("Clear filters", this);
-  clear_->setObjectName("text_button");
+  clear_ = new Button("Clear filters", ButtonKind::Link, this);
   KeepSpaceWhenHidden(clear_);
   connect(clear_, &QPushButton::clicked, this, &TitleFilterBar::Clear);
   layout->addWidget(clear_);

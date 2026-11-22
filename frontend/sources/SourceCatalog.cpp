@@ -5,6 +5,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "../components/Button.h"
 #include "../components/Labels.h"
 #include "../components/TileGridLayout.h"
 #include "SourceText.h"
@@ -119,7 +120,7 @@ void SourceCatalog::SetSources(const std::vector<SourceInfo>& sources) {
     tile->Body()->addWidget(blurb, 1);
     // Lutris and Heroic have nothing to set up: their button imports right away.
     const bool imports = id == "lutris" || id == "heroic";
-    auto* button = new QPushButton(imports ? "Import games" : "Set up…", tile);
+    auto* button = new Button(imports ? "Import games" : "Set up…", ButtonKind::Primary, tile);
     button->setDefault(true);
     button->setAccessibleName((imports ? "Import games from " : "Set up ") + source.name);
     button->setToolTip(

@@ -12,6 +12,7 @@
 #include <QToolButton>
 #include <QUrl>
 
+#include "../components/IconButton.h"
 #include "../components/SettingRow.h"
 #include "../components/Text.h"
 #include "../components/WindowCards.h"
@@ -38,10 +39,7 @@ QString VersionDetails() {
 }
 
 QToolButton* LinkButton(QWidget* parent, const QString& url) {
-  auto* button = new QToolButton(parent);
-  button->setAutoRaise(true);
-  icons::Follow(button, icons::Glyph::External);
-  button->setToolTip(url);
+  auto* button = new IconButton(icons::Glyph::External, url, parent);
   QObject::connect(button, &QToolButton::clicked, parent,
                    [url] { QDesktopServices::openUrl(QUrl(url)); });
   return button;
@@ -64,10 +62,7 @@ AboutCard::AboutCard(QWidget* parent) : SheetCard(QString(), parent) {
   SetLeading(logo_);
   SetHeading("Mira", QString("Version %1").arg(MIRA_VERSION));
   SetClose("Close", [this] { cards::Close(this); });
-  auto* copy = new QToolButton(this);
-  copy->setAutoRaise(true);
-  icons::Follow(copy, icons::Glyph::Copy);
-  copy->setToolTip("Copy version details");
+  auto* copy = new IconButton(icons::Glyph::Copy, "Copy version details", this);
   // A tick for a moment says it worked, without a notice.
   connect(copy, &QToolButton::clicked, this, [copy] {
     QGuiApplication::clipboard()->setText(VersionDetails());

@@ -12,6 +12,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/Stores.h"
 #include "../components/Format.h"
+#include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/Switch.h"
 #include "../components/TileGridLayout.h"
@@ -121,18 +122,10 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
   tile.tile->SetClickable("Open " + name);
   connect(tile.tile, &SourceTile::Clicked, this, [this, id] { emit OpenRequested(id); });
 
-  auto* settings = new QToolButton(tile.tile);
-  settings->setAutoRaise(true);
-  icons::Follow(settings, icons::Glyph::Settings);
-  settings->setToolTip(name + " settings");
-  settings->setAccessibleName(name + " settings");
+  auto* settings = new IconButton(icons::Glyph::Settings, name + " settings", tile.tile);
   connect(settings, &QToolButton::clicked, this, [this, id] { emit SettingsRequested(id); });
   tile.tile->Corner()->addWidget(settings);
-  auto* more = new QToolButton(tile.tile);
-  more->setAutoRaise(true);
-  icons::Follow(more, icons::Glyph::More);
-  more->setToolTip("More for " + name);
-  more->setAccessibleName("More for " + name);
+  auto* more = new IconButton(icons::Glyph::More, "More for " + name, tile.tile);
   connect(more, &QToolButton::clicked, this, [this, id] { ShowMenu(id); });
   tile.tile->Corner()->addWidget(more);
   tile.more = more;

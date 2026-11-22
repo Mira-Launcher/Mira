@@ -12,6 +12,7 @@
 #include "../client/Events.h"
 #include "../client/api/Config.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
 #include "../components/Labels.h"
 #include "../components/ProgressRail.h"
 #include "../sources/SourceText.h"
@@ -50,8 +51,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   if (header) {
     auto* head = new QHBoxLayout();
     head->setSpacing(10);
-    auto* back = new QPushButton("Back", this);
-    back->setObjectName("text_button");
+    auto* back = new Button("Back", ButtonKind::Link, this);
     connect(back, &QPushButton::clicked, this, &OfficePanel::BackClicked);
     head->addWidget(back);
     head->addWidget(MakeSourceBadge(*FindSourceInfo("office"), 26, this));
@@ -92,7 +92,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
           if (!result.ok) ShowError(error_, "Could not save the plan", result.error);
         });
   });
-  install_ = new QPushButton("Install Office", plan_box_);
+  install_ = new Button("Install Office", ButtonKind::Primary, plan_box_);
   install_->setDefault(true);
   connect(install_, &QPushButton::clicked, this, &OfficePanel::Install);
   auto* install_row = new QHBoxLayout();
@@ -120,7 +120,7 @@ OfficePanel::OfficePanel(QWidget* parent, bool header) : QWidget(parent) {
   apps->addWidget(MakeLabel(apps_box_, "Add to your library", text::kSection));
   app_tiles_ = new QWidget(apps_box_);
   apps->addWidget(app_tiles_);
-  add_ = new QPushButton(apps_box_);
+  add_ = new Button(QString(), ButtonKind::Primary, apps_box_);
   add_->setDefault(true);
   connect(add_, &QPushButton::clicked, this, &OfficePanel::AddApps);
   auto* add_row = new QHBoxLayout();

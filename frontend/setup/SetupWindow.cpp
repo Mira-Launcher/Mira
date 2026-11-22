@@ -18,6 +18,7 @@
 #include "../app/Appearance.h"
 #include "../app/Notify.h"
 #include "../client/api/Config.h"
+#include "../components/Button.h"
 #include "../components/Labels.h"
 #include "../components/Scrolling.h"
 #include "../library/GameLibraryModel.h"
@@ -218,8 +219,7 @@ SetupWindow::SetupWindow(LibraryServices services, SetupWork* work, const Fronte
   auto* foot = new QHBoxLayout(foot_box);
   foot->setContentsMargins(16, 12, 16, 12);
   foot->setSpacing(8);
-  back_ = new QPushButton("Back", foot_box);
-  back_->setObjectName("text_button");
+  back_ = new Button("Back", ButtonKind::Text, foot_box);
   connect(back_, &QPushButton::clicked, this, [this] {
     // Back from Skip setup goes back to where it was pressed, with nothing dropped.
     if (choices_.skipped_all) {
@@ -231,11 +231,10 @@ SetupWindow::SetupWindow(LibraryServices services, SetupWork* work, const Fronte
   foot->addWidget(back_);
   dots_ = new StepDots(foot_box);
   foot->addWidget(dots_, /*stretch=*/1);
-  skip_ = new QPushButton("Skip", foot_box);
-  skip_->setObjectName("text_button");
+  skip_ = new Button("Skip", ButtonKind::Text, foot_box);
   connect(skip_, &QPushButton::clicked, this, &SetupWindow::Skip);
   foot->addWidget(skip_);
-  next_ = new QPushButton("Next", foot_box);
+  next_ = new Button("Next", ButtonKind::Primary, foot_box);
   next_->setDefault(true);
   next_->setMinimumWidth(110);
   connect(next_, &QPushButton::clicked, this, &SetupWindow::Next);

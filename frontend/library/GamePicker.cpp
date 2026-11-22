@@ -13,7 +13,9 @@
 #include <QWheelEvent>
 #include <algorithm>
 
+#include "../components/Button.h"
 #include "../components/FlowLayout.h"
+#include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/Scrolling.h"
 #include "../theme/Icons.h"
@@ -107,11 +109,7 @@ GamePicker::GamePicker(ArtworkStore* artwork, const QString& back_label, QWidget
   header_->setContentsMargins(24, 20, 32, 10);
   header_->setSpacing(8);
   // As Settings' own back arrow.
-  auto* back = new QToolButton(header_box_);
-  back->setAutoRaise(true);
-  icons::Follow(back, icons::Glyph::ArrowLeft);
-  back->setToolTip(back_label);
-  back->setAccessibleName(back_label);
+  auto* back = new IconButton(icons::Glyph::ArrowLeft, back_label, header_box_);
   connect(back, &QToolButton::clicked, this, &GamePicker::Closed);
   header_->addWidget(back);
   title_ = new QLabel(header_box_);
@@ -152,7 +150,7 @@ GamePicker::GamePicker(ArtworkStore* artwork, const QString& back_label, QWidget
   auto* cancel = new QPushButton("Cancel", bar_);
   connect(cancel, &QPushButton::clicked, this, &GamePicker::Closed);
   bar_layout_->addWidget(cancel);
-  apply_ = new QPushButton(bar_);
+  apply_ = new Button(QString(), ButtonKind::Primary, bar_);
   apply_->setDefault(true);
   connect(apply_, &QPushButton::clicked, this, [this] { Apply(); });
   bar_layout_->addWidget(apply_);

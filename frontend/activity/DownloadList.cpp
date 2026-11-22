@@ -12,6 +12,7 @@
 #include "../app/Notify.h"
 #include "../client/Jobs.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/ProgressRail.h"
@@ -309,8 +310,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   // Every row, whatever its state: what it did, or is doing. A link's goes to the daemon's log, so
   // its row keeps to its progress and one button. A notice is no work of its own.
   if (entry.kind != Kind::Link && entry.kind != Kind::Notice) {
-    auto* log = new QPushButton("Log", row);
-    log->setObjectName("text_button");
+    auto* log = new Button("Log", ButtonKind::Link, row);
     log->setToolTip("Open its live log in a window");
     connect(log, &QPushButton::clicked, this,
             [this, channel = DownloadTracker::LogChannelFor(entry), name] {

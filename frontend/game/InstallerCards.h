@@ -14,6 +14,8 @@ class QPushButton;
 
 namespace mira_gui {
 
+class Button;
+
 class ArtworkStore;
 struct GameSummary;
 
@@ -47,8 +49,8 @@ class InstallerCard : public SheetCard {
   QComboBox* target_ = nullptr;  // only for an installer outside the library roots
   QLabel* file_ = nullptr;
   QLabel* error_ = nullptr;
-  QPushButton* shown_ = nullptr;
-  QPushButton* quiet_ = nullptr;
+  Button* shown_ = nullptr;
+  Button* quiet_ = nullptr;
 };
 
 // After an install left its installer folder behind (game.installer_leftover): delete it

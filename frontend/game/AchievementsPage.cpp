@@ -15,6 +15,7 @@
 
 #include "../client/api/Artwork.h"
 #include "../components/FlowLayout.h"
+#include "../components/IconButton.h"
 #include "../components/ProgressRail.h"
 #include "../components/Scrolling.h"
 #include "../components/Text.h"
@@ -169,10 +170,7 @@ AchievementsPage::AchievementsPage(std::string id, QWidget* parent)
   auto* header = new QHBoxLayout();
   header->setContentsMargins(kPageHeaderMargins);
   header->setSpacing(12);
-  auto* back = new QToolButton(this);
-  back->setAutoRaise(true);
-  back->setToolTip("Back");
-  icons::Follow(back, icons::Glyph::ArrowLeft);
+  auto* back = new IconButton(icons::Glyph::ArrowLeft, "Back", this);
   connect(back, &QToolButton::clicked, this, &AchievementsPage::BackClicked);
   auto* title = new QLabel("Achievements", this);
   SetTextStyle(title, text::kHeading);

@@ -18,6 +18,7 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Artwork.h"
+#include "../components/Button.h"
 #include "../components/FlowLayout.h"
 #include "../components/Scrolling.h"
 #include "../components/Text.h"
@@ -127,9 +128,8 @@ GameDetailsCard::GameDetailsCard(const std::string& id, const GameMetadataResult
   auto* top = new QHBoxLayout();
   top->setContentsMargins(14, 12, 14, 0);
   top->addStretch(1);
-  // hero_action's text color in base.qss: the button is dark glass in every theme.
-  auto* close = new QPushButton(this);
-  close->setObjectName("hero_action");
+  // A Glass button's text color in base.qss: the button is dark glass in every theme.
+  auto* close = new Button(QString(), ButtonKind::Glass, this);
   close->setIcon(icons::For(icons::Glyph::Close, QColor(0xe6, 0xe8, 0xec)));
   close->setToolTip("Close");
   connect(close, &QPushButton::clicked, this, [this] { cards::Close(this); });
@@ -160,7 +160,7 @@ GameDetailsCard::GameDetailsCard(const std::string& id, const GameMetadataResult
   status_->setTextFormat(Qt::RichText);
   identity->addWidget(status_);
   header->addLayout(identity, 1);
-  play_ = new QPushButton(this);
+  play_ = new Button(QString(), ButtonKind::Primary, this);
   play_->setObjectName("game_play");
   connect(play_, &QPushButton::clicked, this, std::move(play));
   header->addWidget(play_, 0, Qt::AlignBottom);
@@ -230,11 +230,7 @@ void GameDetailsCard::UpdateIdentity() {
   play_->setDefault(!running);
   play_->setIcon(
       icons::For(running ? icons::Glyph::Stop : icons::Glyph::Play, theme::Current().on_accent));
-  if (play_->property("stop").toBool() != running) {
-    play_->setProperty("stop", running);
-    play_->style()->unpolish(play_);
-    play_->style()->polish(play_);
-  }
+  play_->SetKind(running ? ButtonKind::Danger : ButtonKind::Primary);
 }
 
 void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {

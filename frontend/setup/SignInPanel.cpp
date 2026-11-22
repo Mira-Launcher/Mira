@@ -19,6 +19,7 @@
 #include "../client/Events.h"
 #include "../client/api/Config.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
 #include "../components/Labels.h"
 #include "../components/ProgressRail.h"
 #include "../components/Segmented.h"
@@ -69,7 +70,7 @@ QWidget* StepRow(QWidget* parent, int number, const QString& text, const char* s
 }
 
 QPushButton* Accent(const QString& text, QWidget* parent) {
-  auto* button = new QPushButton(text, parent);
+  auto* button = new Button(text, ButtonKind::Primary, parent);
   button->setDefault(true);
   return button;
 }
@@ -91,8 +92,7 @@ SignInPanel::SignInPanel(const QString& id, QWidget* parent, bool header, bool s
   if (header) {
     auto* head = new QHBoxLayout();
     head->setSpacing(10);
-    auto* back = new QPushButton("Back", this);
-    back->setObjectName("text_button");
+    auto* back = new Button("Back", ButtonKind::Link, this);
     connect(back, &QPushButton::clicked, this, &SignInPanel::BackClicked);
     head->addWidget(back);
     if (source != nullptr) head->addWidget(MakeSourceBadge(*source, 26, this));
@@ -298,7 +298,7 @@ void SignInPanel::ShowSteps() {
   const int current = done_ ? last + 1 : opened_ ? last : 0;
   QPushButton* open = nullptr;
   if (!done_) {
-    open = new QPushButton(guide_.open, body_);
+    open = new Button(guide_.open, opened_ ? ButtonKind::Secondary : ButtonKind::Primary, body_);
     open->setDefault(!opened_);
     connect(open, &QPushButton::clicked, this, &SignInPanel::OpenPage);
   }

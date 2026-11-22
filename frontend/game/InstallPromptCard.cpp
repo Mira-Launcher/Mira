@@ -9,6 +9,7 @@
 
 #include "../app/Notify.h"
 #include "../client/Types.h"
+#include "../components/Button.h"
 #include "../components/SettingRow.h"
 #include "../components/Switch.h"
 #include "../components/Text.h"
@@ -87,7 +88,7 @@ InstallPromptCard::InstallPromptCard(const GameSummary& game, const std::string&
   auto* keep = new QPushButton("Keep as is", buttons);
   connect(keep, &QPushButton::clicked, this, &InstallPromptCard::CloseRequested);
   buttons_layout->addWidget(keep);
-  use_ = new QPushButton("Use this program", buttons);
+  use_ = new Button("Use this program", ButtonKind::Primary, buttons);
   use_->setDefault(true);
   connect(use_, &QPushButton::clicked, this,
           [this] { emit Accepted(exe_path_, app_->isChecked()); });

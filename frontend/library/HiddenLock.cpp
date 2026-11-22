@@ -10,6 +10,7 @@
 #include "../app/ErrorHelp.h"
 #include "../app/Notify.h"
 #include "../client/api/Hidden.h"
+#include "../components/Button.h"
 #include "../components/SettingRow.h"
 #include "../components/Text.h"
 
@@ -56,7 +57,7 @@ HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : Card("Unlock hidden games"
   auto* cancel = new QPushButton("Cancel", buttons);
   connect(cancel, &QPushButton::clicked, this, &HiddenUnlockCard::CloseRequested);
   layout->addWidget(cancel);
-  unlock_ = new QPushButton("Unlock", buttons);
+  unlock_ = new Button("Unlock", ButtonKind::Primary, buttons);
   unlock_->setDefault(true);
   connect(unlock_, &QPushButton::clicked, this, &HiddenUnlockCard::Unlock);
   layout->addWidget(unlock_);
@@ -122,7 +123,7 @@ HiddenPasswordRow::HiddenPasswordRow(QWidget* parent)
   auto* cancel = new QPushButton("Cancel", fields_);
   connect(cancel, &QPushButton::clicked, this, [this] { Open(Form::None); });
   buttons->addWidget(cancel);
-  submit_ = new QPushButton(fields_);
+  submit_ = new Button(QString(), ButtonKind::Primary, fields_);
   submit_->setDefault(true);
   connect(submit_, &QPushButton::clicked, this, &HiddenPasswordRow::Submit);
   buttons->addWidget(submit_);

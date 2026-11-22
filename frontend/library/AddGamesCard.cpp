@@ -27,6 +27,7 @@
 #include "../client/api/Downloads.h"
 #include "../client/api/Games.h"
 #include "../client/api/Library.h"
+#include "../components/Button.h"
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
@@ -369,7 +370,7 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
   auto* cancel = new QPushButton("Cancel", page);
   connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
   buttons->addWidget(cancel);
-  auto* add = new QPushButton(page);
+  auto* add = new Button(QString(), ButtonKind::Primary, page);
   add->setDefault(true);
   buttons->addWidget(add);
   const auto refresh = [add, name, heading, program] {
@@ -479,19 +480,21 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
     error->show();
   }
   QHBoxLayout* buttons = page->ButtonRow();
-  auto* add_only = new QPushButton("Add without installing", page);
+  auto* add_only = new Button("Add without installing", ButtonKind::Secondary, page);
   add_only->setToolTip("Add it as needing install, and install it later");
   buttons->addWidget(add_only);
   // The usual way last, where the default button goes.
-  auto* shown = new QPushButton("Show the installer", page);
+  auto* shown = new Button("Show the installer", ButtonKind::Secondary, page);
   shown->setToolTip("Open the installer's window and click through it yourself");
   shown->setEnabled(info.ok);
   buttons->addWidget(shown);
-  auto* quiet = new QPushButton("Install quietly", page);
+  auto* quiet = new Button("Install quietly", ButtonKind::Secondary, page);
   quiet->setToolTip("Run the installer in the background without its window");
   quiet->setVisible(info.ok && info.silent);
   buttons->addWidget(quiet);
-  (info.ok && info.silent ? quiet : shown)->setDefault(true);
+  Button* recommended = info.ok && info.silent ? quiet : shown;
+  recommended->SetKind(ButtonKind::Primary);
+  recommended->setDefault(true);
 
   const auto refresh = [name, heading, add_only, quiet, shown, ok = info.ok] {
     const QString text = name->text().trimmed();
@@ -506,7 +509,7 @@ void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& g
   // Added once: a failed install after that retries the install, not the add.
   auto added = std::make_shared<std::string>();
   const auto run = [=, this](std::optional<bool> interactive) {
-    for (QPushButton* button : {add_only, quiet, shown}) button->setEnabled(false);
+    for (Button* button : {add_only, quiet, shown}) button->setEnabled(false);
     error->hide();
     const auto failed = [=](const QString& what, const ApiError& why) {
       refresh();
@@ -600,7 +603,7 @@ void AddGamesCard::ShowLinks() {
   auto* cancel = new QPushButton("Cancel", page);
   connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
   buttons->addWidget(cancel);
-  auto* start = new QPushButton("Download", page);
+  auto* start = new Button("Download", ButtonKind::Primary, page);
   start->setDefault(true);
   buttons->addWidget(start);
   const auto refresh = [text, start] {
@@ -717,7 +720,7 @@ void AddGamesCard::ShowAppMenu() {
   auto* cancel = new QPushButton("Cancel", page);
   connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
   buttons->addWidget(cancel);
-  add = new QPushButton("Add", page);
+  add = new Button("Add", ButtonKind::Primary, page);
   add->setDefault(true);
   buttons->addWidget(add);
 

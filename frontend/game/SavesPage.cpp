@@ -21,8 +21,10 @@
 #include "../app/Notify.h"
 #include "../client/JsonMapping.h"
 #include "../client/api/Games.h"
+#include "../components/Button.h"
 #include "../components/Card.h"
 #include "../components/Format.h"
+#include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/LaidOutButton.h"
 #include "../components/Metrics.h"
@@ -49,9 +51,8 @@ QWidget* Row(QWidget* parent, QHBoxLayout** layout) {
 }
 
 QPushButton* TextButton(QWidget* parent, const QString& text, bool muted = false) {
-  auto* button = new QPushButton(text, parent);
-  button->setObjectName("text_button");
-  if (muted) button->setProperty("tone", "muted");
+  auto* button = new Button(text, ButtonKind::Link, parent);
+  if (muted) button->SetKind(ButtonKind::Text);
   button->setCursor(Qt::PointingHandCursor);
   return button;
 }
@@ -84,10 +85,7 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   auto* header = new QHBoxLayout();
   header->setContentsMargins(kPageHeaderMargins);
   header->setSpacing(12);
-  auto* back = new QToolButton(this);
-  back->setAutoRaise(true);
-  back->setToolTip("Back");
-  icons::Follow(back, icons::Glyph::ArrowLeft);
+  auto* back = new IconButton(icons::Glyph::ArrowLeft, "Back", this);
   connect(back, &QToolButton::clicked, this, &SavesPage::BackClicked);
   auto* title = new QLabel("Saves", this);
   SetTextStyle(title, text::kHeading);

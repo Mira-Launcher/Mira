@@ -11,6 +11,7 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "IconButton.h"
 
 namespace mira_gui {
 
@@ -148,10 +149,7 @@ void TabRow::SetSearch(QLineEdit* search) {
   search_ = search;
   search_->setFixedHeight(kControlHeight);
   search_->installEventFilter(this);
-  search_button_ = new QToolButton(this);
-  icons::Follow(search_button_, icons::Glyph::Search);
-  search_button_->setToolTip("Search");
-  search_button_->setAutoRaise(true);
+  search_button_ = new IconButton(icons::Glyph::Search, "Search", this);
   search_button_->setFixedSize(kControlHeight, kControlHeight);
   search_button_->hide();
   connect(search_button_, &QToolButton::clicked, this, [this] {

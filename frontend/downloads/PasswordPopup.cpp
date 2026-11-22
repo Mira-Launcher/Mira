@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "../client/Types.h"
+#include "../components/Button.h"
 #include "../components/Labels.h"
 #include "LinkDownloads.h"
 
@@ -40,14 +41,12 @@ PasswordPopup::PasswordPopup(LinkDownloads* downloads, QWidget* parent)
   count_ = MakeLabel(this, QString(), text::kDetail);
   buttons->addWidget(count_);
   buttons->addStretch(1);
-  auto* skip = new QPushButton("Skip", this);
-  skip->setObjectName("text_button");
-  skip->setProperty("tone", "muted");
+  auto* skip = new Button("Skip", ButtonKind::Text, this);
   connect(skip, &QPushButton::clicked, this, [this] {
     if (!current_.empty()) downloads_->Skip(current_);
   });
   buttons->addWidget(skip);
-  extract_ = new QPushButton("Extract", this);
+  extract_ = new Button("Extract", ButtonKind::Primary, this);
   extract_->setDefault(true);
   connect(extract_, &QPushButton::clicked, this, &PasswordPopup::Submit);
   connect(password_, &QLineEdit::returnPressed, this, &PasswordPopup::Submit);

@@ -12,6 +12,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "Format.h"
+#include "IconButton.h"
 #include "Text.h"
 
 namespace mira_gui {
@@ -27,10 +28,7 @@ QHBoxLayout* ListItemRow(QWidget* row, bool button_last) {
 }
 
 QToolButton* NewRemoveButton(QWidget* parent) {
-  auto* remove = new QToolButton(parent);
-  remove->setAutoRaise(true);
-  icons::Follow(remove, icons::Glyph::Close, &theme::Tokens::text_muted);
-  remove->setToolTip("Remove");
+  auto* remove = new IconButton(icons::Glyph::Close, "Remove", parent, &theme::Tokens::text_muted);
   return remove;
 }
 

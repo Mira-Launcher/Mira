@@ -8,6 +8,8 @@
 #include <QPushButton>
 #include <QWidget>
 
+#include "Button.h"
+
 namespace mira_gui {
 
 ChangeBar::ChangeBar(QWidget* over) : QFrame(over) {
@@ -21,7 +23,7 @@ ChangeBar::ChangeBar(QWidget* over) : QFrame(over) {
   discard_ = new QPushButton("Discard", this);
   connect(discard_, &QPushButton::clicked, this, &ChangeBar::DiscardClicked);
   layout->addWidget(discard_);
-  save_ = new QPushButton("Save", this);
+  save_ = new Button("Save", ButtonKind::Primary, this);
   save_->setDefault(true);
   connect(save_, &QPushButton::clicked, this, &ChangeBar::SaveClicked);
   layout->addWidget(save_);

@@ -13,6 +13,7 @@
 #include "../client/EventHub.h"
 #include "../client/Events.h"
 #include "../client/api/Games.h"
+#include "../components/Button.h"
 #include "../components/FlowLayout.h"
 #include "../components/Labels.h"
 #include "../components/PathField.h"
@@ -108,7 +109,7 @@ RunInPrefixCard::RunInPrefixCard(std::string game_id, std::string install_path, 
   auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, [this] { cards::Close(this); });
   buttons->addWidget(cancel);
-  run_ = new QPushButton("Run", this);
+  run_ = new Button("Run", ButtonKind::Primary, this);
   run_->setDefault(true);
   run_->setEnabled(false);  // nothing to run until a program is picked
   connect(run_, &QPushButton::clicked, this, &RunInPrefixCard::Run);
@@ -168,7 +169,7 @@ WinetricksCard::WinetricksCard(std::string game_id, const QString& name, QWidget
   auto* close = new QPushButton("Close", this);
   connect(close, &QPushButton::clicked, this, [this] { cards::Close(this); });
   buttons->addWidget(close);
-  run_ = new QPushButton("Run", this);
+  run_ = new Button("Run", ButtonKind::Primary, this);
   run_->setDefault(true);
   run_->setEnabled(false);
   connect(run_, &QPushButton::clicked, this, &WinetricksCard::Run);

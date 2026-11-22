@@ -27,6 +27,7 @@
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
 #include "../client/api/Tags.h"
+#include "../components/Button.h"
 #include "../components/Card.h"
 #include "../components/ChangeBar.h"
 #include "../components/Format.h"
@@ -372,8 +373,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   const int more_width = std::unique_ptr<QToolButton>(MoreButton(nullptr))->sizeHint().width();
 
   mine_ = new Card("Your tags", overview_);
-  auto* add = new QPushButton("New tag", mine_);
-  add->setObjectName("text_button");
+  auto* add = new Button("New tag", ButtonKind::Link, mine_);
   icons::Follow(add, icons::Glyph::Plus);
   connect(add, &QPushButton::clicked, this, [this] { OpenPicker(QString(), /*existing=*/false); });
   mine_->AddHeaderWidget(add);
@@ -418,8 +418,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   steam_columns_ = new RowColumns(steam_);
   steam_->AddRow(steam_columns_);
   steam_rare_row_ = new SettingRow(QString(), {}, steam_);
-  steam_rare_ = new QPushButton(steam_rare_row_);
-  steam_rare_->setObjectName("text_button");
+  steam_rare_ = new Button(QString(), ButtonKind::Link, steam_rare_row_);
   connect(steam_rare_, &QPushButton::clicked, this, [this] {
     show_rare_steam_ = !show_rare_steam_;
     FilterSteam();

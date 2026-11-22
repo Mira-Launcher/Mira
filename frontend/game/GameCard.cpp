@@ -16,6 +16,7 @@
 #include "../client/Events.h"
 #include "../client/api/Artwork.h"
 #include "../client/api/Games.h"
+#include "../components/Button.h"
 #include "../components/ChangeBar.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
@@ -97,15 +98,13 @@ void GameCard::Build(const GameSummary* title) {
   // The back button, cover and name, and Change art and Play, on the card's one inset each side.
   auto* top = new QHBoxLayout();
   top->setContentsMargins(kCardInset, 16, kCardInset, 0);
-  // hero_action's text color in base.qss: the buttons are dark glass in every theme.
+  // A Glass button's text color in base.qss: the buttons are dark glass in every theme.
   const QColor on_glass(0xe6, 0xe8, 0xec);
-  auto* back = new QPushButton(this);
-  back->setObjectName("hero_action");
+  auto* back = new Button(QString(), ButtonKind::Glass, this);
   back->setIcon(icons::For(icons::Glyph::ArrowLeft, on_glass));
   back->setToolTip("Back");
   connect(back, &QPushButton::clicked, this, &GameCard::Back);
-  art_button_ = new QPushButton("Change art", this);
-  art_button_->setObjectName("hero_action");
+  art_button_ = new Button("Change art", ButtonKind::Glass, this);
   art_button_->setIcon(icons::For(icons::Glyph::Image, on_glass));
   art_button_->setCheckable(true);
   // setChecked is OpenArtPicker/CloseArtPicker's, not the click's.
@@ -178,7 +177,7 @@ void GameCard::Build(const GameSummary* title) {
   cover_ = new CoverChip(artwork_, this);
   if (game != nullptr) cover_->ShowGame(*game);
   identity->insertStretch(0, 1);
-  play_ = new QPushButton(this);
+  play_ = new Button(QString(), ButtonKind::Primary, this);
   play_->setObjectName("game_play");
   connect(play_, &QPushButton::clicked, this, &GameCard::PlayClicked);
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, &GameCard::UpdatePlay);
@@ -437,11 +436,7 @@ void GameCard::UpdatePlay() {
   play_->setDefault(!running);
   play_->setIcon(running ? icons::For(icons::Glyph::Stop, theme::Current().on_accent)
                          : icons::For(icons::Glyph::Play, theme::Current().on_accent));
-  if (play_->property("stop").toBool() != running) {
-    play_->setProperty("stop", running);
-    play_->style()->unpolish(play_);
-    play_->style()->polish(play_);
-  }
+  play_->SetKind(running ? ButtonKind::Danger : ButtonKind::Primary);
 
   const std::vector<PlayChoice> tools =
       game != nullptr ? ToolChoices(*game) : std::vector<PlayChoice>();

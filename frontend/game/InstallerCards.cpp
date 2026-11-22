@@ -12,6 +12,7 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Games.h"
+#include "../components/Button.h"
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
@@ -64,14 +65,14 @@ InstallerCard::InstallerCard(const GameSummary& game, const InstallerInfoResult&
   auto* later = new QPushButton("Not now", this);
   connect(later, &QPushButton::clicked, this, &InstallerCard::CloseRequested);
   buttons->addWidget(later);
-  quiet_ = new QPushButton("Install quietly", this);
+  quiet_ = new Button("Install quietly", ButtonKind::Secondary, this);
   quiet_->setToolTip("Run the installer in the background without its window");
   // Hidden until the format allows it, keeping its place so the row doesn't shift.
   KeepSpaceWhenHidden(quiet_);
   quiet_->hide();
   connect(quiet_, &QPushButton::clicked, this, [this] { Install(/*interactive=*/false); });
   buttons->addWidget(quiet_);
-  shown_ = new QPushButton("Show the installer", this);
+  shown_ = new Button("Show the installer", ButtonKind::Secondary, this);
   shown_->setToolTip("Open the installer's window and click through it yourself");
   shown_->setEnabled(false);
   connect(shown_, &QPushButton::clicked, this, [this] { Install(/*interactive=*/true); });
@@ -110,7 +111,9 @@ void InstallerCard::ShowInfo(const InstallerInfoResult& info, const std::string&
   file_->setToolTip(QString::fromStdString(info.path));
   silent_ = info.silent;
   quiet_->setVisible(info.silent);
-  (info.silent ? quiet_ : shown_)->setDefault(true);
+  Button* recommended = info.silent ? quiet_ : shown_;
+  recommended->SetKind(ButtonKind::Primary);
+  recommended->setDefault(true);
   shown_->setEnabled(true);
 }
 
@@ -152,7 +155,7 @@ InstallerLeftoverCard::InstallerLeftoverCard(const GameSummary& game,
   error_ = ErrorLine();
 
   QHBoxLayout* buttons = ButtonRow();
-  auto* keep = new QPushButton("Keep", this);
+  auto* keep = new Button("Keep", ButtonKind::Primary, this);
   keep->setDefault(true);  // a stray Return never deletes
   connect(keep, &QPushButton::clicked, this, &InstallerLeftoverCard::CloseRequested);
   buttons->addWidget(keep);
@@ -238,7 +241,7 @@ ProgramsFoundCard::ProgramsFoundCard(const GameSummary& game, const ProgramsFoun
   error_ = ErrorLine();
 
   QHBoxLayout* buttons = ButtonRow();
-  auto* done = new QPushButton("Done", this);
+  auto* done = new Button("Done", ButtonKind::Primary, this);
   done->setDefault(true);
   connect(done, &QPushButton::clicked, this, &ProgramsFoundCard::CloseRequested);
   buttons->addWidget(done);

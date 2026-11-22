@@ -17,6 +17,7 @@
 #include <algorithm>
 
 #include "../client/Types.h"
+#include "../components/Button.h"
 #include "../components/FlowLayout.h"
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
@@ -26,8 +27,7 @@ namespace mira_gui {
 TagEdit::TagEdit(QWidget* parent) : QWidget(parent) {
   auto* layout = new FlowLayout(this);
 
-  add_ = new QPushButton("Add tag", this);
-  add_->setObjectName("text_button");
+  add_ = new Button("Add tag", ButtonKind::Link, this);
   icons::Follow(add_, icons::Glyph::Plus);
   connect(add_, &QPushButton::clicked, this, &TagEdit::StartAdding);
   layout->addWidget(add_);

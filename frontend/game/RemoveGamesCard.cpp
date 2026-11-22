@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <algorithm>
 
+#include "../components/Button.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/SettingRow.h"
@@ -164,10 +165,10 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
   auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, &RemoveGamesCard::CloseRequested);
   buttons_layout->addWidget(cancel);
-  auto* confirm = new QPushButton(action, this);
+  auto* confirm = new Button(action, ButtonKind::Secondary, this);
   // Red when it deletes anything; a plain remove only forgets the game.
   const bool deletes = std::ranges::any_of(plans_, DeletesFiles);
-  if (deletes) confirm->setProperty("tone", "danger");
+  if (deletes) confirm->SetKind(ButtonKind::Danger);
   connect(confirm, &QPushButton::clicked, this, [this] {
     emit Confirmed(prefix_ != nullptr && prefix_->isChecked(),
                    saves_ != nullptr && saves_->isChecked());

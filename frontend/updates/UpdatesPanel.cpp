@@ -17,6 +17,7 @@
 #include "../client/api/ModManagers.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
 #include "../components/Labels.h"
 #include "../components/ProgressRail.h"
 #include "../components/Scrolling.h"
@@ -80,13 +81,10 @@ UpdatesPanel::UpdatesPanel(UpdateChecker* checker, MiraUpdater* mira, RunnerUpda
   SetTextStyle(title, text::kSection);
   header->addWidget(title);
   header->addStretch(1);
-  auto* check = new QPushButton("Check again", this);
-  check->setObjectName("text_button");
-  check->setProperty("tone", "muted");
+  auto* check = new Button("Check again", ButtonKind::Text, this);
   connect(check, &QPushButton::clicked, this, [this] { checker_->Check(/*refresh=*/true); });
   header->addWidget(check);
-  update_all_ = new QPushButton("Update all", this);
-  update_all_->setObjectName("text_button");
+  update_all_ = new Button("Update all", ButtonKind::Link, this);
   connect(update_all_, &QPushButton::clicked, this, &UpdatesPanel::UpdateAll);
   header->addWidget(update_all_);
   layout->addLayout(header);
@@ -284,7 +282,8 @@ QWidget* UpdatesPanel::BuildMiraRow() {
         line(entry.install == "appimage" ? QString("Restarts Mira when it's done")
                                          : QString("Asks for your password, then restarts Mira"));
       }
-      action = new QPushButton(failed ? "Retry" : "Update", row);
+      action = new Button(failed ? "Retry" : "Update",
+                          failed ? ButtonKind::Secondary : ButtonKind::Primary, row);
       action->setDefault(!failed);
       action->setToolTip("Update Mira to " + QString::fromStdString(entry.latest));
       connect(action, &QPushButton::clicked, this,
@@ -331,7 +330,7 @@ QWidget* UpdatesPanel::BuildRow(const UpdateRow& update, bool first) {
   layout->addLayout(text, /*stretch=*/1);
 
   if (!updating) {
-    auto* button = new QPushButton("Update", row);
+    auto* button = new Button("Update", ButtonKind::Primary, row);
     button->setDefault(true);
     button->setToolTip("Update " + update.name);
     connect(button, &QPushButton::clicked, this, [this, update] { Update(update); });

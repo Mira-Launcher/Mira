@@ -5,6 +5,7 @@
 #include <QPushButton>
 #include <QStringList>
 
+#include "../components/Button.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/SettingRow.h"
@@ -65,8 +66,7 @@ RemoveModManagerCard::RemoveModManagerCard(const QString& game_name, const Sourc
   auto* cancel = new QPushButton("Cancel", buttons);
   connect(cancel, &QPushButton::clicked, this, [this] { cards::Close(this); });
   buttons_layout->addWidget(cancel);
-  confirm_ = new QPushButton("Remove", buttons);
-  confirm_->setProperty("tone", "danger");
+  confirm_ = new Button("Remove", ButtonKind::Danger, buttons);
   confirm_->setEnabled(false);
   connect(confirm_, &QPushButton::clicked, this, &RemoveModManagerCard::Confirmed);
   buttons_layout->addWidget(confirm_);

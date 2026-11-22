@@ -10,6 +10,7 @@
 #include "../app/Notify.h"
 #include "../client/api/Config.h"
 #include "../client/api/Emulators.h"
+#include "../components/Button.h"
 #include "../components/Labels.h"
 #include "../sources/SourceText.h"
 #include "../system/PackageInstall.h"
@@ -35,7 +36,7 @@ EmulatorPanel::EmulatorPanel(const EmulatorInfo& emulator, QWidget* parent)
     choose->setToolTip("Use a copy of " + name + " you already have.");
     connect(choose, &QPushButton::clicked, this, &EmulatorPanel::ChooseProgram);
     row->addWidget(choose);
-    auto* install = new QPushButton("Install " + name, install_);
+    auto* install = new Button("Install " + name, ButtonKind::Primary, install_);
     install->setDefault(true);
     connect(install, &QPushButton::clicked, this, &EmulatorPanel::Install);
     row->addWidget(install);

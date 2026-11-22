@@ -329,37 +329,120 @@ QPushButton:pressed {
   background: @border;
 }
 
-QPushButton:default {
-  background: @accent;
-  border-color: @accent;
-  color: @on_accent;
-}
-
 QPushButton:disabled {
   color: @text_muted;
   border-color: @border;
 }
 
-QPushButton:default:disabled {
-  background: @surface_alt;
+/* components/Button's kinds; a plain QPushButton is the Secondary look above. */
+mira_gui--Button[kind="primary"] {
+  background: @accent;
+  border-color: @accent;
+  color: @on_accent;
 }
 
-/* A running game's Stop, and an action that deletes files, in the error color. */
-QPushButton#game_play[stop="true"],
-QPushButton[tone="danger"] {
+mira_gui--Button[kind="primary"]:hover {
+  background: @accent_hover;
+  border-color: @accent_hover;
+}
+
+mira_gui--Button[kind="primary"]:pressed {
+  background: @accent_pressed;
+  border-color: @accent_pressed;
+}
+
+/* A running game's Stop, and an action that deletes files. */
+mira_gui--Button[kind="danger"] {
   background: @error;
   border-color: @error;
   color: @on_accent;
 }
 
-QPushButton#game_play[stop="true"]:disabled {
+mira_gui--Button[kind="danger"]:hover {
+  background: @error_hover;
+  border-color: @error_hover;
+}
+
+mira_gui--Button[kind="danger"]:pressed {
+  background: @error_pressed;
+  border-color: @error_pressed;
+}
+
+mira_gui--Button[kind="primary"]:disabled,
+mira_gui--Button[kind="danger"]:disabled {
   background: @surface_alt;
   border-color: @border;
   color: @text_muted;
 }
 
-QPushButton[tone="danger"]:hover {
-  border-color: @text;
+/* Quiet actions: Link in the accent, underlined on hover; Text muted, in the text color on hover. */
+mira_gui--Button[kind="link"],
+mira_gui--Button[kind="text"] {
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+mira_gui--Button[kind="link"] {
+  color: @accent;
+}
+
+mira_gui--Button[kind="link"]:hover {
+  text-decoration: underline;
+}
+
+mira_gui--Button[kind="link"]:pressed {
+  color: @accent_pressed;
+}
+
+mira_gui--Button[kind="text"] {
+  color: @text_muted;
+}
+
+mira_gui--Button[kind="text"]:hover {
+  color: @text;
+}
+
+mira_gui--Button[kind="text"]:pressed {
+  background: @surface_alt;
+}
+
+mira_gui--Button[kind="link"]:disabled,
+mira_gui--Button[kind="text"]:disabled {
+  color: @text_muted;
+  text-decoration: none;
+}
+
+mira_gui--Button[kind="text"]:disabled {
+  background: transparent;
+}
+
+/* Glass over a game's art: dark whatever the theme, since it sits on the art, not the surface. */
+mira_gui--Button[kind="glass"] {
+  background: rgba(20, 22, 27, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e6e8ec;
+  border-radius: @radius_control;
+  padding: 5px 12px;
+}
+
+mira_gui--Button[kind="glass"]:hover {
+  background: rgba(20, 22, 27, 0.8);
+}
+
+mira_gui--Button[kind="glass"]:pressed {
+  background: rgba(20, 22, 27, 0.9);
+}
+
+mira_gui--Button[kind="glass"]:checked {
+  background: @accent_soft;
+  border-color: @accent;
+}
+
+mira_gui--Button[kind="glass"]:disabled {
+  color: rgba(230, 232, 236, 0.45);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Frameless tool buttons (autoRaise): back, close, fold, more, a row's grip
@@ -855,28 +938,6 @@ QPushButton#list_more:hover {
   text-decoration: underline;
 }
 
-QPushButton#list_add,
-QPushButton#text_button {
-  background: transparent;
-  border: none;
-  color: @accent;
-  padding: 6px 10px;
-  text-align: left;
-}
-
-QPushButton#list_add:hover,
-QPushButton#text_button:hover {
-  text-decoration: underline;
-}
-
-QPushButton#text_button:disabled {
-  color: @text_muted;
-  text-decoration: none;
-}
-
-QPushButton#text_button[tone="muted"] {
-  color: @text_muted;
-}
 
 /* game/TagEdit: one chip per tag. */
 QFrame#tag_chip {
@@ -994,26 +1055,8 @@ QLabel#game_edit_title, QLabel#page_title {
   font-weight: 700;
 }
 
-/* Dark glass whatever the theme: they sit on the art, not the surface. */
-QPushButton#hero_action {
-  background: rgba(20, 22, 27, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #e6e8ec;
-  border-radius: @radius_control;
-  padding: 5px 12px;
-}
-
-QPushButton#hero_action:hover {
-  background: rgba(20, 22, 27, 0.8);
-}
-
-QPushButton#hero_action:checked {
-  background: @accent_soft;
-  border-color: @accent;
-}
-
 /* The game card's achievement count and saves line, which open their pages: dark glass like
- * hero_action, since bright hero art shows through the scrim there. The radius stays under half
+ * a Glass button, since bright hero art shows through the scrim there. The radius stays under half
  * the chip's height. */
 QPushButton#achievements_summary,
 QPushButton#saves_summary {
@@ -1216,10 +1259,6 @@ QScrollArea#setup_scroll > QWidget > QWidget {
 QWidget#setup_foot {
   background: @surface;
   border-top: 1px solid @border;
-}
-
-QWidget#setup_foot QPushButton#text_button {
-  color: @text_muted;
 }
 
 QWidget#setup_window QWidget#segmented QPushButton {

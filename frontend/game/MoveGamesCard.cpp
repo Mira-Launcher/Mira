@@ -10,6 +10,7 @@
 #include <algorithm>
 
 #include "../app/ErrorHelp.h"
+#include "../components/Button.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/SettingRow.h"
@@ -251,9 +252,9 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
   auto* cancel = new QPushButton("Cancel", this);
   connect(cancel, &QPushButton::clicked, this, [this] { cards::Close(this); });
   buttons->addWidget(cancel);
-  auto* move = new QPushButton(
+  auto* move = new Button(
       moving.size() <= 1 || one ? QString("Move") : QString("Move %1 games").arg(moving.size()),
-      this);
+      ButtonKind::Primary, this);
   move->setDefault(true);
   move->setEnabled(!moving.empty());
   connect(move, &QPushButton::clicked, this, [this, moving] { emit Confirmed(moving); });

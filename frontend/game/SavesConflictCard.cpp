@@ -8,6 +8,7 @@
 
 #include "../client/Types.h"
 #include "../client/api/Games.h"
+#include "../components/Button.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/LaidOutButton.h"
@@ -100,9 +101,7 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
   auto* foot_layout = new QHBoxLayout(foot);
   foot_layout->setContentsMargins(18, 10, 18, 10);
   foot_layout->setSpacing(8);
-  auto* skip = new QPushButton("Play without syncing", foot);
-  skip->setObjectName("text_button");
-  skip->setProperty("tone", "muted");
+  auto* skip = new Button("Play without syncing", ButtonKind::Text, foot);
   skip->setToolTip("Start with the saves here and leave the cloud's as they are");
   connect(skip, &QPushButton::clicked, this, [this] { emit Chosen("skip"); });
   foot_layout->addWidget(skip);

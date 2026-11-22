@@ -7,6 +7,7 @@
 #include <QScrollArea>
 #include <QVBoxLayout>
 
+#include "../components/Button.h"
 #include "../components/Scrolling.h"
 #include "../components/Text.h"
 #include "DownloadList.h"
@@ -28,15 +29,13 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   SetTextStyle(title, text::kSection);
   header->addWidget(title);
   header->addStretch(1);
-  auto* manage = new QPushButton("All downloads", this);
-  manage->setObjectName("text_button");
+  auto* manage = new Button("All downloads", ButtonKind::Link, this);
   connect(manage, &QPushButton::clicked, this, [this] {
     hide();
     emit ManageRequested();
   });
   header->addWidget(manage);
-  clear_ = new QPushButton("Clear finished", this);
-  clear_->setObjectName("text_button");
+  clear_ = new Button("Clear finished", ButtonKind::Link, this);
   connect(clear_, &QPushButton::clicked, tracker_, &DownloadTracker::ClearFinished);
   connect(clear_, &QPushButton::clicked, this, &DownloadsPanel::FinishedCleared);
   header->addWidget(clear_);

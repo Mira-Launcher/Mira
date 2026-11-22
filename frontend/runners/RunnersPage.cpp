@@ -18,8 +18,10 @@
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Runners.h"
+#include "../components/Button.h"
 #include "../components/Card.h"
 #include "../components/FlatCombo.h"
+#include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/PageHeader.h"
 #include "../components/ProgressRail.h"
@@ -162,10 +164,8 @@ RunnersPage::RunnersPage(DownloadTracker* downloads, RunnerUpdater* updater, QWi
   source_->setToolTip("Where builds are downloaded from");
   connect(source_, &QComboBox::activated, this, [this] { RefreshCatalog(); });
   catalog_->AddHeaderWidget(source_);
-  auto* refresh = new QToolButton(catalog_);
-  refresh->setAutoRaise(true);
-  icons::Follow(refresh, icons::Glyph::Refresh, &theme::Tokens::text_muted);
-  refresh->setToolTip("Check again");
+  auto* refresh =
+      new IconButton(icons::Glyph::Refresh, "Check again", catalog_, &theme::Tokens::text_muted);
   connect(refresh, &QToolButton::clicked, this, &RunnersPage::Refresh);
   catalog_->AddHeaderWidget(refresh);
   right->addWidget(catalog_);
@@ -346,7 +346,7 @@ void RunnersPage::RebuildInstalled() {
         row->AddControl(updating);
       } else {
         // Short, so a long build name can't crowd out the row's facts.
-        auto* update_button = new QPushButton("Update", row);
+        auto* update_button = new Button("Update", ButtonKind::Primary, row);
         update_button->setToolTip("Update to " + QString::fromStdString(update->label));
         update_button->setDefault(true);
         connect(update_button, &QPushButton::clicked, this,
@@ -358,10 +358,7 @@ void RunnersPage::RebuildInstalled() {
       }
     }
 
-    auto* more = new QToolButton(row);
-    more->setAutoRaise(true);
-    icons::Follow(more, icons::Glyph::More);
-    more->setToolTip("More");
+    auto* more = new IconButton(icons::Glyph::More, "More", row);
     KeepSpaceWhenHidden(more);
     more->setVisible(!is_default || runner.removable);
     connect(more, &QToolButton::clicked, this, [this, more, runner, is_default] {
@@ -427,7 +424,7 @@ void RunnersPage::RebuildCatalog() {
       SetTextStyle(label, text::kSubtle);
       row->AddControl(label);
     } else {
-      auto* install = new QPushButton("Install", row);
+      auto* install = new Button("Install", ButtonKind::Primary, row);
       install->setDefault(true);
       install->setFixedWidth(90);
       connect(install, &QPushButton::clicked, this, [this, install, tag = release.tag] {
@@ -454,7 +451,7 @@ void RunnersPage::RebuildTools() {
     if (entry != nullptr && entry->state == DownloadTracker::State::Running) {
       row->AddControl(Progress(row, entry->progress));
     } else {
-      auto* install = new QPushButton("Install", row);
+      auto* install = new Button("Install", ButtonKind::Primary, row);
       install->setDefault(true);
       connect(install, &QPushButton::clicked, this, [this, install, tool] {
         install->setEnabled(false);

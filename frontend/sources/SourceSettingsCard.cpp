@@ -13,6 +13,7 @@
 #include "../client/api/Emulators.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
 #include "../components/SettingRow.h"
@@ -52,8 +53,7 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
   footer_ = new QWidget(this);
   auto* footer = new QHBoxLayout(footer_);
   footer->setContentsMargins(12, 8, 18, 6);
-  auto* all = new QPushButton("All settings…", footer_);
-  all->setObjectName("text_button");
+  auto* all = new Button("All settings…", ButtonKind::Link, footer_);
   all->setCursor(Qt::PointingHandCursor);
   connect(all, &QPushButton::clicked, this, [this] {
     emit OpenSettingsRequested(
@@ -65,7 +65,7 @@ SourceSettingsCard::SourceSettingsCard(const SourceInfo& source, QWidget* parent
   discard_ = new QPushButton("Discard", footer_);
   connect(discard_, &QPushButton::clicked, this, &SourceSettingsCard::Discard);
   footer->addWidget(discard_);
-  save_ = new QPushButton("Save", footer_);
+  save_ = new Button("Save", ButtonKind::Primary, footer_);
   save_->setDefault(true);
   connect(save_, &QPushButton::clicked, this, &SourceSettingsCard::Save);
   footer->addWidget(save_);

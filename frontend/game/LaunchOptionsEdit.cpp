@@ -15,6 +15,7 @@
 #include <set>
 
 #include "../components/FlatCombo.h"
+#include "../components/IconButton.h"
 #include "../components/ListEdit.h"
 #include "../components/Metrics.h"
 #include "../components/PathField.h"
@@ -130,10 +131,7 @@ void LaunchOptionsEdit::Rebuild() {
     text->setToolTip(
         QString::fromStdString(option.exe + (option.args.empty() ? "" : " " + option.args)));
     layout->addWidget(text, /*stretch=*/1);
-    auto* edit = new QToolButton(row);
-    edit->setAutoRaise(true);
-    icons::Follow(edit, icons::Glyph::Settings, &theme::Tokens::text_muted);
-    edit->setToolTip("Edit");
+    auto* edit = new IconButton(icons::Glyph::Settings, "Edit", row, &theme::Tokens::text_muted);
     connect(edit, &QToolButton::clicked, this, [this, id = option.id] {
       auto it = std::ranges::find(launch_.options, id, &LaunchOption::id);
       if (it == launch_.options.end()) return;

@@ -6,6 +6,7 @@
 #include <QVBoxLayout>
 
 #include "../theme/Icons.h"
+#include "IconButton.h"
 #include "Metrics.h"
 #include "Text.h"
 
@@ -36,19 +37,13 @@ QLabel* SheetCard::SetHeading(const QString& title, const QString& subtitle) {
 }
 
 void SheetCard::SetClose(const QString& tip, const std::function<void()>& close) {
-  auto* button = new QToolButton(this);
-  button->setAutoRaise(true);
-  icons::Follow(button, icons::Glyph::Close);
-  button->setToolTip(tip);
+  auto* button = new IconButton(icons::Glyph::Close, tip, this);
   connect(button, &QToolButton::clicked, this, close);
   SetHeaderEnd(button);
 }
 
 QToolButton* SheetCard::SetBack(const std::function<void()>& back) {
-  auto* button = new QToolButton(this);
-  button->setAutoRaise(true);
-  icons::Follow(button, icons::Glyph::ArrowLeft);
-  button->setToolTip("Back");
+  auto* button = new IconButton(icons::Glyph::ArrowLeft, "Back", this);
   connect(button, &QToolButton::clicked, this, back);
   SetLeading(button);
   return button;

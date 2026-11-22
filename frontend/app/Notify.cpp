@@ -4,6 +4,7 @@
 #include <QPushButton>
 #include <QWidget>
 
+#include "../components/Button.h"
 #include "../components/PopupDialog.h"
 #include "../theme/Theme.h"
 #include "SystemNotifier.h"
@@ -149,9 +150,9 @@ bool Confirm(QWidget* parent, const QString& title, const QString& question, con
   dialog.SetMessage(question);
   // Cancel keeps focus on anything destructive: a stray Return should
   // never pick the dangerous answer.
-  QPushButton* go = dialog.AddButton(accept, /*accept_role=*/true, !destructive);
+  Button* go = dialog.AddButton(accept, /*accept_role=*/true, !destructive);
   dialog.AddButton("Cancel", /*accept_role=*/false, destructive);
-  if (destructive) go->setProperty("tone", "danger");
+  if (destructive) go->SetKind(ButtonKind::Danger);
   return dialog.exec() == QDialog::Accepted;
 }
 

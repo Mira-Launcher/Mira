@@ -15,6 +15,7 @@
 
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
+#include "Button.h"
 #include "SheetCard.h"
 #include "Text.h"
 
@@ -134,12 +135,16 @@ void PopupDialog::SetAction(const QString& label, std::function<void()> activate
   });
 }
 
-QPushButton* PopupDialog::AddButton(const QString& text, bool accept_role, bool default_button) {
+Button* PopupDialog::AddButton(const QString& text, bool accept_role, bool default_button) {
   return AddButton(text, accept_role ? QDialog::Accepted : QDialog::Rejected, default_button);
 }
 
-QPushButton* PopupDialog::AddButton(const QString& text, int result, bool default_button) {
-  auto* button = new QPushButton(text, this);
+Button* PopupDialog::AddButton(const QString& text, int result, bool default_button) {
+  // The answer Enter gives looks like the action only when it is one: a default Cancel stays plain.
+  auto* button = new Button(
+      text,
+      default_button && result != QDialog::Rejected ? ButtonKind::Primary : ButtonKind::Secondary,
+      this);
   button->setAutoDefault(default_button);
   button->setDefault(default_button);
   connect(button, &QPushButton::clicked, this, [this, result] { done(result); });

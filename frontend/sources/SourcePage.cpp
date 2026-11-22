@@ -35,8 +35,10 @@
 #include "../client/api/Library.h"
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
+#include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/ModalOverlay.h"
 #include "../components/PopupDialog.h"
@@ -323,19 +325,13 @@ QWidget* SourcePage::BuildTopRow() {
   });
   tabs_->SetTrailing(import_button_);
 
-  settings_button_ = new QToolButton(tabs_);
-  icons::Follow(settings_button_, icons::Glyph::Settings);
-  settings_button_->setToolTip(source_.name + " settings");
-  settings_button_->setAutoRaise(true);
+  settings_button_ = new IconButton(icons::Glyph::Settings, source_.name + " settings", tabs_);
   connect(settings_button_, &QToolButton::clicked, this, &SourcePage::OpenSettingsModal);
   tabs_->SetTrailing(settings_button_);
   // Local has no settings of its own, and nothing to remove; a mod manager has no settings.
   settings_button_->setVisible(id_ != "local" && !IsModManager());
 
-  more_button_ = new QToolButton(tabs_);
-  icons::Follow(more_button_, icons::Glyph::More);
-  more_button_->setToolTip("More");
-  more_button_->setAutoRaise(true);
+  more_button_ = new IconButton(icons::Glyph::More, "More", tabs_);
   more_button_->setPopupMode(QToolButton::InstantPopup);
   auto* more_menu = new QMenu(more_button_);
   connect(more_menu, &QMenu::aboutToShow, this, [this, more_menu] { FillMoreMenu(more_menu); });
@@ -587,7 +583,7 @@ QWidget* SourcePage::BuildDropZone(QWidget* parent) {
   auto* buttons = new QHBoxLayout();
   buttons->setSpacing(8);
   buttons->addStretch(1);
-  auto* add = new QPushButton("Add games…", drop_zone_);
+  auto* add = new Button("Add games…", ButtonKind::Primary, drop_zone_);
   add->setDefault(true);
   connect(add, &QPushButton::clicked, this, &SourcePage::PickGames);
   auto* folder = new QPushButton("Open games folder", drop_zone_);
@@ -658,8 +654,7 @@ QWidget* SourcePage::BuildOwnedSection() {
   owned_count_ = MakeLabel(owned_section_, QString(), text::kDetail, /*wrap=*/false);
   header->addWidget(owned_count_, 0, Qt::AlignBaseline);
   header->addStretch(1);
-  clear_filters_ = new QPushButton("Clear filters", owned_section_);
-  clear_filters_->setObjectName("text_button");
+  clear_filters_ = new Button("Clear filters", ButtonKind::Link, owned_section_);
   KeepSpaceWhenHidden(clear_filters_);
   clear_filters_->setVisible(false);
   header->addWidget(clear_filters_);

@@ -14,6 +14,8 @@ class QStackedWidget;
 
 namespace mira_gui {
 
+class Button;
+
 class AchievementsPage;
 class ArtPickerPanel;
 class SavesPage;
@@ -108,7 +110,7 @@ class GameCard : public HeroBackdrop {
   int saves_request_ = 0;  // the newest LoadSaves: an older answer arriving after it is dropped
   bool open_saves_when_loaded_ = false;
   QPushButton* art_button_ = nullptr;
-  QPushButton* play_ = nullptr;
+  Button* play_ = nullptr;
   QHBoxLayout* tools_ = nullptr;  // a button for each tool launch option, before Play
   std::vector<std::string> tool_ids_;
   // The form's unsaved changes, or the picker's pick while it's open.

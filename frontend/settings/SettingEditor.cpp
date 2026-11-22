@@ -23,6 +23,7 @@
 #include "../components/ChipToggles.h"
 #include "../components/FlatCombo.h"
 #include "../components/Format.h"
+#include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/ListEdit.h"
 #include "../components/Metrics.h"
@@ -185,10 +186,8 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     }
     if (!entry.link.empty()) {
       const QUrl url(QString::fromStdString(entry.link));
-      auto* link = new QToolButton(row);
-      link->setAutoRaise(true);
-      icons::Follow(link, icons::Glyph::External, &theme::Tokens::accent);
-      link->setToolTip(QString("Open %1").arg(url.host()));
+      auto* link = new IconButton(icons::Glyph::External, QString("Open %1").arg(url.host()), row,
+                                  &theme::Tokens::accent);
       link->setCursor(Qt::PointingHandCursor);
       QObject::connect(link, &QToolButton::clicked, link,
                        [url] { QDesktopServices::openUrl(url); });

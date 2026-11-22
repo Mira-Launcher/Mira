@@ -20,6 +20,7 @@
 #include "../client/api/ModManagers.h"
 #include "../client/api/Stores.h"
 #include "../components/Format.h"
+#include "../components/IconButton.h"
 #include "../components/Labels.h"
 #include "../components/ModalOverlay.h"
 #include "../components/PopupDialog.h"
@@ -74,10 +75,7 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   views_ = new Segmented({{"added", "Added"}, {"catalog", "Add source"}}, this);
   header->addWidget(views_, 0, Qt::AlignTop);
 
-  auto* close = new QToolButton(this);
-  close->setAutoRaise(true);
-  icons::Follow(close, icons::Glyph::Close);
-  close->setToolTip("Close (Esc)");
+  auto* close = new IconButton(icons::Glyph::Close, "Close (Esc)", this);
   close->setAccessibleName("Close Sources");
   connect(close, &QToolButton::clicked, this, &SourcesPage::CloseRequested);
   header->addWidget(close, 0, Qt::AlignTop);

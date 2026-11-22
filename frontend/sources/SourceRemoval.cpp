@@ -8,6 +8,7 @@
 
 #include "../app/Notify.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
 #include "../components/Format.h"
 #include "../components/PopupDialog.h"
 #include "../system/PackageInstall.h"
@@ -73,7 +74,7 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
           "Your saves for its games are in these folders, and can't be recovered once deleted:\n" +
           folders.join("\n"));
     }
-    dialog.AddButton("Remove", /*accept=*/true);
+    dialog.AddButton("Remove", /*accept=*/true)->SetKind(ButtonKind::Danger);
     dialog.AddButton("Cancel", /*accept=*/false, /*default_button=*/true);
     if (dialog.exec() != QDialog::Accepted) return;
     const std::vector<std::string> uninstall = plan.uninstall;

@@ -351,6 +351,11 @@ QHash<QString, QString> QssValues(const Tokens& tokens) {
   QColor accent_soft = tokens.accent;
   accent_soft.setAlphaF(0.3);
   values.insert("accent_soft", ColorToQss(accent_soft));
+  // A filled button's hover and press: a step lighter and a step darker.
+  values.insert("accent_hover", ColorToQss(Mix(tokens.accent, Qt::white, 0.12)));
+  values.insert("accent_pressed", ColorToQss(Mix(tokens.accent, Qt::black, 0.15)));
+  values.insert("error_hover", ColorToQss(Mix(tokens.error, Qt::white, 0.12)));
+  values.insert("error_pressed", ColorToQss(Mix(tokens.error, Qt::black, 0.15)));
   // The top bar shows the window's color, except that hidden mode tints it with the (then purple)
   // accent, so it's plain which mode this is. The border is always there, so the bar never resizes.
   values.insert("top_bar", g_hidden_mode ? ColorToQss(Mix(tokens.window, tokens.accent, 0.22))
@@ -588,6 +593,8 @@ void SetStyleProperty(QWidget* widget, const char* name, const QString& value) {
   if (widget == nullptr) return;
   if (widget->property(name).toString() == value) return;
   widget->setProperty(name, value);
+  // An unpolished widget reads the property when it's first polished.
+  if (!widget->testAttribute(Qt::WA_WState_Polished)) return;
   widget->style()->unpolish(widget);
   widget->style()->polish(widget);
 }

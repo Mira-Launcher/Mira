@@ -26,6 +26,7 @@
 #include "../client/api/Library.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
+#include "../components/Button.h"
 #include "../components/Format.h"
 #include "../components/Labels.h"
 #include "../components/LaidOutButton.h"
@@ -310,8 +311,7 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
   note_text_ = MakeLabel(note_body, QString());
   note_text_->setTextFormat(Qt::RichText);
   note_column->addWidget(note_text_);
-  choose_ = new QPushButton("Choose packages", note_body);
-  choose_->setObjectName("text_button");
+  choose_ = new Button("Choose packages", ButtonKind::Link, note_body);
   connect(choose_, &QPushButton::clicked, this,
           [this] { package_list_->setVisible(!package_list_->isVisible()); });
   auto* choose_row = new QHBoxLayout();

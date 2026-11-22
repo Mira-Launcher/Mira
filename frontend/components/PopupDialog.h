@@ -3,6 +3,7 @@
 #include <QDialog>
 #include <QString>
 
+#include "Button.h"
 #include "Variants.h"
 
 class QLabel;
@@ -12,6 +13,8 @@ class QHBoxLayout;
 class QPushButton;
 
 namespace mira_gui {
+
+class Button;
 
 class SheetCard;
 
@@ -49,10 +52,10 @@ class PopupDialog : public QDialog {
   // A button that closes the dialog; exec() then returns QDialog::Accepted or ::Rejected per
   // `accept`. Buttons sit on the right, those that reject first, then the rest in the order
   // added with the Enter-activated `default_button` last.
-  QPushButton* AddButton(const QString& text, bool accept, bool default_button = false);
+  Button* AddButton(const QString& text, bool accept, bool default_button = false);
   // Same, but exec() returns `result` verbatim, for a caller with more than
   // two outcomes (see notify::LeaveUnsaved).
-  QPushButton* AddButton(const QString& text, int result, bool default_button = false);
+  Button* AddButton(const QString& text, int result, bool default_button = false);
 
  protected:
   void paintEvent(QPaintEvent* event) override;
