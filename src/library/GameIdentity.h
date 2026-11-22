@@ -28,10 +28,10 @@ struct GameIdentity {
   std::string steam_from;
 };
 
-// Its identity from, best first: the game's own metadata.steam_appid, the store it was imported
-// from, what the store left in its folder (GOG's goggame-<id>.info, steam_appid.txt), the umu
-// database (by store id, else exact title: GOG's, the game's, its exe's), then the Steam game of
-// its exact name. Reads only local files; no network.
+// Its identity from, best first: a Steam game's own appid, the game's metadata.steam_appid, the
+// store it was imported from, what the store left in its folder (GOG's goggame-<id>.info,
+// steam_appid.txt), the umu database (by store id, else exact title: GOG's, the game's, its exe's),
+// then the Steam game of its exact name. Reads only local files; no network.
 GameIdentity Identify(const config::Config& config, const model::Game& game);
 
 nlohmann::json ToJson(const GameIdentity& identity);
