@@ -38,6 +38,10 @@ std::unique_lock<std::mutex> LockPrefix(const std::string& data_dir);
 // A game's runner_config key: its pinned build was picked by "auto", not by the user.
 inline constexpr const char* kAutoPicked = "auto_picked";
 
+// Gives `game` the runner ProvisionGame chose for `provisioned`, and whether "auto" chose it, so
+// a better fit can move it later.
+void TakeRunner(model::Game& game, const model::Game& provisioned);
+
 class RunnerRegistry {
  public:
   explicit RunnerRegistry(config::Config& config);
@@ -54,11 +58,11 @@ class RunnerRegistry {
     std::optional<model::RunnerBuild> build;  // unset for a runner with no builds (native)
   };
   // With `game`, "auto" prefers a build with the game's protonfix, then the Proton Steam picks for
-  // it (runners.pick_per_game).
+  // it.
   Result<Resolved> Resolve(const std::string& runner_ref, const model::Game* game = nullptr) const;
 
   // For a game whose pinned build "auto" chose (kAutoPicked), the build "auto" would choose now
-  // when that's a better fit for it, as above; nullopt otherwise.
+  // when that's a better fit for it, as above, or its pinned build was removed; nullopt otherwise.
   std::optional<model::RunnerBuild> BetterAutoPick(const model::Game& game) const;
 
   // For a "kind:name" whose build isn't installed anymore, the newest installed build of its line

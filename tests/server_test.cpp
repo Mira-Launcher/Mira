@@ -1604,7 +1604,7 @@ TEST_CASE("finish-install looks up the moved game's art only while automatic met
   LiveServer server(TempDir("server-adopt-metadata-state"));
   // No SteamGridDB key and no Steam lookup, so each fetch that runs fails offline with
   // game.metadata_failed.
-  REQUIRE(server.MutableConfig().Set("metadata.steam_art_by_name", false).has_value());
+  REQUIRE(server.MutableConfig().Set("metadata.steam_by_name", false).has_value());
   httplib::Client client = server.Client();
 
   const auto adopt = [&](const std::string& id) {

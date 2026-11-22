@@ -580,6 +580,9 @@ TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked g
   const auto better = registry.BetterAutoPick(game);
   REQUIRE(better);
   CHECK(better->name == "GE-Proton9-1");
+  // Its build removed, auto picks again.
+  game.runner_ref = "proton:GE-Proton8-0";
+  CHECK(registry.BetterAutoPick(game)->name == "GE-Proton9-1");
 
   // Chosen by hand: kept.
   game.runner_ref = "proton:GE-Proton9-1";

@@ -215,8 +215,7 @@ struct RunProgram {
 };
 
 // The command that starts `game` (or `program` in its prefix) under its resolved runner, with
-// launch.env and command wrappers applied. Pins the runner on the game when launch.pin_runner is on
-// and none was set.
+// launch.env and command wrappers applied. Pins the runner on the game when none was set.
 Result<Command> PrepareCommand(Services& s, model::Game& game,
                                const std::optional<RunProgram>& program,
                                const library::LaunchExtras& extras = {}) {
@@ -239,7 +238,7 @@ Result<Command> PrepareCommand(Services& s, model::Game& game,
                       : registry.Resolve(registry.ResolveRef(game), &game);
   if (!resolved) return std::unexpected(resolved.error());
 
-  if (game.runner_ref.empty() && resolved->build && s.config.GetBool("launch.pin_runner")) {
+  if (game.runner_ref.empty() && resolved->build) {
     const std::string pinned =
         std::format("{}:{}", resolved->runner->kind(), resolved->build->name);
     const bool automatic = registry.ResolveRef(game).ends_with(":auto");
@@ -931,7 +930,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       const runner::RunnerRegistry provisioner(s.config);
       const model::Game provisioned = provisioner.ProvisionGame(*game);
       auto saved = s.games.Update(game->id, [&](model::Game& g) {
-        g.runner_ref = provisioned.runner_ref;
+        runner::TakeRunner(g, provisioned);
         if (provisioned.status == model::GameStatus::Broken) {
           g.status = model::GameStatus::Broken;
           g.last_error = provisioned.last_error;

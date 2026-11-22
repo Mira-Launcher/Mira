@@ -252,7 +252,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   }
 
   const runner::RunnerRegistry runners(config);
-  const auto resolved = runners.Resolve(game.runner_ref);
+  const auto resolved = runners.Resolve(runners.ResolveRef(game), &game);
   if (!resolved) return std::unexpected(resolved.error());
   model::Game run_as = game;
   run_as.install_path = setup.parent_path().string();
@@ -422,7 +422,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
 // mshtml's registration (its text/html handler), skipped when the prefix was made with mshtml
 // turned off.
 Result<void> RegisterMshtml(const runner::RunnerRegistry& runners, const model::Game& game) {
-  const auto resolved = runners.Resolve(game.runner_ref);
+  const auto resolved = runners.Resolve(runners.ResolveRef(game), &game);
   if (!resolved) return std::unexpected(resolved.error());
   for (const char* dir : {"system32", "syswow64"}) {
     model::Game run_as = game;
@@ -601,7 +601,7 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
                  "couldn't set up the launcher's Wine prefix: " + provisioned.last_error,
                  "The runner may be broken. Try a different one.", Fix::Runners());
     }
-    game.runner_ref = provisioned.runner_ref;
+    runner::TakeRunner(game, provisioned);
     game.data_dir = provisioned.data_dir;
     // Saved now, so installing again after a failure finds the prefix set up. Provisioning it again
     // would wait forever on services the app installed (Autodesk's licensing).

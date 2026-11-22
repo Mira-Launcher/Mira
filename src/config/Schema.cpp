@@ -439,9 +439,9 @@ Schema::Schema() {
          .type = Type::Int,
          .default_value = 0,
          .scope = Scope::GameOnly,
-         .doc = "The SteamGridDB game this game's art comes from. 0 uses the top search result for "
-                "the game's name. Enter the ID from the game's steamgriddb.com page address when "
-                "that result is the wrong game.",
+         .doc = "The SteamGridDB game this game's art comes from, for art only. 0 finds it by the "
+                "Steam game this is, else the top search result for its name. Enter the ID from "
+                "the game's steamgriddb.com page address when that's the wrong game.",
          .constraint = Range(0, 1e12),
          .keywords = "sgdb"});
 
@@ -488,23 +488,16 @@ Schema::Schema() {
          .keywords = "steam app id appid protondb reviews match wrong identify",
          .applies = {.except_sources = {"steam"}}});
 
-  s.Add({.key = "metadata.steam_art_by_name",
-         .label = "Match Steam art by name",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "If a game has no other art, use the cover of the Steam game with the same name "
-                "(case and punctuation are ignored). Needs no key. This sends the game's name to "
-                "Steam's public search."});
-
-  s.Add({.key = "metadata.steam_by_name",
-         .label = "Match other games to Steam by name",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc =
-             "For a game Mira can't otherwise place, take it for the Steam game of exactly its "
-             "name (case and punctuation are ignored): its ProtonDB rating, reviews, tags, Proton "
-             "fixes and anti-cheat status. Which game this is, in a game's settings, replaces "
-             "the match. Each lookup sends the game's name to Steam's public search."});
+  s.Add(
+      {.key = "metadata.steam_by_name",
+       .label = "Match other games to Steam by name",
+       .type = Type::Bool,
+       .default_value = true,
+       .doc =
+           "For a game Mira can't otherwise place, take it for the Steam game of exactly its "
+           "name (case and punctuation are ignored): its art, ProtonDB rating, reviews, tags, "
+           "Proton fixes and anti-cheat status. Which game this is, in a game's settings, replaces "
+           "the match. Each lookup sends the game's name to Steam's public search."});
 
   s.Add({.key = "achievements.enabled",
          .label = "Show achievements",
@@ -803,8 +796,10 @@ Schema::Schema() {
          .doc =
              "The runner for Windows games, written as \"kind:name\", for example "
              "\"proton:GE-Proton11-7\" or \"wine:system\". A name of \"latest\" picks the newest "
-             "installed build. \"auto\" picks the best installed runner: Proton if any is "
-             "installed, otherwise Wine.",
+             "installed build. \"auto\" picks per game: a Proton build with the game's fix, else "
+             "the Proton Steam uses for it, else UMU-Proton, else Wine when no Proton is "
+             "installed. A game keeps the build it was set up with, except that one auto picked "
+             "moves to a build with its fix.",
          .constraint = AutoOrRunnerRef(),
          .is_runner_ref = true,
          .runner_kinds = {"proton", "wine"}});
@@ -837,20 +832,6 @@ Schema::Schema() {
          .doc = "HTML games open full screen. In Firefox that's its kiosk mode, which has no "
                 "close button: quit with Alt+F4 or Mira's Stop.",
          .applies = {.platforms = {"web"}}});
-
-  s.Add({.key = "launch.pin_runner",
-         .label = "Remember the chosen runner",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "The first time a Windows game with no runner launches, remember which Proton or "
-                "Wine build was chosen and keep using it."});
-
-  s.Add({.key = "runners.pick_per_game",
-         .label = "Pick Proton per game",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "For a game with no runner chosen, prefer a Proton build that has a fix for it, "
-                "else the Proton Steam uses for it. A runner you choose is always kept."});
 
   s.Group("Compatibility");
 
@@ -1513,10 +1494,10 @@ Schema::Schema() {
   s.Add({.key = "launchers.app_runner",
          .label = "Windows app runner",
          .type = Type::String,
-         .default_value = "proton:GE-Proton11-7",
-         .doc = "The runner for a Windows app's prefix (Fusion, AutoCAD, QuickBooks), downloaded "
-                "when it isn't "
-                "installed. Empty uses the launcher runner.",
+         .default_value = "auto",
+         .doc = "The runner for a Windows app's prefix (Fusion, AutoCAD, QuickBooks). \"auto\" "
+                "picks as for games; a build that isn't installed is downloaded. Empty uses the "
+                "launcher runner.",
          .constraint = OptionalRunnerRef(),
          .is_runner_ref = true});
 

@@ -677,7 +677,7 @@ void Services::ProvisionLater(const model::Game& game) {
         if (!current) return Err("game_not_found", "the game was removed");
         const model::Game provisioned = runner::RunnerRegistry(config).ProvisionGame(*current);
         auto saved = games.Update(id, [&](model::Game& g) {
-          g.runner_ref = provisioned.runner_ref;
+          runner::TakeRunner(g, provisioned);
           g.status = provisioned.status;
           g.last_error = provisioned.last_error;
         });

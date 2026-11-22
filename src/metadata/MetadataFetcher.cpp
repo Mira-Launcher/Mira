@@ -1191,7 +1191,7 @@ Result<void> FetchNonSteam(const config::Config& config, store::MetadataStore& c
 
   // No key, or SteamGridDB had nothing: Steam's own art, for the Steam game it is.
   if (!info.contains("artwork") &&
-      (steam_match.Known() || config.GetBool("metadata.steam_art_by_name"))) {
+      (steam_match.Known() || config.GetBool("metadata.steam_by_name"))) {
     if (const std::string appid = steam_match(); !appid.empty()) {
       FetchArtworkInto(config, SteamCoverUrl(appid), game_id, "steam_cdn", "cover", info);
       if (!info.contains("hero")) {
@@ -1452,7 +1452,7 @@ Result<void> FetchTitleWith(const config::Config& config, store::MetadataStore& 
     }
     // Same last resort as a tracked game's: Steam's art for the same name.
     if (!info.contains("artwork") && game.source != "steam" &&
-        (steam_match.Known() || config.GetBool("metadata.steam_art_by_name"))) {
+        (steam_match.Known() || config.GetBool("metadata.steam_by_name"))) {
       if (const std::string& appid = steam_match(); !appid.empty()) {
         FetchArtworkInto(config, SteamCoverUrl(appid), game.id, "steam_cdn", "cover", info);
       }
