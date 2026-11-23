@@ -35,14 +35,14 @@ bool MatchesAny(const std::vector<std::string>& globs, std::string_view text) {
   });
 }
 
-// True for a regular file whose first four bytes are the ELF magic number:
-// used instead of relying solely on the executable bit, which extraction
-// tools frequently drop or set inconsistently.
-bool LooksLikeElf(const fs::path& path) {
+// An ELF binary or a "#!" script, by its first bytes: the executable bit alone says nothing, since
+// extraction tools drop it or set it on every file (a game's images included).
+bool LooksLikeProgram(const fs::path& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) return false;
   char magic[4] = {};
   file.read(magic, sizeof(magic));
+  if (file.gcount() >= 2 && magic[0] == '#' && magic[1] == '!') return true;
   return file.gcount() == sizeof(magic) && magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' &&
          magic[3] == 'F';
 }
@@ -172,11 +172,10 @@ std::vector<RawCandidate> WalkForExecutables(const fs::path& folder,
         found.push_back({rel, model::Platform::Windows, depth, installer(entry.path())});
       } else if (ext == ".msi") {
         found.push_back({rel, model::Platform::Windows, depth, InstallerKind::kInstaller});
-      } else if (ext == ".sh" || HasExecuteBit(entry.path()) ||
-                 (MightBeElf(ext) && LooksLikeElf(entry.path()))) {
-        // A .sh is a candidate regardless of its executable bit (archives
-        // routinely lose it); anything else needs the bit or ELF magic so a
-        // stray data file doesn't get treated as a launcher.
+      } else if (ext == ".sh" || ((HasExecuteBit(entry.path()) || MightBeElf(ext)) &&
+                                  LooksLikeProgram(entry.path()))) {
+        // A .sh is a candidate whatever its bits (archives lose them); anything else has to start
+        // like a program, so an image with the bit set isn't taken for one.
         found.push_back({rel, model::Platform::Native, depth, installer(entry.path())});
       }
     }

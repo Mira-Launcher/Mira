@@ -112,7 +112,9 @@ bool WaitUntil(const std::function<bool()>& done, std::chrono::milliseconds time
 
 void Touch(const fs::path& path, std::string_view content, bool executable) {
   fs::create_directories(path.parent_path());
-  std::ofstream(path) << content;
+  std::ofstream(path, std::ios::binary) << (executable && content.empty() ? "\x7f"
+                                                                            "ELF"
+                                                                          : content);
   if (executable) fs::permissions(path, fs::perms::owner_exec, fs::perm_options::add);
 }
 
