@@ -99,7 +99,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `broken`, `
 - `store_url` is the game's page on the store it's from, when there is one: Steam's from its appid, itch's and GOG's from the store's last listing (`GET /v1/library`). Left out otherwise.
 
 - `confidence` is how sure the detector was of its pick of executable; it stays 0 for games an importer added, which have no `candidates`. `reviewed` turns true once someone changes or confirms the game.
-- `needs_check` is true for a game Mira picked the executable for itself (it has `candidates`), with `confidence` under `detect.low_confidence_threshold`, that isn't `reviewed` yet. It is how a client marks games to look at.
+- `needs_check` is true for a game Mira picked the executable for itself (it has `candidates`), with `confidence` under `detect.low_confidence_threshold`, that isn't `reviewed` yet. It is how a client marks games to look at. Once `reviewed`, `candidates` keeps only the chosen program.
 - `candidates` lists every executable the detector considered.
 - `runner_config` belongs to the runner named by `runner_ref`.
 - `default_runner`, on this call only, is the `kind:name` the game would run with if `runner_ref` were empty (its source's runner, else `default_runner.*`, with `auto` resolved to a kind), so an editor knows whose options to show for "Default runner".
@@ -254,6 +254,10 @@ Deletes the game's `installer_dir` and clears it, returning the game. Only insid
 
 ### `GET /v1/games/{id}/install/progress`
 `{"state": "idle"|"queued"|"running"|"finished"|"failed", "mode": "silent"|"interactive", "started_at", "finished_at", "error", "bytes_written", "estimated_bytes", "progress"}`. Silent installers report no percentage, so `bytes_written` is the progress signal. `estimated_bytes` is the installer's `estimated_install_bytes`, and `progress` (0..1) is `bytes_written` against it while it runs, kept under 1 since the guess can be low; -1 for either without a guess. Kept in memory only.
+
+### `POST /v1/games/{id}/detect`
+
+Looks through the game's install folder again and replaces `candidates` and `confidence` with what's there now, so programs since removed drop out and new ones appear. The program stays when it's still found, else the best candidate is picked; either way `reviewed` goes back to false. 409 `not_installed` when the game has no install folder. Answers the game, as `game.updated`.
 
 ### `POST /v1/games/{id}/finish-install`
 Marks a `needs_install` or `broken` game `ready` once `exe_path` points at the installed game. `409 no_executable` if `exe_path` is empty, still an installer, or missing.

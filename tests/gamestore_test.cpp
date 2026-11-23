@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <set>
 #include <thread>
@@ -242,6 +243,37 @@ TEST_CASE("an older library's tags are cased as Steam's, merging tags that only 
   store.Load();
   CHECK(store.Find("celeste")->tags ==
         std::vector<std::string>{"Rpg", "Open World", "eSports", "favorite"});
+}
+
+TEST_CASE("an older library keeps only the chosen program of a confirmed game's candidates") {
+  const fs::path file = TempFile("games-candidates.db");
+  {
+    store::GameStore store(file);
+    store.Load();
+    model::Game sure = MakeGame("celeste", "Celeste");
+    sure.exe_path = "Celeste.exe";
+    sure.reviewed = true;
+    sure.candidates = {{.rel_path = "Celeste.exe", .chosen = true}, {.rel_path = "Setup.exe"}};
+    REQUIRE(store.Upsert(sure).has_value());
+    model::Game unsure = MakeGame("hades", "Hades");
+    unsure.exe_path = "Hades.exe";
+    unsure.candidates = {{.rel_path = "Hades.exe", .chosen = true}, {.rel_path = "Setup.exe"}};
+    REQUIRE(store.Upsert(unsure).has_value());
+  }
+  {
+    store::Database db;
+    REQUIRE(db.Open(file).has_value());
+    auto version = db.Prepare("PRAGMA user_version");
+    REQUIRE(version.has_value());
+    REQUIRE(version->Step().value_or(false));
+    const std::int64_t before = version->Int(0) - 1;  // from before the step
+    REQUIRE(db.Exec(std::format("PRAGMA user_version = {}", before)).has_value());
+  }
+  store::GameStore store(file);
+  store.Load();
+  REQUIRE(store.Find("celeste")->candidates.size() == 1);
+  CHECK(store.Find("celeste")->candidates.front().rel_path == "Celeste.exe");
+  CHECK(store.Find("hades")->candidates.size() == 2);
 }
 
 TEST_CASE("a damaged database is set aside and the library comes back from its backup") {

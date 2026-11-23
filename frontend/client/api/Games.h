@@ -36,6 +36,10 @@ void GetGameAsync(QObject* context, const std::string& id,
 void PatchGameAsync(QObject* context, const std::string& id, const GamePatch& patch,
                     std::function<void(PatchGameResult)> callback);
 
+// POST /v1/games/{id}/detect: finds the game's program again, dropping the old candidates.
+void DetectGameAsync(QObject* context, const std::string& id,
+                     std::function<void(PatchGameResult)> callback);
+
 // POST /v1/games/{id}/run. Runs `exe_path` inside this game's prefix,
 // provisioning one on demand, which is how a needs_install game's
 // installer actually gets run, since Scanner never auto-provisions one.

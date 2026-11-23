@@ -268,6 +268,7 @@ TEST_CASE("A detected game Mira wasn't sure about needs a check until someone co
   unsure.id = "splodey";
   unsure.name = "Splodey";
   unsure.confidence = 0.3;
+  unsure.exe_path = "Splodey.exe";
   unsure.candidates = {{.rel_path = "Splodey.exe", .score = 4.0, .chosen = true},
                        {.rel_path = "Launcher.exe", .score = 3.0}};
   REQUIRE(server.games().Upsert(unsure).has_value());
@@ -290,6 +291,30 @@ TEST_CASE("A detected game Mira wasn't sure about needs a check until someone co
   CHECK(confirmed->status == 200);
   CHECK_FALSE(nlohmann::json::parse(confirmed->body).value("needs_check", true));
   CHECK_FALSE(needs_check("splodey"));
+  // Confirmed, only the chosen program is kept of what detection weighed.
+  const std::vector<model::Candidate> kept = server.games().Find("splodey")->candidates;
+  REQUIRE(kept.size() == 1);
+  CHECK(kept.front().rel_path == "Splodey.exe");
+
+  // Detecting again rebuilds the list from the folder and asks for a check again.
+  const fs::path folder = TempDir("server-needs-check-game");
+  for (const char* exe : {"Splodey.exe", "Launcher.exe", "Editor.exe"})
+    std::ofstream(folder / exe, std::ios::binary) << std::string("MZ\x90\0", 4);
+  REQUIRE(server.games()
+              .Update("splodey", [&](model::Game& game) { game.install_path = folder.string(); })
+              .has_value());
+  auto detected = client.Post("/v1/games/splodey/detect");
+  REQUIRE(detected != nullptr);
+  CHECK(detected->status == 200);
+  const model::Game redone = *server.games().Find("splodey");
+  CHECK(redone.candidates.size() == 3);
+  CHECK(redone.exe_path == "Splodey.exe");
+  CHECK_FALSE(redone.reviewed);
+  CHECK(std::ranges::count_if(redone.candidates, &model::Candidate::chosen) == 1);
+
+  auto missing = client.Post("/v1/games/balatro/detect");
+  REQUIRE(missing != nullptr);
+  CHECK(missing->status == 409);
 }
 
 TEST_CASE(
