@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <format>
 #include <fstream>
@@ -22,9 +23,20 @@ const fs::path& TestsRoot() {
   return root;
 }
 
+// A server still closing its database can remove files from under remove_all; try again.
+static void Clear(const fs::path& dir) {
+  std::error_code ec;
+  for (int attempt = 0; attempt < 20; ++attempt) {
+    fs::remove_all(dir, ec);
+    if (!ec) return;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  fs::remove_all(dir);  // throws with the cause
+}
+
 fs::path TempDir(std::string_view name) {
   const fs::path dir = TestsRoot() / name;
-  fs::remove_all(dir);
+  Clear(dir);
   fs::create_directories(dir);
   return dir;
 }
@@ -44,7 +56,7 @@ std::optional<fs::path> OtherDiskDir(std::string_view name) {
                      here.st_dev != there.st_dev;
   if (!Has(other, "second disk (/dev/shm on its own device)")) return std::nullopt;
   const fs::path dir = OtherDiskRoot() / name;
-  fs::remove_all(dir);
+  Clear(dir);
   fs::create_directories(dir);
   return dir;
 }
