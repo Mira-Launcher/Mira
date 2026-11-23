@@ -94,7 +94,9 @@ Result<library::ImportSummary> ItchImporter::Import() {
     // manually-scanned game. Only when exe_path isn't already set, so a
     // user's own correction survives a re-import.
     if (game.exe_path.empty() && !cave.install_folder.empty()) {
-      const library::Detector::Result detected = library::Detector({}).Detect(cave.install_folder);
+      const library::Detector::Result detected =
+          library::Detector(library::SettingsFromConfig(config_))
+              .Detect(cave.install_folder, game.name);
       if (!detected.candidates.empty()) {
         game.exe_path = detected.candidates.front().rel_path;
         game.candidates = detected.candidates;

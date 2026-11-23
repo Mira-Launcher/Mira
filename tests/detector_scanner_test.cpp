@@ -54,11 +54,22 @@ TEST_CASE("Detector prefers the shallower, name-matching exe in a nested folder"
 
   REQUIRE_FALSE(result.candidates.empty());
   CHECK(result.candidates[0].rel_path == "hollow_knight.exe");
+
+  // A store's folder named by its id: the game's own name is matched instead.
+  const fs::path store_dir = TempDir("game-543813");
+  Touch(store_dir / "Launcher.exe");
+  Touch(store_dir / "hollow_knight.exe");
+  CHECK(detector.Detect(store_dir, "Hollow Knight").candidates.front().rel_path ==
+        "hollow_knight.exe");
 }
 
-TEST_CASE("Detector finds a native ELF binary via its execute bit, ignoring redist noise") {
+TEST_CASE("Detector finds a native ELF binary, not an image an archive marked executable") {
   const fs::path dir = TempDir("celeste-native-detect");
-  Touch(dir / "Celeste", "", /*executable=*/true);
+  Touch(dir / "Celeste",
+        "\x7f"
+        "ELF",
+        /*executable=*/true);
+  Touch(dir / "Default.png", "\x89PNG", /*executable=*/true);
   Touch(dir / "Redist" / "somelib.so");  // matches the */Redist* ignore glob
 
   const library::Detector detector(DefaultSettings());

@@ -139,6 +139,11 @@ FinishInstallResult FinishInstallSync(const std::string& id, const std::string& 
   return {reply.ok, reply.error};
 }
 
+PatchGameResult DetectGameSync(const std::string& id) {
+  const transport::Reply reply = transport::Post("/v1/games/" + PercentEncode(id) + "/detect");
+  return {reply.ok, reply.error};
+}
+
 PatchGameConfigResult PatchGameConfigSync(const std::string& id,
                                           const std::vector<GameConfigEdit>& edits) {
   json body = json::object();
@@ -306,6 +311,11 @@ void GetGameAsync(QObject* context, const std::string& id,
 void PatchGameAsync(QObject* context, const std::string& id, const GamePatch& patch,
                     std::function<void(PatchGameResult)> callback) {
   async::Run(context, [id, patch] { return PatchGameSync(id, patch); }, std::move(callback));
+}
+
+void DetectGameAsync(QObject* context, const std::string& id,
+                     std::function<void(PatchGameResult)> callback) {
+  async::Run(context, [id] { return DetectGameSync(id); }, std::move(callback), async::Lane::Slow);
 }
 
 void RunInPrefixAsync(QObject* context, const std::string& id, const std::string& exe_path,

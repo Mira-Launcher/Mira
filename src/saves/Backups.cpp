@@ -375,18 +375,8 @@ Result<void> DeleteSnapshot(const config::Config& config, std::string_view game_
 }
 
 std::uintmax_t BackupBytes(const fs::path& dir) {
-  std::uintmax_t bytes = 0;
-  std::set<std::pair<dev_t, ino_t>> seen;
   std::error_code ec;
-  if (dir.empty() || !fs::is_directory(dir, ec)) return 0;
-  for (auto it = fs::recursive_directory_iterator(dir, ec); !ec && it != fs::end(it);
-       it.increment(ec)) {
-    struct stat info{};
-    if (::lstat(it->path().c_str(), &info) != 0 || !S_ISREG(info.st_mode)) continue;
-    if (info.st_nlink > 1 && !seen.emplace(info.st_dev, info.st_ino).second) continue;
-    bytes += static_cast<std::uintmax_t>(info.st_size);
-  }
-  return bytes;
+  return dir.empty() || !fs::is_directory(dir, ec) ? 0 : paths::TreeBytes(dir);
 }
 
 Result<void> DeleteBackups(const config::Config& config, std::string_view game_id) {

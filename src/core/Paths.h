@@ -40,7 +40,8 @@ std::filesystem::path Expand(std::string_view raw);
 bool IsWithin(const std::filesystem::path& target, const std::vector<std::filesystem::path>& roots,
               bool allow_equal = false);
 
-// The bytes of every file under `root`, or of `root` itself when it's a file; 0 when it's gone.
+// The disk space under `root`, or `root` itself when it's a file; 0 when it's gone. Links aren't
+// followed, and a hard-linked file counts once.
 std::uintmax_t TreeBytes(const std::filesystem::path& root);
 
 // The entries directly under `dir`, or none when it can't be read. Unlike a

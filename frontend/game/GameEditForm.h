@@ -105,6 +105,7 @@ class GameEditForm : public QWidget {
   void MoveFolder(bool prefix);
   // PATCH {"reviewed": true}: keeps mirad's pick of executable and clears its "Not checked".
   void ConfirmExecutable();
+  void DetectExecutable();
   void ShowInstallPath();
   void ResetScroll();
   void UpdateModified();
@@ -123,6 +124,7 @@ class GameEditForm : public QWidget {
 
   QLabel* last_error_label_ = nullptr;
   Badge* check_tag_ = nullptr;
+  QPushButton* detect_ = nullptr;
   QPushButton* looks_right_ = nullptr;
   QLineEdit* install_path_edit_ = nullptr;
   QPushButton* open_install_ = nullptr;

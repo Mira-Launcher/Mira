@@ -17,6 +17,7 @@
 #include "runner/AntiCheat.h"
 #include "runner/AntiCheatRuntime.h"
 #include "runner/Curl.h"
+#include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "runner/Gpu.h"
 #include "runner/NativeRunner.h"
@@ -550,6 +551,35 @@ TEST_CASE("which game it is: an offline GOG install's file, a chosen Steam game,
   CHECK(library::Identify(env.config, loose).steam_from == "file");
 }
 
+TEST_CASE("a Steam game runs as its bare appid on a build that files its fix under it") {
+  test::TestEnv env("umu-steam-fix");
+  const fs::path dir = env.dir / "proton";
+  FakeProton(dir, "plain", 1);
+  FakeProton(dir, "steam", 1, "gamefixes-steam/1293830.py");
+  FakeProton(dir, "umu", 1, "gamefixes-umu/umu-1293830.py");
+  FakeProton(dir, "gog", 1, "gamefixes-gog/umu-1293830.py");
+  const runner::UmuMatch steam{.gameid = "umu-1293830", .store = {}, .title = {}};
+
+  CHECK(runner::ForBuild(dir / "plain", steam).gameid == "umu-1293830");
+  CHECK_FALSE(runner::HasProtonFix(dir / "plain", steam));
+  CHECK(runner::ForBuild(dir / "steam", steam).gameid == "1293830");
+  CHECK(runner::HasProtonFix(dir / "steam", steam));
+  // Its umu fix wins: it keeps the umu id, which keeps SteamAppId set.
+  FakeProton(dir, "both", 1, "gamefixes-steam/1293830.py");
+  FakeProton(dir, "both", 1, "gamefixes-umu/umu-1293830.py");
+  CHECK(runner::ForBuild(dir / "both", steam).gameid == "umu-1293830");
+  CHECK(runner::HasProtonFix(dir / "umu", steam));
+
+  // A store's game is looked up in that store's folder only.
+  const runner::UmuMatch gog{.gameid = "umu-1293830", .store = "gog", .title = {}};
+  CHECK(runner::ForBuild(dir / "steam", gog).gameid == "umu-1293830");
+  CHECK_FALSE(runner::HasProtonFix(dir / "steam", gog));
+  CHECK(runner::HasProtonFix(dir / "gog", gog));
+  // Mira's own ids are never a Steam game.
+  const runner::UmuMatch own{.gameid = "umu-mira_fh4", .store = {}, .title = {}};
+  CHECK(runner::ForBuild(dir / "steam", own).gameid == "umu-mira_fh4");
+}
+
 TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked game to it") {
   test::TestEnv env("umu-auto-pick");
   REQUIRE(env.config.Set("umu.match", true));
@@ -559,6 +589,9 @@ TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked g
   const fs::path dir = env.dir / "proton";
   REQUIRE(env.config.Set("runner_search_paths", nlohmann::json::array({dir.string()})));
   FakeProton(dir, "UMU-Proton-10.0", 1800000000);
+  // A build for the other architecture is never found, so never picked.
+  FakeProton(dir, runner::kArmHost ? "UMU-Proton-11.0-x86_64" : "UMU-Proton-11.0-aarch64",
+             1900000000);
 
   model::Game game;
   game.id = "gog-aow";

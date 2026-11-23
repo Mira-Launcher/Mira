@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 10> kMigrations = {
+constexpr std::array<std::string_view, 11> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -167,6 +167,12 @@ CREATE TABLE IF NOT EXISTS cloud_sync(
     R"sql(
 -- Whether hidden mode's sidebar lists a source, once chosen there; until then it follows in_sidebar.
 CREATE TABLE IF NOT EXISTS hidden_sidebar(source TEXT PRIMARY KEY, shown INTEGER NOT NULL) STRICT;
+)sql",
+    R"sql(
+-- A confirmed game's program is settled: the other programs detection weighed aren't kept.
+UPDATE games SET candidates = (SELECT json_group_array(json(value)) FROM json_each(games.candidates)
+                               WHERE json_extract(value, '$.rel_path') = games.exe_path)
+WHERE reviewed <> 0;
 )sql",
 };
 

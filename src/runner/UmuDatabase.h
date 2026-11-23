@@ -40,6 +40,11 @@ std::optional<UmuRow> UmuRowByTitle(const config::Config& config, const std::str
 // it off, then library::Identify's, then an id of its own.
 UmuMatch UmuIdentity(const config::Config& config, const model::Game& game);
 
+// The GAMEID and STORE to run on the Proton build at `build_dir`: a Steam game's bare appid when
+// that's where the build files its fix, since protonfixes never looks there for "umu-<appid>".
+// Running with a bare appid, umu sets SteamAppId to 0, so this is only done for a fix.
+UmuMatch ForBuild(const std::filesystem::path& build_dir, UmuMatch identity);
+
 // Whether the Proton build at `build_dir` ships protonfixes with a fix for this GAMEID and STORE.
 bool HasProtonFix(const std::filesystem::path& build_dir, const UmuMatch& identity);
 

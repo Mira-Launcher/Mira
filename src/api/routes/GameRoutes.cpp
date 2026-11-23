@@ -240,6 +240,33 @@ void RegisterGameRoutes(Router& http, Services& s) {
       s.SortByTags({id});
   });
 
+  // Detects the game's program again from scratch: the old candidates are dropped, the program
+  // stays when it's still found, and the game reads "Not checked" until it's confirmed.
+  http.Post(R"(/v1/games/([^/]+)/detect)", [&s](const Request& req, Response& res) {
+    const std::string id = req.matches[1];
+    const auto before = s.games.Find(id);
+    if (!before) return SendError(res, 404, "game_not_found", "no such game");
+    std::error_code ec;
+    if (before->install_path.empty() || !std::filesystem::is_directory(before->install_path, ec))
+      return SendError(res, 409, "not_installed", "the game has no install folder to look in");
+    const library::Detector::Result detected =
+        library::Detector(library::SettingsFromConfig(s.config))
+            .Detect(before->install_path, before->name);
+    auto result = s.games.Update(id, [&](model::Game& game) {
+      game.candidates = detected.candidates;
+      game.confidence = detected.confidence;
+      const bool kept =
+          std::ranges::contains(game.candidates, game.exe_path, &model::Candidate::rel_path);
+      if (!kept && !game.candidates.empty()) game.exe_path = game.candidates.front().rel_path;
+      for (model::Candidate& candidate : game.candidates)
+        candidate.chosen = candidate.rel_path == game.exe_path;
+      game.reviewed = false;
+    });
+    if (!result) return SendStoreError(res, result.error());
+    s.SyncDesktopEntry(id);
+    SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
+  });
+
   // One save, one menu sync and one event for any number of games, so a
   // multi-select doesn't cost a request (and a full rewrite) per game.
   http.Patch("/v1/games", [&s](const Request& req, Response& res) {

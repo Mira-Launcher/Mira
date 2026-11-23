@@ -44,7 +44,8 @@ std::optional<std::filesystem::path> OtherDiskDir(std::string_view name);
 // The per-run roots on each disk, for main() to clear.
 std::vector<std::filesystem::path> TestsRoots();
 
-// Creates `path` (and its parents) with `content`.
+// Creates `path` (and its parents) with `content`. An `executable` with no content is an ELF stub,
+// so the detector takes it for a program.
 void Touch(const std::filesystem::path& path, std::string_view content = "",
            bool executable = false);
 

@@ -153,7 +153,10 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   exe_row_ = new SettingRow("Executable", QString(), this);
   exe_row_->AddAfterLabel(check_tag_);
   exe_row_->AddControl(looks_right_);
-  exe_row_->AddControl(FieldWithButtons(exe_combo_, {browse}));
+  detect_ = new QPushButton("Detect again", this);
+  detect_->setToolTip("Look through the game's folder again for the program that starts it");
+  connect(detect_, &QPushButton::clicked, this, &GameEditForm::DetectExecutable);
+  exe_row_->AddControl(FieldWithButtons(exe_combo_, {browse, detect_}));
 
   args_edit_ = LineEdit(this, "None");
   args_row_ = new SettingRow("Arguments", QString(), this);
@@ -528,6 +531,7 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
 
   check_tag_->setVisible(game.needs_check);
   looks_right_->setVisible(game.needs_check);
+  detect_->setVisible(!game.install_path.empty());
 
   last_error_label_->setText(QString("Error: %1").arg(QString::fromStdString(game.last_error)));
   last_error_label_->setVisible(!game.last_error.empty());
@@ -842,6 +846,18 @@ void GameEditForm::ConfirmExecutable() {
     }
     check_tag_->hide();
     looks_right_->hide();
+  });
+}
+
+void GameEditForm::DetectExecutable() {
+  detect_->setEnabled(false);
+  mira_gui::api::DetectGameAsync(this, id_, [this](mira_gui::PatchGameResult result) {
+    detect_->setEnabled(true);
+    if (!result.ok) {
+      notify::FailedRequest(this, "Could not detect the executable", result.error);
+      return;
+    }
+    Load();
   });
 }
 

@@ -1,11 +1,13 @@
 #include "core/Paths.h"
 
 #include <pwd.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <set>
 
 namespace mira::paths {
 
@@ -75,10 +77,16 @@ std::uintmax_t TreeBytes(const std::filesystem::path& root) {
   std::error_code ec;
   if (fs::is_regular_file(root, ec)) return fs::file_size(root, ec);
   std::uintmax_t total = 0;
+  // A link isn't the space it points at (a prefix links Proton's own files), and a file hard-linked
+  // in twice takes its space once.
+  std::set<std::pair<dev_t, ino_t>> seen;
   for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec),
        end;
        !ec && it != end; it.increment(ec)) {
-    if (it->is_regular_file(ec)) total += it->file_size(ec);
+    struct stat st{};
+    if (::lstat(it->path().c_str(), &st) != 0 || !S_ISREG(st.st_mode)) continue;
+    if (st.st_nlink > 1 && !seen.emplace(st.st_dev, st.st_ino).second) continue;
+    total += static_cast<std::uintmax_t>(st.st_size);
   }
   return total;
 }

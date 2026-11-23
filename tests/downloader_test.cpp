@@ -240,3 +240,15 @@ TEST_CASE("A Wine download is checked against its line in a shared checksum list
   CHECK(OnlyHolds(runners, {"wine-9.0-amd64"}));
   CHECK(runner::RunnerRegistry(env.config).Resolve("wine:wine-9.0-amd64"));
 }
+
+TEST_CASE("Only release archives for this machine's architecture are offered") {
+  CHECK(runner::ForThisMachine("UMU-Proton-11.0-2e-x86_64.tar.gz", false));
+  CHECK(runner::ForThisMachine("GE-Proton11-12.tar.gz", false));
+  CHECK_FALSE(runner::ForThisMachine("UMU-Proton-11.0-2e-aarch64.tar.gz", false));
+  CHECK_FALSE(runner::ForThisMachine("wine-11.0-arm64.tar.xz", false));
+
+  CHECK(runner::ForThisMachine("UMU-Proton-11.0-2e-aarch64.tar.gz", true));
+  CHECK(runner::ForThisMachine("GE-Proton11-12.tar.gz", true));
+  CHECK_FALSE(runner::ForThisMachine("UMU-Proton-11.0-2e-x86_64.tar.gz", true));
+  CHECK_FALSE(runner::ForThisMachine("wine-11.0-amd64.tar.xz", true));
+}

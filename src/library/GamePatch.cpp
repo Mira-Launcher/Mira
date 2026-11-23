@@ -92,6 +92,10 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   if (model::ToJson(game) != model::ToJson(base)) game.reviewed = true;
   if (patch.contains("reviewed") && patch["reviewed"].is_boolean())
     game.reviewed = patch["reviewed"];
+  // Confirmed: the other programs Mira weighed aren't kept; "Detect again" finds them anew.
+  if (game.reviewed)
+    std::erase_if(game.candidates,
+                  [&](const model::Candidate& c) { return c.rel_path != game.exe_path; });
   return game;
 }
 

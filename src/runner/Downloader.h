@@ -68,6 +68,16 @@ std::string BuildLabel(const std::string& kind, const std::string& name);
 Result<std::vector<ReleaseAsset>> ListFamilyReleases(const RunnerFamily& family,
                                                      bool every = false);
 
+#if defined(__aarch64__)
+inline constexpr bool kArmHost = true;
+#else
+inline constexpr bool kArmHost = false;
+#endif
+
+// False for a build or archive named for the other architecture (x86_64 vs ARM), which can't run
+// here.
+bool ForThisMachine(const std::string& asset_name, bool arm = kArmHost);
+
 // Lists releases of `kind` ("proton", "wine", or a tool such as "legendary",
 // "gog" or "umu") from its GitHub source, newest first. Shells out to curl for the GitHub API
 // request rather than linking libcurl, consistent with how umu-run/wine are already run as

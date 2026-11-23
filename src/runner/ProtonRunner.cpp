@@ -9,6 +9,7 @@
 #include "config/Config.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "runner/UmuDatabase.h"
 #include "steam/SteamDetector.h"
@@ -17,8 +18,9 @@ namespace mira::runner {
 namespace {
 namespace fs = std::filesystem;
 
-void ApplyGameId(Command& command, const config::Config& config, const model::Game& game) {
-  const UmuMatch identity = UmuIdentity(config, game);
+void ApplyGameId(Command& command, const config::Config& config, const model::Game& game,
+                 const fs::path& build_dir) {
+  const UmuMatch identity = ForBuild(build_dir, UmuIdentity(config, game));
   command.env["GAMEID"] = identity.gameid;
   if (!identity.store.empty()) command.env["STORE"] = identity.store;
 }
@@ -77,6 +79,8 @@ std::vector<model::RunnerBuild> ProtonRunner::Discover(const config::Config& con
       if (!entry.is_directory(ec)) continue;
       const fs::path& dir = entry.path();
       if (!fs::exists(dir / "proton", ec) || !fs::exists(dir / "toolmanifest.vdf", ec)) continue;
+      // A build for the other architecture would be auto's pick and fail every launch.
+      if (!ForThisMachine(dir.filename().string())) continue;
 
       model::RunnerBuild build;
       build.kind = "proton";
@@ -119,7 +123,7 @@ Result<void> ProtonRunner::Provision(const model::Game& game,
   command.argv = {UmuRunPath(), ""};
   command.env["WINEPREFIX"] = game.data_dir;
   command.env["PROTONPATH"] = build->path;
-  ApplyGameId(command, config_, game);
+  ApplyGameId(command, config_, game, build->path);
 
   auto result = RunAndWait(command);
   if (!result) return std::unexpected(result.error());
@@ -151,7 +155,7 @@ Result<Command> ProtonRunner::BuildCommand(const model::Game& game,
 
   command.env["WINEPREFIX"] = game.data_dir;
   command.env["PROTONPATH"] = build->path;
-  ApplyGameId(command, config_, game);
+  ApplyGameId(command, config_, game, build->path);
   ApplyGameLaunch(command, game, exe);
   return command;
 }
