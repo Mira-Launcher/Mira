@@ -155,16 +155,36 @@ UmuMatch UmuIdentity(const config::Config& config, const model::Game& game) {
   return env;
 }
 
-bool HasProtonFix(const fs::path& build_dir, const UmuMatch& identity) {
+namespace {
+
+// protonfixes' own lookup: a bare number is a Steam appid, else the store's folder.
+bool FixFileExists(const fs::path& build_dir, const UmuMatch& identity) {
   const std::string& id = identity.gameid;
   if (id.empty() || id.starts_with("umu-mira_")) return false;
-  // protonfixes' own lookup: a bare number is a Steam appid, else the store's folder.
   std::string store = std::ranges::all_of(id, [](unsigned char c) { return std::isdigit(c); })
                           ? "steam"
                           : identity.store;
   if (!std::ranges::contains(kFixStores, store)) store = "umu";
   std::error_code ec;
   return fs::exists(build_dir / "protonfixes" / ("gamefixes-" + store) / (id + ".py"), ec);
+}
+
+}  // namespace
+
+UmuMatch ForBuild(const fs::path& build_dir, UmuMatch identity) {
+  // protonfixes looks up "umu-<appid>" among its few umu fixes only; most fixes are filed under
+  // the bare Steam appid.
+  const std::string appid = SteamAppId(identity.gameid);
+  if (!identity.store.empty() || appid.empty() || appid == identity.gameid ||
+      FixFileExists(build_dir, identity))
+    return identity;
+  UmuMatch steam = identity;
+  steam.gameid = appid;
+  return FixFileExists(build_dir, steam) ? steam : identity;
+}
+
+bool HasProtonFix(const fs::path& build_dir, const UmuMatch& identity) {
+  return FixFileExists(build_dir, ForBuild(build_dir, identity));
 }
 
 std::string SteamAppId(const std::string& gameid) {
