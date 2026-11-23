@@ -88,8 +88,10 @@ void QueueTitleArtworkAsync(QObject* context, const std::string& source,
 void GetRemovalPlanAsync(QObject* context, const std::string& source,
                          std::function<void(RemovalPlanResult)> callback);
 
-// `delete_data` also deletes the plan's `data` (an emulator's settings and saves).
+// `delete_data` also deletes the plan's `data` (an emulator's settings and saves). An emulator's
+// games in Mira's folders are deleted with `delete_roms`, or move to `move_roms_to` and stay.
 void RemoveSourceAsync(QObject* context, const std::string& source, bool delete_data,
+                       bool delete_roms, const std::string& move_roms_to,
                        std::function<void(RemoveSourceResult)> callback);
 
 // GET/POST /v1/sources/{id}/runner: a store's default runner, or a launcher's prefix runner.

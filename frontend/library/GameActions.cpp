@@ -131,20 +131,22 @@ void Stop(QWidget* parent, const std::string& id) {
 }
 
 void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool delete_prefix,
-                 bool delete_saves) {
-  // Files only where mirad's plan says they're Mira's or a store's: an explicit delete_files on
-  // another app's files is refused, and would keep the game.
-  std::vector<std::string> deleting, forgetting;
+                 bool delete_saves, bool delete_outside) {
+  // Each game asks only for what its plan says can go: files where they're Mira's or a store's
+  // (or outside Mira's folders when asked), and a prefix no other game uses. Anything more is
+  // refused, and would keep the game.
+  std::map<std::pair<bool, bool>, std::vector<std::string>> groups;
   std::map<std::string, QString> names;
   for (const RemovalPlan& plan : plans) {
-    (DeletesFiles(plan) ? deleting : forgetting).push_back(plan.id);
+    const bool files = DeletesFiles(plan) || (delete_outside && plan.kind == "outside");
+    groups[{files, delete_prefix && HasPrefixToDelete(plan)}].push_back(plan.id);
     names[plan.id] = QString::fromStdString(plan.name);
   }
-  for (const auto& [ids, files] : {std::pair{deleting, true}, std::pair{forgetting, false}}) {
-    if (ids.empty()) continue;
+  for (const auto& [flags, ids] : groups) {
+    const auto [files, prefix] = flags;
     // Success needs no notice: the games leave the grid, a Steam game once Steam is done.
     api::DeleteGamesAsync(
-        parent, ids, files, delete_prefix, delete_saves, [parent, names](DeleteGamesResult result) {
+        parent, ids, files, prefix, delete_saves, [parent, names](DeleteGamesResult result) {
           if (!result.ok) {
             notify::FailedRequest(parent, "Could not remove the games", result.error);
           } else if (!result.failed.empty()) {

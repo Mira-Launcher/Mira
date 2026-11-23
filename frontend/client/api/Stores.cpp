@@ -175,6 +175,8 @@ RemovalPlanResult GetRemovalPlanSync(const std::string& source) {
           if (game.is_object()) result.purged.push_back(game.value("name", std::string()));
         }
         result.signs_out = body.value("signs_out", false);
+        result.roms = body.value("roms", 0);
+        result.move_to = body.value("move_to", std::vector<std::string>());
         for (const json& tool : body.value("tools", json::array())) {
           if (tool.is_object()) result.tools.push_back(tool.value("name", std::string()));
         }
@@ -538,12 +540,15 @@ void GetRemovalPlanAsync(QObject* context, const std::string& source,
 }
 
 void RemoveSourceAsync(QObject* context, const std::string& source, bool delete_data,
+                       bool delete_roms, const std::string& move_roms_to,
                        std::function<void(RemoveSourceResult)> callback) {
   RunJob<RemoveSourceResult>(
       context, "remove_source",
-      [source, delete_data](const std::string& query) {
+      [source, delete_data, delete_roms, move_roms_to](const std::string& query) {
         return transport::PostJson("/v1/sources/" + PercentEncode(source) + "/remove" + query,
-                                   {{"delete_data", delete_data}});
+                                   {{"delete_data", delete_data},
+                                    {"delete_roms", delete_roms},
+                                    {"move_roms_to", move_roms_to}});
       },
       FillRemoveSource, std::move(callback));
 }

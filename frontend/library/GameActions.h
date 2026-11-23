@@ -58,11 +58,11 @@ void ChoosePlay(QWidget* parent, const GameSummary& game,
 void Stop(QWidget* parent, const std::string& id);
 
 // Removes the games a RemoveGamesCard was confirmed for, as their plans say: files go wherever
-// they're Mira's or a store's to delete, never otherwise, and prefixes only with
-// `delete_prefix`, save backups only with `delete_saves`. A Steam game goes to Steam's own
-// uninstall and leaves once Steam is done.
+// they're Mira's or a store's to delete, outside Mira's folders only with `delete_outside`, never
+// otherwise; prefixes no other game uses only with `delete_prefix`, save backups only with
+// `delete_saves`. A Steam game goes to Steam's own uninstall and leaves once Steam is done.
 void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool delete_prefix,
-                 bool delete_saves);
+                 bool delete_saves, bool delete_outside);
 
 // Runs an executable inside the game's own prefix, asking which one first.
 // Takes install_path/name directly, since both are already on GameSummary, so no

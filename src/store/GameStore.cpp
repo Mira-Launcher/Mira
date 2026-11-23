@@ -802,10 +802,15 @@ std::string GameStore::NextId(const std::string& name, const std::string& instal
       }
     }
   }
-  // A removed game's id keeps its play history, which a new game of the same name mustn't take.
+  // A removed game's id keeps its play history and settings, which a new game of the same name
+  // mustn't take.
   const auto used = [&](const std::string& id) {
     if (std::ranges::any_of(games_, [&](const model::Game& g) { return g.id == id; })) return true;
     if (!db_.IsOpen()) return false;
+    if (auto kept = db_.Prepare("SELECT 1 FROM removed_games WHERE id = ? LIMIT 1")) {
+      const auto row = kept->Bind(1, id).Step();
+      if (row && *row) return true;
+    }
     auto select = db_.Prepare("SELECT 1 FROM sessions WHERE game_id = ? LIMIT 1");
     if (!select) return false;
     const auto row = select->Bind(1, id).Step();
@@ -852,6 +857,36 @@ std::string GameStore::KeptDataDir(const std::string& id) const {
   if (dir.empty() || std::ranges::contains(games_, dir, &model::Game::data_dir)) return {};
   std::error_code ec;
   return fs::is_directory(dir, ec) ? dir : std::string();
+}
+
+std::vector<RemovedGame> GameStore::Removed() const {
+  std::lock_guard lock(mutex_);
+  std::vector<RemovedGame> removed;
+  if (!db_.IsOpen()) return removed;
+  auto select = db_.Prepare(
+      "SELECT id, install_path, COALESCE(json_extract(record, '$.name'), ''), "
+      "COALESCE(json_extract(record, '$.exe_path'), ''), "
+      "COALESCE(json_extract(record, '$.data_dir'), ''), removed_at FROM removed_games "
+      "ORDER BY removed_at DESC");
+  if (!select) return removed;
+  for (auto row = select->Step(); row && *row; row = select->Step()) {
+    RemovedGame game{.id = select->Text(0),
+                     .name = select->Text(2),
+                     .install_path = select->Text(1),
+                     .exe_path = select->Text(3),
+                     .data_dir = select->Text(4),
+                     .removed_at = select->Int(5)};
+    if (!std::ranges::contains(games_, game.id, &model::Game::id))
+      removed.push_back(std::move(game));
+  }
+  return removed;
+}
+
+Result<void> GameStore::ForgetRemoved(const std::string& id) {
+  std::lock_guard lock(mutex_);
+  auto remove = db_.Prepare("DELETE FROM removed_games WHERE id = ?");
+  if (!remove) return std::unexpected(remove.error());
+  return remove->Bind(1, id).Run();
 }
 
 Result<void> GameStore::KeepRecord(const model::Game& game) {

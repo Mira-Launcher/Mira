@@ -1,6 +1,7 @@
 #include "SourceRemoval.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QPushButton>
 #include <QStringList>
 #include <QWidget>
@@ -13,6 +14,7 @@
 #include "../components/PopupDialog.h"
 #include "../system/PackageInstall.h"
 #include "SourceText.h"
+#include "Sources.h"
 
 namespace mira_gui {
 
@@ -32,7 +34,8 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
     for (const auto& game : plan.games) {
       if (!game.deletes.empty()) lines << "  • " + QString::fromStdString(game.name);
     }
-    const auto dropped = static_cast<qsizetype>(plan.games.size()) - uninstalled;
+    // An emulator's games in Mira's folders are asked about below.
+    const auto dropped = static_cast<qsizetype>(plan.games.size()) - uninstalled - plan.roms;
     if (dropped > 0) {
       lines << "Removes " + Counted(dropped, item) +
                    " from Mira only (their files stay where they are).";
@@ -74,12 +77,29 @@ void RemoveSource(QWidget* parent, const SourceInfo& source, std::function<void(
           "Your saves for its games are in these folders, and can't be recovered once deleted:\n" +
           folders.join("\n"));
     }
+    // Its games in Mira's folders: kept, deleted, or moved to another emulator that plays them.
+    QComboBox* roms = nullptr;
+    if (plan.roms > 0) {
+      roms = new QComboBox(&dialog);
+      roms->setAccessibleName("Its games");
+      roms->addItem("Keep " + Counted(plan.roms, item) + " in Mira's folder", QString());
+      roms->addItem("Delete " + Counted(plan.roms, item), QString("delete"));
+      for (const std::string& to : plan.move_to) {
+        const SourceInfo* emulator = FindSourceInfo(QString::fromStdString(to));
+        roms->addItem("Move " + Counted(plan.roms, item) + " to " +
+                          (emulator ? emulator->name : QString::fromStdString(to)),
+                      QString::fromStdString(to));
+      }
+      dialog.AddWidget(roms);
+    }
     dialog.AddButton("Remove", /*accept=*/true)->SetKind(ButtonKind::Danger);
     dialog.AddButton("Cancel", /*accept=*/false, /*default_button=*/true);
     if (dialog.exec() != QDialog::Accepted) return;
     const std::vector<std::string> uninstall = plan.uninstall;
+    const QString rom_choice = roms != nullptr ? roms->currentData().toString() : QString();
     api::RemoveSourceAsync(
-        parent, id, delete_data != nullptr && delete_data->isChecked(),
+        parent, id, delete_data != nullptr && delete_data->isChecked(), rom_choice == "delete",
+        rom_choice == "delete" ? std::string() : rom_choice.toStdString(),
         [parent, name, uninstall, on_removed](RemoveSourceResult r) {
           if (!r.ok) {
             notify::FailedRequest(parent, "Could not remove " + name + ".", r.error);

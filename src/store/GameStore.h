@@ -60,6 +60,16 @@ std::string SourceIdOf(const std::string& game_source);
 // Whether a game carries the "hidden" tag.
 bool IsHidden(const model::Game& game);
 
+// A removed game whose record is kept (removed_games), with what it left on disk.
+struct RemovedGame {
+  std::string id;
+  std::string name;
+  std::string install_path;  // "" for a store title
+  std::string exe_path;
+  std::string data_dir;
+  std::int64_t removed_at = 0;
+};
+
 class GameStore {
  public:
   explicit GameStore(std::filesystem::path file);
@@ -167,6 +177,11 @@ class GameStore {
   // Removes every known id with one save and returns those removed.
   Result<std::vector<std::string>> RemoveMany(const std::vector<std::string>& ids,
                                               bool forget = false);
+
+  // Kept records of removed games no game has taken back, newest first.
+  std::vector<RemovedGame> Removed() const;
+  // Drops a removed game's kept record; its play history stays.
+  Result<void> ForgetRemoved(const std::string& id);
 
   // Store titles hidden while not installed, as "<source>-<ref>". A game added under one of
   // these ids gets the "hidden" tag and the title leaves the set, so its tag says it once

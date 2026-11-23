@@ -417,6 +417,52 @@ void RegisterGameRoutes(Router& http, Services& s) {
   // DELETE /v1/games/{id} for many games, with one save, menu sync and event.
   // A game whose files can't be deleted stays in the library.
   // What removing each game can delete, for a client to show before asking.
+  // Removed games that left something on disk: a prefix, save backups, or files to add back.
+  http.Get("/v1/removed-games", [&s](const Request&, Response& res) {
+    json list = json::array();
+    for (const store::RemovedGame& game : s.games.Removed()) {
+      const std::string prefix = s.games.KeptDataDir(game.id);
+      const std::filesystem::path backups = saves::GameBackups(s.config, game.id);
+      const std::uintmax_t backup_bytes = saves::BackupBytes(backups);
+      std::error_code ec;
+      const bool files =
+          !game.install_path.empty() &&
+          std::filesystem::exists(std::filesystem::path(game.install_path) / game.exe_path, ec);
+      if (prefix.empty() && backup_bytes == 0 && !files) continue;
+      list.push_back({{"id", game.id},
+                      {"name", game.name},
+                      {"removed_at", game.removed_at},
+                      {"install_path", files ? game.install_path : std::string()},
+                      {"exe_path", files ? game.exe_path : std::string()},
+                      {"prefix", prefix},
+                      {"prefix_bytes", prefix.empty() ? 0 : paths::TreeBytes(prefix)},
+                      {"saves_bytes", backup_bytes}});
+    }
+    SendJson(res, list);
+  });
+
+  // Deletes what a removed game kept (its prefix and save backups) and its record; its play
+  // history stays.
+  http.Delete(R"(/v1/removed-games/([^/]+))", [&s](const Request& req, Response& res) {
+    const std::string id = req.matches[1].str();
+    if (s.games.Contains(id)) return SendError(res, 409, "game_in_library", "the game is back");
+    if (!std::ranges::contains(s.games.Removed(), id, &store::RemovedGame::id))
+      return SendError(res, 404, "not_removed", "no removed game with that id");
+    if (const std::string prefix = s.games.KeptDataDir(id); !prefix.empty()) {
+      // In a prefixes folder, or kept in the game's own folder on a library disk.
+      std::vector<std::filesystem::path> roots = library::PrefixRoots(s.config);
+      std::ranges::move(s.config.GetPathArray("library_roots"), std::back_inserter(roots));
+      if (auto deleted = library::DeleteInside(prefix, roots); !deleted)
+        return SendError(res, 409, deleted.error());
+    }
+    if (auto deleted = saves::DeleteBackups(s.config, id); !deleted)
+      return SendError(res, 500, deleted.error());
+    s.games.Metadata().Remove(id);
+    if (auto forgot = s.games.ForgetRemoved(id); !forgot)
+      return SendError(res, 500, forgot.error());
+    SendJson(res, json::object());
+  });
+
   http.Post("/v1/games/removal", [&s](const Request& req, Response& res) {
     constexpr std::string_view kShape = R"({"ids": [...]})";
     const auto body = BodyObject(req, res, kShape);
@@ -557,6 +603,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
             if (auto deleted = s.DeleteGameData(*game, staying, files, prefix, metadata, backups);
                 !deleted) {
               failed.push_back(BatchFailure(id, deleted.error()));
+              staying.push_back(*game);  // it stays, so a folder it shares stays too
               continue;
             }
             deletable.push_back(id);

@@ -168,6 +168,7 @@ class SettingsPanel : public QWidget {
   void BuildBigScreenPage();
   // Settings › Library's Mira folders, each with Games and Applications in library_roots.
   void AddMiraFoldersCard(SettingsPage* page);
+  void ShowRemovedGames();
   void ShowMiraFolders(const ConfigResult& config);
   void EditMiraFolders(const std::function<void(QStringList& folders, QStringList& roots)>& edit);
   void SaveMiraFolders(const QStringList& folders, const QStringList& roots);
@@ -263,6 +264,7 @@ class SettingsPanel : public QWidget {
   // Read-only "is Feral GameMode installed/running" on the Launching page; not a config key.
   QLabel* gamemode_status_ = nullptr;
   Card* mira_folders_card_ = nullptr;
+  Card* removed_card_ = nullptr;
   int saves_pending_ = 0;
   int loads_pending_ = 2;  // the settings and the display prefs; Ready at zero
   bool values_loaded_ = false;

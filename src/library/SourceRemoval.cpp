@@ -1,5 +1,7 @@
 #include "library/SourceRemoval.h"
 
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <filesystem>
 #include <format>
@@ -50,6 +52,39 @@ std::vector<fs::path> DeleteRoots(const config::Config& config, const std::strin
   // A launcher game installed inside its prefix.
   if (!prefix.empty()) roots.push_back(fs::path(prefix) / "drive_c");
   return roots;
+}
+
+// A game's own files outside Mira's folders that it may delete when asked: under home or a
+// mounted drive, and neither one of Mira's folders nor holding one.
+bool DeletableOutside(const config::Config& config, const fs::path& path) {
+  std::error_code ec;
+  const fs::path target = fs::weakly_canonical(path, ec);
+  if (ec || !fs::exists(target, ec)) return false;
+  if (!paths::IsWithin(target, {paths::Home(), "/mnt", "/media", "/run/media"})) return false;
+  // Not a whole drive, nor one of home's own folders (Documents, .local).
+  struct stat own{}, parent{};
+  if (::stat(target.c_str(), &own) != 0 || ::stat(target.parent_path().c_str(), &parent) != 0 ||
+      own.st_dev != parent.st_dev)
+    return false;
+  const fs::path home = fs::weakly_canonical(paths::Home(), ec);
+  static constexpr std::string_view kHomeFolders[] = {"Desktop", "Documents", "Downloads",
+                                                      "Music",   "Pictures",  "Videos",
+                                                      "Public",  "Templates", "Games"};
+  const fs::path in_home = target.lexically_relative(home);
+  if (!in_home.empty() && *in_home.begin() != "..") {
+    const std::string top = in_home.begin()->string();
+    if (top.starts_with('.')) return false;
+    if (std::distance(in_home.begin(), in_home.end()) == 1 &&
+        std::ranges::contains(kHomeFolders, top))
+      return false;
+  }
+  std::vector<fs::path> mira = DeleteRoots(config, {});
+  std::ranges::move(PrefixRoots(config), std::back_inserter(mira));
+  mira.push_back(config.GetPath("emulators.roms_root"));
+  mira.push_back(config.File().parent_path());
+  return std::ranges::none_of(mira, [&](const fs::path& folder) {
+    return !folder.empty() && paths::IsWithin(folder, {target}, /*allow_equal=*/true);
+  });
 }
 
 std::string WhatGetsDeleted(const model::Game& game, std::string_view source) {
@@ -184,7 +219,7 @@ Result<void> DeleteInside(const std::string& target, const std::vector<fs::path>
 }
 
 Result<void> DeleteGameFiles(const config::Config& config, const model::Game& game,
-                             std::span<const model::Game> library) {
+                             std::span<const model::Game> library, bool outside) {
   if (game.source == "epic" && !game.source_ref.empty()) {
     if (auto done = epic::RunLegendary(config, {"uninstall", game.source_ref, "-y"}); !done) {
       return std::unexpected(done.error());
@@ -201,7 +236,10 @@ Result<void> DeleteGameFiles(const config::Config& config, const model::Game& ga
   const Result<OwnFiles> files = FilesToDelete(config, game, library);
   if (!files) return std::unexpected(files.error());
   for (const fs::path& path : files->paths) {
-    if (auto deleted = DeleteInside(path.string(), files->roots); !deleted) return deleted;
+    std::vector<fs::path> roots = files->roots;
+    if (outside && !paths::IsWithin(path, roots) && DeletableOutside(config, path))
+      roots.push_back(fs::weakly_canonical(path).parent_path());
+    if (auto deleted = DeleteInside(path.string(), roots); !deleted) return deleted;
   }
   return {};
 }
@@ -240,8 +278,10 @@ GameRemoval PlanGameRemoval(const config::Config& config, const model::Game& gam
   }
   const launchers::Launcher* launcher = launchers::Find(game.source);
   plan.kind = "external";
-  if (game.source == "desktop-entry" || FilesOwnedElsewhere(game.source) || launcher != nullptr ||
-      (game.source == "launcher" && game.install_path.empty())) {
+  // A ROM in its emulator's folders is deleted with it, or the next scan brings it back.
+  const bool rom = emulators::ForGame(game) != nullptr;
+  if (game.source == "desktop-entry" || (FilesOwnedElsewhere(game.source) && !rom) ||
+      launcher != nullptr || (game.source == "launcher" && game.install_path.empty())) {
     return plan;
   }
   // A game whose folder is its prefix (an old import's) goes with the prefix.
@@ -252,13 +292,15 @@ GameRemoval PlanGameRemoval(const config::Config& config, const model::Game& gam
     return plan;
   }
   const Result<OwnFiles> files = FilesToDelete(config, game, library);
-  if (!files || files->paths.empty() ||
-      !std::ranges::all_of(files->paths, [&](const fs::path& path) {
-        return paths::IsWithin(path, files->roots);
-      })) {
+  if (!files || files->paths.empty()) return plan;
+  const bool inside = std::ranges::all_of(
+      files->paths, [&](const fs::path& path) { return paths::IsWithin(path, files->roots); });
+  // Outside Mira's folders its files are the user's: deleted only when asked.
+  if (!inside && !std::ranges::all_of(files->paths, [&](const fs::path& path) {
+        return DeletableOutside(config, path);
+      }))
     return plan;
-  }
-  plan.kind = "folder";
+  plan.kind = inside ? "folder" : "outside";
   plan.files = files->paths.front().string();
   const fs::path drive_c = fs::path(game.data_dir) / "drive_c";
   if (!plan.prefix.empty() && paths::IsWithin(plan.files, {drive_c})) {
@@ -319,15 +361,37 @@ Result<RemovalPlan> PlanRemoval(const config::Config& config, const store::GameS
                                          ? std::string()
                                          : WhatGetsDeleted(game, source)});
   }
+  if (const emulators::Emulator* emulator = emulators::Find(source)) {
+    const std::vector<model::Game> library = games.All();
+    std::vector<const emulators::Emulator*> targets;
+    bool first = true;
+    for (const model::Game& game : library) {
+      if (game.source != emulator->id) continue;
+      if (PlanGameRemoval(config, game, library).kind == "folder") ++plan.roms;
+      std::vector<const emulators::Emulator*> takes = emulators::Alternatives(config, game);
+      if (!first)
+        std::erase_if(targets, [&](const auto* to) { return !std::ranges::contains(takes, to); });
+      else
+        targets = std::move(takes);
+      first = false;
+    }
+    for (const emulators::Emulator* to : targets) plan.move_to.push_back(to->id);
+  }
   return plan;
 }
 
 Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& games,
-                                   api::EventBus& events, std::string_view source,
-                                   bool delete_data) {
+                                   api::EventBus& events, std::string_view source, bool delete_data,
+                                   const RomChoice& roms) {
   const Result<RemovalPlan> plan = PlanRemoval(config, games, source);
   if (!plan) return std::unexpected(plan.error());
   const launchers::Launcher* launcher = launchers::Find(source);
+  const emulators::Emulator* move_to = nullptr;
+  if (!roms.move_to.empty()) {
+    if (!std::ranges::contains(plan->move_to, roms.move_to))
+      return Err("cant_move", std::format("{}'s games can't move to {}", source, roms.move_to));
+    move_to = emulators::Find(roms.move_to);
+  }
 
   RemovalResult result;
   const auto forget = [&](const std::string& id) {
@@ -344,9 +408,25 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
     const auto folders_lock = games.LockFolders();
     const std::optional<model::Game> game = games.Find(planned.id);
     if (!game) continue;
+    // Only what's in Mira's folders moves; a game kept where the user put it stays there.
+    if (move_to != nullptr && PlanGameRemoval(config, *game, library).kind == "folder") {
+      if (auto moved = emulators::MoveGame(config, games, *game, *move_to); moved) {
+        events.Publish("game.updated", model::ToJson(*moved));
+        std::erase_if(library, [&](const model::Game& known) { return known.id == game->id; });
+        continue;
+      } else {
+        result.problems.push_back(std::format("{}: {}", game->name, moved.error().message));
+      }
+    }
+    // A game that didn't move keeps its file.
+    const bool rom = move_to == nullptr && roms.delete_files &&
+                     emulators::ForGame(*game) != nullptr &&
+                     PlanGameRemoval(config, *game, library).kind == "folder";
     if (InLauncherFolder(*game, launcher)) {
       // Its files go with the launcher's program folder, below.
-    } else if (auto done = UninstallGame(config, *game, source, library); !done) {
+    } else if (auto done = rom ? DeleteGameFiles(config, *game, library)
+                               : UninstallGame(config, *game, source, library);
+               !done) {
       // Files stay; the record goes anyway so the source can still be removed.
       result.problems.push_back(std::format("{}: {}", game->name, done.error().message));
     }
@@ -399,8 +479,13 @@ Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& gam
       result.problems.push_back(std::format("deleting {}: {}", tool.name, done.error().message));
   }
 
+  if (move_to != nullptr) {
+    games.MarkSourceAdded(move_to->id, true);
+    events.Publish("sources.changed", nlohmann::json::object());
+  }
   store::SourceState state = games.Source(std::string(source));
   state.added = false;
+  state.enabled = false;  // else Steam's next change scans it back in
   games.SaveSource(state);
   log::Info("removed source {}: {} game(s), {} problem(s)", source, result.removed,
             result.problems.size());
