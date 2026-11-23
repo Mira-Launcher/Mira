@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QToolButton>
+#include <QVariantAnimation>
 
 #include "../theme/Icons.h"
 
@@ -18,11 +19,16 @@ class IconButton : public QToolButton {
   // Shows `glyph` from now on, in this and later themes.
   void SetGlyph(icons::Glyph glyph);
 
+  // Turns the glyph round and round, for work going on; off finishes the turn it's on.
+  void SetSpinning(bool spinning);
+
  private:
   void Apply();
+  void ApplyAngle(qreal degrees);
 
   icons::Glyph glyph_;
   icons::Role role_;
+  QVariantAnimation* spin_ = nullptr;
 };
 
 }  // namespace mira_gui

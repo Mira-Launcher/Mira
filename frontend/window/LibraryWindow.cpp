@@ -1281,7 +1281,21 @@ void LibraryWindow::Reload(bool force_scan) {
 }
 
 void LibraryWindow::RefreshLibrary() {
-  Reload(/*force_scan=*/true);
+  // Spins until the scan, the list and the update check are back, and for a turn at least, so a
+  // refresh that finds nothing still shows it ran.
+  if (refreshing_ > 0) return;
+  refreshing_ = 4;
+  top_bar_->SetRefreshing(true);
+  const QPointer<LibraryWindow> self(this);
+  const auto part_done = [self] {
+    if (self && --self->refreshing_ == 0) self->top_bar_->SetRefreshing(false);
+  };
+  QTimer::singleShot(800, this, part_done);
+  mira_gui::api::ScanLibraryAsync(this, [this, part_done](mira_gui::ScanResult) {
+    RefreshGames(part_done);  // with what the scan found
+  });
+  RefreshGames(part_done);
+  update_checker_->Check(/*refresh=*/true, part_done);
   owned_titles_->Refresh(/*fresh=*/true);  // the stores asked now, not their lists from earlier
   // mirad fetches art on its own only for a game it just found, so one that failed stays bare
   // until asked again.

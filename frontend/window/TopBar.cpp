@@ -69,7 +69,7 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : TitleBar
   updates_ = tool(icons::Glyph::Update, "Updates");
   updates_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
   connect(updates_, &QToolButton::clicked, this, &TopBar::UpdatesClicked);
-  refresh_ = tool(icons::Glyph::Refresh, "Refresh library");
+  refresh_ = tool(icons::Glyph::Refresh, "Refresh the library and check for updates");
   connect(refresh_, &QToolButton::clicked, this, &TopBar::RefreshClicked);
   shortcuts_ = tool(icons::Glyph::Keyboard, "Keyboard shortcuts");
   connect(shortcuts_, &QToolButton::clicked, this, &TopBar::ShortcutsClicked);
@@ -79,6 +79,10 @@ TopBar::TopBar(int min_tile, int max_tile, int tile, QWidget* parent) : TitleBar
   layout->addWidget(MakeDivider(this, Qt::Vertical, 20));
 
   layout->addWidget(new WindowButtons(this));
+}
+
+void TopBar::SetRefreshing(bool refreshing) {
+  refresh_->SetSpinning(refreshing);
 }
 
 void TopBar::SetActivityCount(int running) {
