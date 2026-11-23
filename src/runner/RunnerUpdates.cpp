@@ -58,6 +58,13 @@ std::vector<RunnerUpdate> FindRunnerUpdates(const config::Config& config,
       if (!paths::IsWithin(dir, RunnerRoots(config, kind))) continue;
       auto family = FamilyOfBuild(config, kind, build.release, dir.filename().string());
       if (!family) continue;
+      // One row per family, from its newest build: an older one updates to the same release.
+      const auto same = std::ranges::find(
+          out, family->id, [](const RunnerUpdate& update) { return update.family.id; });
+      if (same != out.end()) {
+        if (BuildOrder(build) > BuildOrder(same->build)) same->build = build;
+        continue;
+      }
       auto releases = ListFamilyReleases(*family);
       if (!releases || releases->empty() || HasInstalled(builds, releases->front())) continue;
       out.push_back({build, std::move(*family), releases->front()});

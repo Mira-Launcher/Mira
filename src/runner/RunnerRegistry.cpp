@@ -103,6 +103,10 @@ const model::RunnerBuild& PickFor(const config::Config& config,
 
 }  // namespace
 
+std::int64_t BuildOrder(const model::RunnerBuild& build) {
+  return ParseVersion(build.version);
+}
+
 RunnerRegistry::RunnerRegistry(config::Config& config) : config_(config) {
   auto native = std::make_unique<NativeRunner>();
   auto proton = std::make_unique<ProtonRunner>(config);

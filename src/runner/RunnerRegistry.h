@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -37,6 +38,9 @@ std::unique_lock<std::mutex> LockPrefix(const std::string& data_dir);
 
 // A game's runner_config key: its pinned build was picked by "auto", not by the user.
 inline constexpr const char* kAutoPicked = "auto_picked";
+
+// Orders builds of one kind, newest highest, as "latest" picks.
+std::int64_t BuildOrder(const model::RunnerBuild& build);
 
 // Gives `game` the runner ProvisionGame chose for `provisioned`, and whether "auto" chose it, so
 // a better fit can move it later.
