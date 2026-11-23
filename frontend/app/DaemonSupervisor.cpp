@@ -15,7 +15,8 @@ namespace mira_gui {
 
 namespace {
 constexpr int kPollIntervalMs = 150;
-constexpr int kPollAttempts = 30;                            // ~4.5s total
+constexpr int kPollAttempts = 200;  // ~30s: an older mirad may still be stopping, and the first
+                                    // start after an update migrates
 constexpr const char* kHandOffVariable = "MIRA_DAEMON_PID";  // set by display::Restart
 }  // namespace
 
