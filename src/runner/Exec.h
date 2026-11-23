@@ -27,6 +27,10 @@ using OutputFn = std::function<void(std::string_view chunk)>;
 
 Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output = {});
 
+// The Wayland display of the desktop session, from mirad's environment or the session's; nullopt
+// off Wayland.
+std::optional<std::string> WaylandDisplay();
+
 // Starts `command` and returns its pid immediately, without waiting. For
 // launching a game: unlike provisioning, the caller must not block, and the
 // child's output is left on the daemon's own stdout/stderr rather than

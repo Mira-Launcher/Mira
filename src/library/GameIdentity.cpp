@@ -117,11 +117,12 @@ GameIdentity Identify(const config::Config& config, const model::Game& game) {
     identity.steam_appid = std::move(appid);
     identity.steam_from = from;
   };
+  // A Steam game is its own; anything else can be told which it is.
+  if (identity.store == "steam") steam(identity.store_id, "steam");
   if (const std::int64_t fixed =
           config::Resolver(config, game.overrides).GetInt("metadata.steam_appid");
       fixed > 0)
     steam(std::to_string(fixed), "override");
-  if (identity.store == "steam") steam(identity.store_id, "steam");
   steam(SteamAppIdFile(game), "file");
   if (row) steam(runner::SteamAppId(row->umu_id), "umu");
   if (config.GetBool("metadata.steam_by_name")) steam(game.steam_match, "name");

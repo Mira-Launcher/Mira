@@ -43,7 +43,9 @@ class WinetricksCard : public SheetCard {
   Q_OBJECT
 
  public:
-  WinetricksCard(std::string game_id, const QString& name, QWidget* parent = nullptr);
+  // `verb` starts in the field, to run with one click (a crash's suggested fix).
+  WinetricksCard(std::string game_id, const QString& name, const QString& verb = {},
+                 QWidget* parent = nullptr);
 
  private:
   void Run();

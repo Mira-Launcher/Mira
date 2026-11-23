@@ -27,7 +27,7 @@ void ProvisionOnImport(model::Game& game, const std::optional<model::Game>& exis
   if (NeedsProvisioning(existing)) {
     if (game.data_dir.empty()) game.data_dir = PrefixDir(config, games, game).string();
     const model::Game provisioned = provisioner.ProvisionGame(game);
-    game.runner_ref = provisioned.runner_ref;
+    runner::TakeRunner(game, provisioned);
     game.data_dir = provisioned.data_dir;
     game.status = provisioned.status;
     game.last_error = provisioned.last_error;

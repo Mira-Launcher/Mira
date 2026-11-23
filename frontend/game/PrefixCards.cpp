@@ -143,7 +143,8 @@ void RunInPrefixCard::Run() {
       });
 }
 
-WinetricksCard::WinetricksCard(std::string game_id, const QString& name, QWidget* parent)
+WinetricksCard::WinetricksCard(std::string game_id, const QString& name, const QString& verb,
+                               QWidget* parent)
     : SheetCard(QString(), parent), game_id_(std::move(game_id)), name_(name) {
   setFixedWidth(kWidth);
   SetProminentTitle();
@@ -181,6 +182,7 @@ WinetricksCard::WinetricksCard(std::string game_id, const QString& name, QWidget
     SetRunning(running_);
   });
   connect(verb_, &QLineEdit::returnPressed, run_, &QPushButton::click);
+  verb_->setText(verb);
   RebuildChips();
 
   api::GetInstalledTricksAsync(this, game_id_, [this](InstalledTricksResult result) {

@@ -439,9 +439,9 @@ Schema::Schema() {
          .type = Type::Int,
          .default_value = 0,
          .scope = Scope::GameOnly,
-         .doc = "The SteamGridDB game this game's art comes from. 0 uses the top search result for "
-                "the game's name. Enter the ID from the game's steamgriddb.com page address when "
-                "that result is the wrong game.",
+         .doc = "The SteamGridDB game this game's art comes from, for art only. 0 finds it by the "
+                "Steam game this is, else the top search result for its name. Enter the ID from "
+                "the game's steamgriddb.com page address when that's the wrong game.",
          .constraint = Range(0, 1e12),
          .keywords = "sgdb"});
 
@@ -488,23 +488,16 @@ Schema::Schema() {
          .keywords = "steam app id appid protondb reviews match wrong identify",
          .applies = {.except_sources = {"steam"}}});
 
-  s.Add({.key = "metadata.steam_art_by_name",
-         .label = "Match Steam art by name",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "If a game has no other art, use the cover of the Steam game with the same name "
-                "(case and punctuation are ignored). Needs no key. This sends the game's name to "
-                "Steam's public search."});
-
-  s.Add({.key = "metadata.steam_by_name",
-         .label = "Match other games to Steam by name",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc =
-             "For a game Mira can't otherwise place, take it for the Steam game of exactly its "
-             "name (case and punctuation are ignored): its ProtonDB rating, reviews, tags, Proton "
-             "fixes and anti-cheat status. Which game this is, in a game's settings, replaces "
-             "the match. Each lookup sends the game's name to Steam's public search."});
+  s.Add(
+      {.key = "metadata.steam_by_name",
+       .label = "Match other games to Steam by name",
+       .type = Type::Bool,
+       .default_value = true,
+       .doc =
+           "For a game Mira can't otherwise place, take it for the Steam game of exactly its "
+           "name (case and punctuation are ignored): its art, ProtonDB rating, reviews, tags, "
+           "Proton fixes and anti-cheat status. Which game this is, in a game's settings, replaces "
+           "the match. Each lookup sends the game's name to Steam's public search."});
 
   s.Add({.key = "achievements.enabled",
          .label = "Show achievements",
@@ -803,8 +796,10 @@ Schema::Schema() {
          .doc =
              "The runner for Windows games, written as \"kind:name\", for example "
              "\"proton:GE-Proton11-7\" or \"wine:system\". A name of \"latest\" picks the newest "
-             "installed build. \"auto\" picks the best installed runner: Proton if any is "
-             "installed, otherwise Wine.",
+             "installed build. \"auto\" picks per game: a Proton build with the game's fix, else "
+             "the Proton Steam uses for it, else UMU-Proton, else Wine when no Proton is "
+             "installed. A game keeps the build it was set up with, except that one auto picked "
+             "moves to a build with its fix.",
          .constraint = AutoOrRunnerRef(),
          .is_runner_ref = true,
          .runner_kinds = {"proton", "wine"}});
@@ -838,20 +833,6 @@ Schema::Schema() {
                 "close button: quit with Alt+F4 or Mira's Stop.",
          .applies = {.platforms = {"web"}}});
 
-  s.Add({.key = "launch.pin_runner",
-         .label = "Remember the chosen runner",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "The first time a Windows game with no runner launches, remember which Proton or "
-                "Wine build was chosen and keep using it."});
-
-  s.Add({.key = "runners.pick_per_game",
-         .label = "Pick Proton per game",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "For a game with no runner chosen, prefer a Proton build that has a fix for it, "
-                "else the Proton Steam uses for it. A runner you choose is always kept."});
-
   s.Group("Compatibility");
 
   s.Add({.key = "umu.match",
@@ -868,6 +849,14 @@ Schema::Schema() {
          .default_value = true,
          .doc = "Show whether a game's anti-cheat works on Linux, from AreWeAntiCheatYet, and warn "
                 "when one that doesn't is launched. The list is downloaded weekly."});
+
+  s.Add({.key = "anticheat.runtimes",
+         .label = "Anti-cheat support outside Steam",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Give Proton its Easy Anti-Cheat and BattlEye runtimes for games not run through "
+                "Steam, so a game whose anti-cheat allows Linux can play online. Uses Steam's copy "
+                "when it has one, else downloads it once."});
 
   s.Group("Per store");
 
@@ -1049,6 +1038,23 @@ Schema::Schema() {
                           "master/games.json",
          .doc = "Where the AreWeAntiCheatYet list is downloaded from."});
 
+  s.Item("eac_runtime", "Easy Anti-Cheat runtime");
+  s.Add({.key = "anticheat.eac_runtime_url",
+         .label = "Download from",
+         .type = Type::String,
+         .default_value = std::string(runner_sources::kEacRuntimeUrl),
+         .doc = "Where Proton's Easy Anti-Cheat runtime is downloaded from when Steam doesn't have "
+                "it. The default download's checksum is checked."});
+
+  s.Item("battleye_runtime", "BattlEye runtime");
+  s.Add({.key = "anticheat.battleye_runtime_url",
+         .label = "Download from",
+         .type = Type::String,
+         .default_value = std::string(runner_sources::kBattlEyeRuntimeUrl),
+         .doc =
+             "Where Proton's BattlEye runtime is downloaded from when Steam doesn't have it. The "
+             "default download's checksum is checked."});
+
   // --- Launching -------------------------------------------------------------
   s.Section("Launching", "General");
   s.ResetTogether();
@@ -1185,6 +1191,85 @@ Schema::Schema() {
                 "after. Set by hand, it is WIDTHxHEIGHT or WIDTHxHEIGHT@HZ, for example "
                 "\"1920x1080@120\". Needs Plasma on Wayland.",
          .keywords = "display monitor refresh rate mode"});
+
+  s.Add({.key = "launch.proton_wayland",
+         .label = "Native Wayland",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "On a Wayland desktop, Proton draws the game through its own Wayland driver "
+                "instead of XWayland. Turn off for a game whose launcher, overlay or mouse "
+                "capture misbehaves with it. HDR always uses it.",
+         .keywords = "wayland xwayland x11 proton display",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.gpu",
+         .label = "GPU",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::PerGame,
+         .doc = "Which graphics card the game runs on, for a PC with two (most gaming laptops). "
+                "Dedicated is faster; integrated uses less battery. Does nothing on a PC with one.",
+         .constraint = Choices({{"", "System's choice"},
+                                {"dedicated", "Dedicated GPU"},
+                                {"integrated", "Integrated GPU"}}),
+         .keywords = "graphics card prime nvidia optimus hybrid laptop discrete"});
+
+  s.Add({.key = "launch.nvapi",
+         .label = "NVIDIA DLSS and Reflex",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Let the game use NVIDIA's DLSS, Reflex and other NVAPI features, which Proton "
+                "turns on by default. Turn off for a game that crashes or looks wrong with them. "
+                "Only matters with an NVIDIA GPU.",
+         .keywords = "nvidia nvapi dlss reflex gpu",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.hide_nvidia",
+         .label = "Hide the NVIDIA GPU",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "Report an NVIDIA GPU to the game as an AMD one, for a game that refuses to run or "
+                "picks broken settings on NVIDIA under Proton. Turns DLSS off. Only matters with "
+                "an NVIDIA GPU.",
+         .keywords = "nvidia gpu spoof amd vendor",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.ray_tracing",
+         .label = "Ray tracing",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::PerGame,
+         .doc = "Auto turns DirectX 12 ray tracing off when the game runs on an integrated GPU, "
+                "too slow for it, and leaves it to the game otherwise. A game that needs ray "
+                "tracing won't start with it off.",
+         .constraint = Choices({{"", "Auto"}, {"on", "On"}, {"off", "Off"}}),
+         .keywords = "rt dxr raytracing vkd3d integrated",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.upscaler_upgrade",
+         .label = "Newest DLSS and FSR",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Proton swaps the game's DLSS for the newest on an NVIDIA GPU, and FSR 3.1 for "
+                "FSR 4 on a Radeon RX 9000. Skipped for games with anti-cheat. Needs GE-Proton "
+                "or another Proton with these upgrades.",
+         .keywords = "dlss fsr fsr4 upscaling nvidia amd radeon upgrade",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.fps_limit",
+         .label = "Frame rate limit",
+         .type = Type::Int,
+         .default_value = 0,
+         .scope = Scope::PerGame,
+         .doc = "Caps the game's frames per second, for DirectX games run through DXVK or "
+                "vkd3d-proton. 0 is no limit.",
+         .constraint = Range(0, 1000),
+         .keywords = "fps cap frame limiter framerate",
+         .applies = {.platforms = {"windows"}}});
 
   s.Group("Scripts");
   s.ResetTogether();
@@ -1454,10 +1539,10 @@ Schema::Schema() {
   s.Add({.key = "launchers.app_runner",
          .label = "Windows app runner",
          .type = Type::String,
-         .default_value = "proton:GE-Proton11-7",
-         .doc = "The runner for a Windows app's prefix (Fusion, AutoCAD, QuickBooks), downloaded "
-                "when it isn't "
-                "installed. Empty uses the launcher runner.",
+         .default_value = "auto",
+         .doc = "The runner for a Windows app's prefix (Fusion, AutoCAD, QuickBooks). \"auto\" "
+                "picks as for games; a build that isn't installed is downloaded. Empty uses the "
+                "launcher runner.",
          .constraint = OptionalRunnerRef(),
          .is_runner_ref = true});
 

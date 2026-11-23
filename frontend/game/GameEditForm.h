@@ -158,6 +158,7 @@ class GameEditForm : public QWidget {
   QLabel* fix_text_ = nullptr;
   QPushButton* fix_use_ = nullptr;
   bool fix_known_ = false;
+  bool unidentified_ = false;  // a Windows game Mira can't tell, so no fix can be found
   bool fix_applies_ = false;
   std::string fix_build_;
   void ShowFixStatus();

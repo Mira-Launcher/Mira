@@ -203,8 +203,12 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   fix_row_->AddControl(fix_text_);
   fix_use_ = new QPushButton(fix_row_);
   fix_row_->AddControl(fix_use_);
-  connect(fix_use_, &QPushButton::clicked, this,
-          [this] { SelectOrKeep(runner_combo_, QString::fromStdString(fix_build_)); });
+  connect(fix_use_, &QPushButton::clicked, this, [this] {
+    if (fix_known_)
+      SelectOrKeep(runner_combo_, QString::fromStdString(fix_build_));
+    else
+      RevealSetting("metadata.steam_appid");
+  });
   fix_row_->hide();
 
   emulator_row_ = new SettingRow(
@@ -544,6 +548,8 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   fix_known_ = game.protonfix_known;
   fix_applies_ = game.protonfix_applies;
   fix_build_ = game.protonfix_fixed_in;
+  unidentified_ = game.platform == "windows" && game.identity.umu_id.empty() &&
+                  game.identity.steam_appid.empty();
   ShowFixStatus();
   runner_defaults_.clear();
   runner_defaults_["gameid"] = game.identity.umu_id;
@@ -683,7 +689,15 @@ void GameEditForm::BuildRunnerFields(const std::vector<RunnerOption>& options) {
 }
 
 void GameEditForm::ShowFixStatus() {
-  fix_row_->setVisible(fix_known_ && arranged_ && fix_row_->parentWidget() != this);
+  fix_row_->setVisible((fix_known_ || unidentified_) && arranged_ &&
+                       fix_row_->parentWidget() != this);
+  // Not knowing which game it is, Proton can't find its fix: say so where that matters.
+  if (!fix_known_) {
+    fix_text_->setText("Not known which game this is");
+    fix_use_->setText("Set which game");
+    fix_use_->setVisible(true);
+    return;
+  }
   fix_text_->setText(fix_applies_ ? "Applied by its Proton" : "Not in its Proton");
   // "proton:GE-Proton9-1" reads "Use GE-Proton9-1".
   fix_use_->setText("Use " + QString::fromStdString(fix_build_).section(':', 1));

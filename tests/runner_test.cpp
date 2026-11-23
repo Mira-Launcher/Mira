@@ -15,8 +15,10 @@
 #include "library/GameIdentity.h"
 #include "library/GamePatch.h"
 #include "runner/AntiCheat.h"
+#include "runner/AntiCheatRuntime.h"
 #include "runner/Curl.h"
 #include "runner/Exec.h"
+#include "runner/Gpu.h"
 #include "runner/NativeRunner.h"
 #include "runner/ProtonRunner.h"
 #include "runner/RefMigration.h"
@@ -578,6 +580,9 @@ TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked g
   const auto better = registry.BetterAutoPick(game);
   REQUIRE(better);
   CHECK(better->name == "GE-Proton9-1");
+  // Its build removed, auto picks again.
+  game.runner_ref = "proton:GE-Proton8-0";
+  CHECK(registry.BetterAutoPick(game)->name == "GE-Proton9-1");
 
   // Chosen by hand: kept.
   game.runner_ref = "proton:GE-Proton9-1";
@@ -616,4 +621,71 @@ TEST_CASE("a game's anti-cheat status comes by its Steam appid, else its title")
   CHECK_FALSE(fine->Blocks());
   scanned.platform = model::Platform::Native;
   CHECK_FALSE(runner::FindAntiCheat(env.config, scanned));
+}
+
+TEST_CASE("a game shipping an anti-cheat gets Steam's runtime for it; a Steam game doesn't") {
+  test::TestEnv env("anticheat-runtime");
+  REQUIRE(env.config.Set("anticheat.runtimes", true));
+  const fs::path steam = env.dir / "steam";
+  const fs::path eac = steam / "steamapps" / "common" / "Proton EasyAntiCheat Runtime";
+  fs::create_directories(eac / "v2");
+  REQUIRE(env.config.Set("steam.root", steam.string()));
+
+  model::Game game;
+  game.id = "eac";
+  game.name = "Shooter";
+  game.platform = model::Platform::Windows;
+  game.install_path = (env.dir / "shooter").string();
+  fs::create_directories(env.dir / "shooter");
+  CHECK(runner::AntiCheatRuntimeEnv(env.config, game)->empty());
+
+  fs::create_directories(env.dir / "shooter" / "EasyAntiCheat");
+  const auto runtimes = runner::AntiCheatRuntimeEnv(env.config, game);
+  REQUIRE(runtimes);
+  CHECK(runtimes->at("PROTON_EAC_RUNTIME") == eac.string());
+  CHECK_FALSE(runtimes->contains("PROTON_BATTLEYE_RUNTIME"));
+
+  game.runner_ref = "steam:123";
+  CHECK(runner::AntiCheatRuntimeEnv(env.config, game)->empty());
+}
+
+TEST_CASE("a hybrid laptop's game runs on the GPU picked for it") {
+  test::TestEnv env("gpu-pick");
+  const fs::path drm = env.dir / "drm";
+  const auto card = [&](const char* name, const char* vendor, const char* device, bool boot) {
+    fs::create_directories(drm / name / "device");
+    std::ofstream(drm / name / "device" / "vendor") << vendor << "\n";
+    std::ofstream(drm / name / "device" / "device") << device << "\n";
+    std::ofstream(drm / name / "device" / "boot_vga") << (boot ? "1" : "0") << "\n";
+  };
+  card("card0", "0x8086", "0xa7a0", true);
+  CHECK(runner::GpuEnv("dedicated", drm).empty());  // one GPU
+
+  card("card1", "0x10de", "0x2860", false);
+  fs::create_directories(drm / "card1-HDMI-A-1");
+  CHECK(runner::GpuEnv("", drm).empty());
+  CHECK(runner::GpuEnv("dedicated", drm).at("__NV_PRIME_RENDER_OFFLOAD") == "1");
+  const auto integrated = runner::GpuEnv("integrated", drm);
+  CHECK(integrated.at("MESA_VK_DEVICE_SELECT") == "8086:a7a0!");
+  CHECK(integrated.at("__VK_LAYER_NV_optimus") == "non_NVIDIA_only");
+}
+
+TEST_CASE("ray tracing and upscaler flags follow the GPU a game runs on") {
+  test::TestEnv env("gpu-kind");
+  const fs::path drm = env.dir / "drm";
+  const auto card = [&](const char* name, const char* device, const char* vram) {
+    fs::create_directories(drm / name / "device");
+    std::ofstream(drm / name / "device" / "vendor") << "0x1002\n";
+    std::ofstream(drm / name / "device" / "device") << device << "\n";
+    std::ofstream(drm / name / "device" / "mem_info_vram_total") << vram << "\n";
+  };
+  card("card0", "0x15bf", "536870912");  // an APU's 512 MB
+  CHECK(runner::GameGpuFor("", drm).integrated);
+
+  card("card1", "0x7550", "17163091968");  // an RX 9070 XT
+  const runner::GameGpu any = runner::GameGpuFor("", drm);
+  CHECK_FALSE(any.integrated);
+  CHECK(any.rdna4);
+  CHECK(runner::GameGpuFor("integrated", drm).integrated);
+  CHECK_FALSE(runner::GameGpuFor("integrated", drm).rdna4);
 }

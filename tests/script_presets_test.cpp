@@ -84,8 +84,10 @@ TEST_CASE("Ready-made launch steps change the computer only while the game runs"
   };
   const auto back = [&](const std::string& steam) {
     const bool done = test::WaitUntil([&] {
+      // mira-run records the session after the steps; until then it still has the database open.
+      const auto game = server.games().Find("celeste");
       return fs::exists(state / "ran-after") && Read(state / "steam") == steam &&
-             Read(state / "profile") == "power-saver\n";
+             Read(state / "profile") == "power-saver\n" && game && game->last_session_at > 0;
     });
     if (!done) {
       MESSAGE("ran-after: " << fs::exists(state / "ran-after")

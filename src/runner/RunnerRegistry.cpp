@@ -59,7 +59,7 @@ struct GameFit {
 };
 
 GameFit FitFor(const config::Config& config, const model::Game* game) {
-  if (game == nullptr || !config.GetBool("runners.pick_per_game")) return {};
+  if (game == nullptr) return {};
   GameFit fit{.identity = UmuIdentity(config, *game), .valve = std::nullopt};
   if (const std::string appid = library::Identify(config, *game).steam_appid; !appid.empty()) {
     if (const auto root = steam::FindSteamRoot(config))
@@ -260,9 +260,11 @@ std::optional<model::RunnerBuild> RunnerRegistry::BetterAutoPick(const model::Ga
   const GameFit fit = FitFor(config_, &game);
   if (!fit.identity) return std::nullopt;
   const std::vector<model::RunnerBuild>& builds = BuildsFor("proton");
-  const auto pinned = std::ranges::find(builds, game.runner_ref, &model::RunnerBuild::Reference);
-  if (builds.empty() || pinned == builds.end()) return std::nullopt;
+  if (builds.empty()) return std::nullopt;
   const model::RunnerBuild& best = PickFor(config_, builds, fit);
+  // Its build was removed: auto picks again rather than leave it broken.
+  const auto pinned = std::ranges::find(builds, game.runner_ref, &model::RunnerBuild::Reference);
+  if (pinned == builds.end()) return best;
   // Only for what fits the game: a newer build alone never moves a working game.
   if (FitRank(fit, best) <= FitRank(fit, *pinned)) return std::nullopt;
   return best;
@@ -287,6 +289,14 @@ std::string RunnerRegistry::ResolveRef(const model::Game& game) const {
   if (ref == "auto" && web) ref = "browser:auto";
   if (ref == "auto") ref = BuildsFor("proton").empty() ? "wine:auto" : "proton:auto";
   return ref;
+}
+
+void TakeRunner(model::Game& game, const model::Game& provisioned) {
+  game.runner_ref = provisioned.runner_ref;
+  if (provisioned.runner_config.contains(kAutoPicked))
+    game.runner_config[kAutoPicked] = true;
+  else
+    game.runner_config.erase(kAutoPicked);
 }
 
 std::unique_lock<std::mutex> LockPrefix(const std::string& data_dir) {

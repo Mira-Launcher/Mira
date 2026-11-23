@@ -65,7 +65,7 @@ void TryProvision(model::Game game, const runner::RunnerRegistry& runners, store
   };
   const model::Game provisioned = runners.ProvisionGame(game);
   auto result = games.Update(game.id, [&](model::Game& stored) {
-    stored.runner_ref = provisioned.runner_ref;
+    runner::TakeRunner(stored, provisioned);
     stored.status = provisioned.status;
     stored.last_error = provisioned.last_error;
   });
@@ -655,7 +655,7 @@ bool Reprovision(const runner::RunnerRegistry& runners, store::GameStore& games,
 
   const model::Game provisioned = runners.ProvisionGame(game);
   auto result = games.Update(game.id, [&](model::Game& stored) {
-    stored.runner_ref = provisioned.runner_ref;
+    runner::TakeRunner(stored, provisioned);
     stored.status = provisioned.status;
     stored.last_error = provisioned.last_error;
   });

@@ -96,7 +96,9 @@ void RemoveModManager(QWidget* parent, const std::string& id, const QString& nam
 // Opens the Winetricks card. Fetches the full record first to check data_dir
 // (not in the list summary) before opening; mirad only rejects "no
 // prefix" asynchronously, so this catches it up front instead.
-void RunWinetricks(QWidget* parent, const std::string& id, const QString& name);
+// `verb` starts in its field.
+void RunWinetricks(QWidget* parent, const std::string& id, const QString& name,
+                   const QString& verb = {});
 
 // Flips this game's desktop_entries.enabled override to the opposite of
 // `currently_enabled` (the caller already resolved it to label the menu
