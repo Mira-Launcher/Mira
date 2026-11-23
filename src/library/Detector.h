@@ -60,7 +60,9 @@ class Detector {
 
   explicit Detector(DetectorSettings settings) : settings_(std::move(settings)) {}
 
-  Result Detect(const std::filesystem::path& folder) const;
+  // `name` is the game's own name, matched instead of the folder's when the folder says nothing
+  // (a store's "game-543813").
+  Result Detect(const std::filesystem::path& folder, const std::string& name = {}) const;
 
  private:
   DetectorSettings settings_;

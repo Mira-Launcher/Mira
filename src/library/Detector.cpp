@@ -229,8 +229,9 @@ bool LooksLikeWebGame(const fs::path& file) {
   return !(short_page && sends_away);
 }
 
-Detector::Result Detector::Detect(const fs::path& folder) const {
-  const std::string cleaned_name = strings::CleanGameName(folder.filename().string());
+Detector::Result Detector::Detect(const fs::path& folder, const std::string& name) const {
+  const std::string cleaned_name =
+      strings::CleanGameName(name.empty() ? folder.filename().string() : name);
   std::vector<RawCandidate> raw = WalkForExecutables(folder, settings_);
   // A page is the game only when nothing in the folder runs: a program beside one (NW.js games
   // keep theirs in www/, others ship a manual) is what starts the game.
