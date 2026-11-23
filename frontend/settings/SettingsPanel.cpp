@@ -31,6 +31,7 @@
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
 #include "../client/api/Emulators.h"
+#include "../client/api/Games.h"
 #include "../client/api/Runners.h"
 #include "../client/api/Stores.h"
 #include "../components/Card.h"
@@ -232,7 +233,16 @@ void SettingsPanel::BuildSchemaPages() {
     pages_[category] = page;
     // Which sources the sidebar shows, and in what order, sits with the sources themselves.
     if (category == "Sources" && sources_card_ != nullptr) page->AddWidget(sources_card_);
-    if (category == "Library") AddMiraFoldersCard(page);
+    if (category == "Library") {
+      AddMiraFoldersCard(page);
+      removed_card_ = page->AddCard("Removed games");
+      removed_card_->hide();  // until it's known to have any
+      ShowRemovedGames();
+      connect(EventHub::Instance(), &EventHub::Received, this,
+              [this](const std::string& type, const std::string&, bool live) {
+                if (live && (type == "game.removed" || type == "games.removed")) ShowRemovedGames();
+              });
+    }
     Card* card = nullptr;
     ExpanderRow* expander = nullptr;
     int group = -1;
@@ -684,6 +694,59 @@ QStringList ListValue(const ConfigResult& config, const std::string& key) {
 }
 
 }  // namespace
+
+// What removed games left on disk: their prefixes and save backups, kept for when a game comes
+// back, and files still there to add back.
+void SettingsPanel::ShowRemovedGames() {
+  api::GetRemovedGamesAsync(this, [this](RemovedGamesResult result) {
+    if (removed_card_ == nullptr) return;
+    removed_card_->ClearRows();
+    removed_card_->setVisible(result.ok && !result.games.empty());
+    for (const RemovedGame& game : result.games) {
+      QStringList kept;
+      if (game.prefix_bytes > 0)
+        kept << "Prefix " + SizeText(static_cast<qint64>(game.prefix_bytes));
+      if (game.saves_bytes > 0)
+        kept << "Save backups " + SizeText(static_cast<qint64>(game.saves_bytes));
+      if (!game.install_path.empty())
+        kept << "Files still in " + HomeRelative(QString::fromStdString(game.install_path));
+      auto* row =
+          new SettingRow(QString::fromStdString(game.name), kept.join(" · "), removed_card_);
+      if (!game.install_path.empty()) {
+        auto* add = new QPushButton("Add back", row);
+        connect(add, &QPushButton::clicked, this, [this, game] {
+          api::AddManualGameAsync(
+              this, game.install_path, game.exe_path, game.name, {}, false, false,
+              [this, game](GameDetailResult added) {
+                if (!added.ok)
+                  notify::FailedRequest(
+                      this, "Could not add back " + QString::fromStdString(game.name), added.error);
+                ShowRemovedGames();
+              });
+        });
+        row->AddControl(add);
+      }
+      if (game.prefix_bytes > 0 || game.saves_bytes > 0) {
+        auto* remove = new QPushButton("Delete", row);
+        connect(remove, &QPushButton::clicked, this, [this, game] {
+          const QString name = QString::fromStdString(game.name);
+          if (!notify::Confirm(this, "Delete what " + name + " kept?",
+                               "Its prefix and save backups are deleted, and can't be recovered. "
+                               "Its play history stays.",
+                               "Delete"))
+            return;
+          api::DeleteRemovedGameAsync(this, game.id, [this, name](StoreActionResult done) {
+            if (!done.ok)
+              notify::FailedRequest(this, "Could not delete what " + name + " kept", done.error);
+            ShowRemovedGames();
+          });
+        });
+        row->AddControl(remove);
+      }
+      removed_card_->AddRow(row);
+    }
+  });
+}
 
 void SettingsPanel::AddMiraFoldersCard(SettingsPage* page) {
   mira_folders_card_ = page->AddCard("Mira folders");

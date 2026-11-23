@@ -218,8 +218,10 @@ TEST_CASE("a game found again where a removed one was gets the removed one's id"
 
   CHECK(store.NextId("Celeste Classic", "/games/celeste") == "celeste");
   CHECK(store.NextId("Tool Box", "/games/Apps", "Tool.AppImage") == "tool");
-  // Another program in the same folder is another game.
+  // Another program in the same folder is another game, and another folder of the same name
+  // doesn't take the removed one's id, and with it its settings.
   CHECK(store.NextId("Tool Box", "/games/Apps", "Other.AppImage") == "tool-box");
+  CHECK(store.NextId("Celeste", "/games/other") == "celeste-2");
   REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
   CHECK(store.NextId("Celeste Classic", "/games/celeste") == "celeste-classic");
 }

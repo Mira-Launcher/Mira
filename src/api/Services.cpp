@@ -852,9 +852,6 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
     if (auto purged = modmanagers::PurgeBeforeDelete(game, others, files, prefix); !purged)
       return purged;
   }
-  if (backups) {
-    if (auto deleted = saves::DeleteBackups(config, game.id); !deleted) return deleted;
-  }
   // Its link in a library folder goes with it, whatever else is kept.
   if (!game.library_link.empty()) {
     library::RemoveLink(game);
@@ -870,8 +867,15 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
         return removed;
     }
   } else if (files) {
-    if (auto deleted = library::DeleteGameFiles(config, game, staying); !deleted) return deleted;
+    // Asked for this game, so its own folder outside Mira's folders goes too.
+    if (auto deleted = library::DeleteGameFiles(config, game, staying, /*outside=*/true); !deleted)
+      return deleted;
     library::PruneEmptyContainers(config, library::SortingFolderOf(config, game), others);
+  }
+  // The installer it came from, still in a library folder, would be scanned back in as a game.
+  if (std::error_code ec; files && std::filesystem::is_directory(game.installer_dir, ec)) {
+    if (auto deleted = library::DeleteInstallerFolder(config, game); !deleted)
+      log::Warn("kept {}'s installer folder: {}", game.id, deleted.error().message);
   }
   if (std::error_code ec;
       prefix && !game.data_dir.empty() && std::filesystem::exists(game.data_dir, ec)) {
@@ -888,6 +892,10 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   if ((files || prefix) && !game.id.empty()) {
     std::error_code ec;
     std::filesystem::remove_all(paths::ShaderCacheDir(game.id), ec);
+  }
+  // Last: a game whose files couldn't go stays, and keeps its backups.
+  if (backups) {
+    if (auto deleted = saves::DeleteBackups(config, game.id); !deleted) return deleted;
   }
   // Metadata lives in Mira's own folder, keyed by id, so no root check is needed.
   if (forget) {

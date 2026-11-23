@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 
+#include "emulators/Emulators.h"
 #include "store/GameStore.h"
 #include "support/LiveServer.h"
 #include "support/TestEnv.h"
@@ -255,6 +256,26 @@ TEST_CASE("The removal plan says what each kind of game loses, and how much") {
   outside.name = "Outside";
   outside.install_path = TempDir("removal-plan-outside").string();
   add(outside);
+  // The user's own folder outside Mira's: deleted only when asked.
+  const fs::path home = TempDir("removal-plan-home");
+  const test::EnvVar home_var("HOME", home.c_str());
+  model::Game own;
+  own.id = "own";
+  own.name = "Own";
+  own.install_path = (home / "Stuff" / "Own").string();
+  Touch(fs::path(own.install_path) / "own.exe");
+  add(own);
+  // A ROM in its emulator's folder goes with it, or a scan adds it back.
+  const fs::path roms = emulators::RomDir(server.config(), *emulators::Find("mgba"));
+  Touch(roms / "Puzzle.gba");
+  model::Game rom;
+  rom.id = "mgba-puzzle";
+  rom.name = "Puzzle";
+  rom.source = "mgba";
+  rom.runner_ref = "emulator:mgba";
+  rom.install_path = roms.string();
+  rom.exe_path = "Puzzle.gba";
+  add(rom);
   // Sharing Animal Well's prefix keeps it.
   model::Game sharer = folder;
   sharer.id = "sharer";
@@ -262,8 +283,8 @@ TEST_CASE("The removal plan says what each kind of game loses, and how much") {
   sharer.install_path = (library_root / "Sharer").string();
 
   httplib::Client client = server.Client();
-  const json ids = {"steam-400", "epic-aaa", "animal-well", "dispatch",
-                    "cuphead",   "olympus",  "outside",     "nope"};
+  const json ids = {"steam-400", "epic-aaa", "animal-well", "dispatch",    "cuphead",
+                    "olympus",   "outside",  "own",         "mgba-puzzle", "nope"};
   const auto plans = [&] {
     auto res = client.Post("/v1/games/removal", json{{"ids", ids}}.dump(), "application/json");
     REQUIRE(res != nullptr);
@@ -273,7 +294,7 @@ TEST_CASE("The removal plan says what each kind of game loses, and how much") {
     return by_id;
   };
   std::map<std::string, json> plan = plans();
-  CHECK(plan.size() == 7);
+  CHECK(plan.size() == 9);
   CHECK(plan["steam-400"]["kind"] == "steam");
   CHECK(plan["steam-400"]["prefix"] == "");
   CHECK(plan["epic-aaa"]["kind"] == "store");
@@ -287,7 +308,10 @@ TEST_CASE("The removal plan says what each kind of game loses, and how much") {
   CHECK(plan["cuphead"]["kind"] == "folder");
   CHECK(plan["cuphead"]["folder_is_prefix"] == true);
   CHECK(plan["olympus"]["kind"] == "external");
-  CHECK(plan["outside"]["kind"] == "external");
+  CHECK(plan["outside"]["kind"] == "external");  // not under home or a mounted drive
+  CHECK(plan["own"]["kind"] == "outside");
+  CHECK(plan["mgba-puzzle"]["kind"] == "folder");
+  CHECK(plan["mgba-puzzle"]["files"] == (roms / "Puzzle.gba").string());
   CHECK(plan["animal-well"]["prefix_shared_with"] == "");
   add(sharer);
   CHECK(plans()["animal-well"]["prefix_shared_with"] == "Sharer");

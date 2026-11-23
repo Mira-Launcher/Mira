@@ -2031,9 +2031,10 @@ void LibraryWindow::AskRemove(const std::vector<std::string>& ids) {
     connect(card, &mira_gui::RemoveGamesCard::CloseRequested, this,
             &LibraryWindow::CloseSidebarCard);
     connect(card, &mira_gui::RemoveGamesCard::Confirmed, this,
-            [this, plans](bool delete_prefix, bool delete_saves) {
+            [this, plans](bool delete_prefix, bool delete_saves, bool delete_outside) {
               CloseSidebarCard();
-              mira_gui::actions::RemoveGames(this, plans, delete_prefix, delete_saves);
+              mira_gui::actions::RemoveGames(this, plans, delete_prefix, delete_saves,
+                                             delete_outside);
             });
     ShowSidebarCard(card);
     mira_gui::api::GetRemovalSizesAsync(card, measured, [card](mira_gui::RemovalSizesResult sizes) {

@@ -449,6 +449,8 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                    {"uninstall", plan->uninstall},
                    {"data", plan->data},
                    {"kept", plan->kept},
+                   {"roms", plan->roms},
+                   {"move_to", plan->move_to},
                    {"purged", purged},
                    {"signs_out", plan->signs_out}});
   });
@@ -470,12 +472,24 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
         held->push_back(std::move(*claim));
       }
     }
+    // Its games leave the library, and may lose their files: none may be running or busy.
+    for (const library::RemovalGame& game : plan->games) {
+      if (std::ranges::contains(plan->purged, game.id, &library::RemovalGame::id)) continue;
+      auto claim = s.Claim(game.id, "removing its source");
+      if (!claim) return SendError(res, 409, claim.error());
+      held->push_back(std::move(*claim));
+    }
     const json body = json::parse(req.body, nullptr, false);
     const bool delete_data = body.is_object() && body.value("delete_data", false);
+    library::RomChoice roms;
+    if (body.is_object()) {
+      roms.delete_files = body.value("delete_roms", false);
+      roms.move_to = body.value("move_roms_to", std::string());
+    }
     s.StartJob(req, res, "remove_source", source, "Removing " + source,
-               [&s, source, delete_data, held](JobRegistry::Progress&) -> Result<json> {
+               [&s, source, delete_data, roms, held](JobRegistry::Progress&) -> Result<json> {
                  auto removed =
-                     library::RemoveSource(s.config, s.games, s.events, source, delete_data);
+                     library::RemoveSource(s.config, s.games, s.events, source, delete_data, roms);
                  if (!removed) return std::unexpected(removed.error());
                  s.SyncDesktopEntries();
                  s.events.Publish("sources.changed", json::object());

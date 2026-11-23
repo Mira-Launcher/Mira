@@ -117,6 +117,12 @@ void RunWinetricksAsync(QObject* context, const std::string& id, const std::stri
 void GetInstalledTricksAsync(QObject* context, const std::string& id,
                              std::function<void(InstalledTricksResult)> callback);
 
+// GET /v1/removed-games, and DELETE /v1/removed-games/{id}: deletes a removed game's kept prefix
+// and save backups.
+void GetRemovedGamesAsync(QObject* context, std::function<void(RemovedGamesResult)> callback);
+void DeleteRemovedGameAsync(QObject* context, const std::string& id,
+                            std::function<void(StoreActionResult)> callback);
+
 // POST /v1/games/manual: adds a game record directly, for an installer or
 // a folder outside every library root, tagged `app` when `app`. Response mirrors GetGameAsync.
 void AddManualGameAsync(QObject* context, const std::string& install_path,

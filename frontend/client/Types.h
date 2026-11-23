@@ -1292,7 +1292,7 @@ struct DeleteGamesResult {
 struct RemovalPlan {
   std::string id;
   std::string name;
-  std::string kind;  // "steam", "store", "folder" or "external"
+  std::string kind;  // "steam", "store", "folder", "outside" or "external"
   std::string tool;  // who deletes a store game's files ("Legendary"); "" for Mira
   std::string files;
   std::string files_in_prefix;  // "C:\Games\X" when it's installed inside its prefix
@@ -1302,9 +1302,10 @@ struct RemovalPlan {
   std::string saves;  // its save backups' folder; "" when it has none
 };
 
-// Whether removing it asks for its files to go: never another app's or the user's own.
+// Whether removing it deletes its files: in Mira's folders or a store's. Files "outside" them go
+// only when asked; another app's never do.
 inline bool DeletesFiles(const RemovalPlan& plan) {
-  return plan.kind != "external";
+  return plan.kind != "external" && plan.kind != "outside";
 }
 
 // Whether removing it can also delete its prefix: one Mira made, used by no other game, and not
@@ -1312,6 +1313,22 @@ inline bool DeletesFiles(const RemovalPlan& plan) {
 inline bool HasPrefixToDelete(const RemovalPlan& plan) {
   return !plan.prefix.empty() && plan.prefix_shared_with.empty() && !plan.folder_is_prefix;
 }
+
+// A removed game that left something on disk (GET /v1/removed-games).
+struct RemovedGame {
+  std::string id;
+  std::string name;
+  std::string install_path;  // "" unless its files are still there to add back
+  std::string exe_path;
+  std::uint64_t prefix_bytes = 0;  // its kept prefix, 0 when none
+  std::uint64_t saves_bytes = 0;   // its save backups
+};
+
+struct RemovedGamesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<RemovedGame> games;
+};
 
 struct RemovalPlansResult {
   bool ok = false;
@@ -1623,7 +1640,9 @@ struct RemovalPlanResult {
   std::vector<std::string> kept;
   std::vector<std::string> purged;  // names of the games a mod manager is undone on
   bool signs_out = false;
-  std::vector<std::string> tools;  // names of the store tools Mira downloaded, deleted
+  int roms = 0;                      // an emulator's games in Mira's folders
+  std::vector<std::string> move_to;  // emulator ids that take all of them
+  std::vector<std::string> tools;    // names of the store tools Mira downloaded, deleted
 };
 
 // POST /v1/sources/{id}/remove.

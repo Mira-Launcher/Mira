@@ -136,7 +136,7 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
                                   : QString::fromStdString(plan.files_in_prefix) + " in its prefix";
         return size.arg(Size(plan.id, false), where);
       });
-    } else {
+    } else if (plan.kind != "outside") {
       AddInfoRow("Its files", [] { return QString("Stay where they are"); });
     }
     if (!plan.prefix.empty() && !plan.prefix_shared_with.empty()) {
@@ -149,6 +149,7 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
       AddGameRow(QString::fromStdString(plan.name), [this, plan] {
         if (plan.kind == "steam") return QString("Uninstalled by Steam");
         if (plan.kind == "external") return QString("Files stay");
+        if (plan.kind == "outside") return Size(plan.id, false) + " · outside Mira's folders";
         const QString what = plan.kind == "store" && !plan.tool.empty()
                                  ? "uninstalled by " + QString::fromStdString(plan.tool)
                              : plan.folder_is_prefix ? QString("folder and prefix deleted")
@@ -158,6 +159,7 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
     }
     if (plans_.size() > 6) SetScrollable();
   }
+  AddOutsideRow();
   AddPrefixRow();
   AddSavesRow();
 
@@ -171,7 +173,8 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
   if (deletes) confirm->SetKind(ButtonKind::Danger);
   connect(confirm, &QPushButton::clicked, this, [this] {
     emit Confirmed(prefix_ != nullptr && prefix_->isChecked(),
-                   saves_ != nullptr && saves_->isChecked());
+                   saves_ != nullptr && saves_->isChecked(),
+                   outside_ != nullptr && outside_->isChecked());
   });
   buttons_layout->addWidget(confirm);
   // Reached by a click or the Delete key, so Return mustn't confirm it a second time.
@@ -202,6 +205,35 @@ void RemoveGamesCard::AddGameRow(const QString& name, std::function<QString()> t
   row->AddWideControl(line);
   AddRow(row);
   refresh_.push_back([value, text = std::move(text)] { value->setText(text()); });
+}
+
+void RemoveGamesCard::AddOutsideRow() {
+  std::vector<const RemovalPlan*> outside;
+  for (const RemovalPlan& plan : plans_) {
+    if (plan.kind == "outside") outside.push_back(&plan);
+  }
+  if (outside.empty()) return;
+  const bool one = plans_.size() == 1;
+  const QString label = one ? "Delete its files" : "Delete files outside Mira's folders";
+  auto* row = new SettingRow(label, QString(), this);
+  auto* size = MakeLabel(row, QString(), text::kSubtle);
+  if (one) size->setToolTip(HomeRelative(QString::fromStdString(outside.front()->files)));
+  row->AddControl(size);
+  outside_ = new Switch(row);
+  outside_->setAccessibleName(label);
+  row->AddControl(outside_);
+  AddRow(row);
+  const auto text = [this, one, outside] {
+    if (!measured_) return QString("…");
+    qint64 total = 0;
+    for (const RemovalPlan* plan : outside) {
+      if (const auto it = sizes_.find(plan->id); it != sizes_.end())
+        total += static_cast<qint64>(it->second.files);
+    }
+    return one ? SizeText(total) : QString("%1 · %2").arg(outside.size()).arg(SizeText(total));
+  };
+  size->setText(text());
+  refresh_.push_back([size, text] { size->setText(text()); });
 }
 
 void RemoveGamesCard::AddPrefixRow() {

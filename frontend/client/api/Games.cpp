@@ -547,6 +547,38 @@ void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, boo
       FillDeleteGames, std::move(callback));
 }
 
+void GetRemovedGamesAsync(QObject* context, std::function<void(RemovedGamesResult)> callback) {
+  async::Run(
+      context,
+      [] {
+        return ReadReply<RemovedGamesResult>(
+            transport::Get("/v1/removed-games"), "GET /v1/removed-games", Shape::Array,
+            [](RemovedGamesResult& result, const json& body) {
+              for (const json& entry : body) {
+                result.games.push_back(
+                    {.id = entry.at("id").get<std::string>(),
+                     .name = entry.value("name", std::string()),
+                     .install_path = entry.value("install_path", std::string()),
+                     .exe_path = entry.value("exe_path", std::string()),
+                     .prefix_bytes = entry.value("prefix_bytes", std::uint64_t{0}),
+                     .saves_bytes = entry.value("saves_bytes", std::uint64_t{0})});
+              }
+            });
+      },
+      std::move(callback));
+}
+
+void DeleteRemovedGameAsync(QObject* context, const std::string& id,
+                            std::function<void(StoreActionResult)> callback) {
+  async::Run(
+      context,
+      [id] {
+        const auto reply = transport::Delete("/v1/removed-games/" + PercentEncode(id));
+        return StoreActionResult{reply.ok, reply.error};
+      },
+      std::move(callback));
+}
+
 void GetRemovalPlansAsync(QObject* context, const std::vector<std::string>& ids,
                           std::function<void(RemovalPlansResult)> callback) {
   async::Run(

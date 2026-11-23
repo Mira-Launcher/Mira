@@ -33,6 +33,10 @@ struct RemovalPlan {
   std::vector<std::string>
       data;  // an emulator's settings, saves and caches, deleted only when asked
   std::vector<std::string> kept;  // prefixes and save folders left alone
+  // An emulator's games in Mira's folders, whose files the user picks to keep, delete or move to
+  // one of `move_to` (installed emulators that take every one of them).
+  int roms = 0;
+  std::vector<std::string> move_to;
   // The games a mod manager was added to: what it deployed is undone and its data deleted there.
   std::vector<RemovalGame> purged;
   bool signs_out = false;
@@ -51,10 +55,16 @@ struct RemovalResult {
   std::vector<std::string> problems;  // steps that failed; the rest still ran
 };
 
+// What happens to an emulator's games in Mira's folders.
+struct RomChoice {
+  bool delete_files = false;
+  std::string move_to;  // an emulator id: its games move there and stay in the library
+};
+
 // `delete_data` also deletes the plan's `data`.
 Result<RemovalResult> RemoveSource(config::Config& config, store::GameStore& games,
                                    api::EventBus& events, std::string_view source,
-                                   bool delete_data = false);
+                                   bool delete_data = false, const RomChoice& roms = {});
 
 // Deletes `target` if it is strictly inside one of `roots` (never a root
 // itself).
@@ -67,15 +77,18 @@ Result<void> DeleteInside(const std::string& target,
 // root, or the game's own prefix). A game run from an AppImage in a shared
 // folder loses just the AppImage, and a program the game only runs (see
 // RunsExternalProgram) is left alone.
+// With `outside`, also the game's own folder outside them, when PlanGameRemoval would call it
+// "outside": only ever when the user asked.
 Result<void> DeleteGameFiles(const config::Config& config, const model::Game& game,
-                             std::span<const model::Game> library);
+                             std::span<const model::Game> library, bool outside = false);
 
 // What removing one game can delete, for a client to show before asking.
 struct GameRemoval {
   std::string id;
   std::string name;
   // "steam": Steam's own uninstall takes it. "store": its store's tool or Mira deletes its files.
-  // "folder": Mira deletes its files. "external": its files aren't Mira's, so they stay.
+  // "folder": in Mira's folders, so Mira deletes its files. "outside": its own files outside them,
+  // deleted only when asked. "external": another app's, so they stay.
   std::string kind;
   std::string tool;   // who deletes a store game's files ("Legendary"), "" for Mira
   std::string files;  // the folder or file delete_files removes; "" for "external"
