@@ -9,6 +9,7 @@
 #include "config/Config.h"
 #include "core/Paths.h"
 #include "core/Strings.h"
+#include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "runner/UmuDatabase.h"
 #include "steam/SteamDetector.h"
@@ -77,6 +78,8 @@ std::vector<model::RunnerBuild> ProtonRunner::Discover(const config::Config& con
       if (!entry.is_directory(ec)) continue;
       const fs::path& dir = entry.path();
       if (!fs::exists(dir / "proton", ec) || !fs::exists(dir / "toolmanifest.vdf", ec)) continue;
+      // A build for the other architecture would be auto's pick and fail every launch.
+      if (!ForThisMachine(dir.filename().string())) continue;
 
       model::RunnerBuild build;
       build.kind = "proton";

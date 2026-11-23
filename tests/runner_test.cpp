@@ -17,6 +17,7 @@
 #include "runner/AntiCheat.h"
 #include "runner/AntiCheatRuntime.h"
 #include "runner/Curl.h"
+#include "runner/Downloader.h"
 #include "runner/Exec.h"
 #include "runner/Gpu.h"
 #include "runner/NativeRunner.h"
@@ -559,6 +560,9 @@ TEST_CASE("auto picks the Proton with the game's fix, and moves an auto-picked g
   const fs::path dir = env.dir / "proton";
   REQUIRE(env.config.Set("runner_search_paths", nlohmann::json::array({dir.string()})));
   FakeProton(dir, "UMU-Proton-10.0", 1800000000);
+  // A build for the other architecture is never found, so never picked.
+  FakeProton(dir, runner::kArmHost ? "UMU-Proton-11.0-x86_64" : "UMU-Proton-11.0-aarch64",
+             1900000000);
 
   model::Game game;
   game.id = "gog-aow";

@@ -152,7 +152,8 @@ std::optional<ReleaseAsset> AssetOf(const json& release, const std::string& patt
   if (!assets.is_array()) return std::nullopt;
   for (const auto& asset : assets) {
     const std::string name = core::JsonString(asset, "name");
-    if (!strings::GlobMatch(pattern, name) || Excluded(exclude, name)) continue;
+    if (!strings::GlobMatch(pattern, name) || Excluded(exclude, name) || !ForThisMachine(name))
+      continue;
     ReleaseAsset entry;
     entry.tag = core::JsonString(release, "tag_name");
     entry.asset_name = name;
@@ -307,6 +308,15 @@ Result<void> Chmod(const fs::path& path) {
 }
 
 }  // namespace
+
+bool ForThisMachine(const std::string& asset_name, bool arm) {
+  // Releases such as UMU-Proton's ship an ARM and an x86_64 build side by side, either can sort
+  // first. A name that gives no architecture is taken as fine.
+  const auto names = [&](std::initializer_list<const char*> marks) {
+    return std::ranges::any_of(marks, [&](const char* mark) { return asset_name.contains(mark); });
+  };
+  return arm ? !names({"x86_64", "amd64"}) : !names({"aarch64", "arm64"});
+}
 
 Result<std::vector<ReleaseAsset>> ListReleases(const config::Config& config,
                                                const std::string& kind) {
