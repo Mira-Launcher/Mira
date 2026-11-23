@@ -24,7 +24,20 @@
 
 namespace mira::library {
 namespace {
+
 namespace fs = std::filesystem;
+
+// Whether `dir` or a folder in it holds a file.
+bool HasAnyFile(const fs::path& dir) {
+  std::error_code ec;
+  for (fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec),
+       end;
+       !ec && it != end; it.increment(ec)) {
+    std::error_code type_ec;
+    if (!it->is_directory(type_ec)) return true;
+  }
+  return false;
+}
 
 // What a game's status should be when its folder reappears after being
 // marked Missing. Derived from the game's own data rather than assumed:
@@ -497,6 +510,8 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
             return strings::GlobMatch(strings::ToLower(glob), strings::ToLower(basename));
           });
       if (ignored) continue;
+      // An uninstaller's leftover folders, or one made for an install that never ran.
+      if (!existing && !HasAnyFile(dir)) continue;
 
       seen_install_paths.insert(install_path);
 
