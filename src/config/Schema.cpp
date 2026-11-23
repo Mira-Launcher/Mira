@@ -1254,9 +1254,9 @@ Schema::Schema() {
          .type = Type::Bool,
          .default_value = true,
          .scope = Scope::PerGame,
-         .doc = "Proton swaps the game's DLSS for the newest on an NVIDIA GPU, and FSR 3.1 for "
-                "FSR 4 on a Radeon RX 9000. Skipped for games with anti-cheat. Needs GE-Proton "
-                "or another Proton with these upgrades.",
+         .doc = "Proton swaps the game's DLSS and frame generation for the newest on an NVIDIA "
+                "GPU, and FSR 3.1 for FSR 4 on a Radeon RX 9000. Skipped for games with "
+                "anti-cheat. Needs GE-Proton or another Proton with these upgrades.",
          .keywords = "dlss fsr fsr4 upscaling nvidia amd radeon upgrade",
          .applies = {.platforms = {"windows"}}});
 
