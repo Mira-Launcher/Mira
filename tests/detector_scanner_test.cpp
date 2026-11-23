@@ -127,6 +127,8 @@ TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders")
   // guards against (see docs/backend.md).
   fs::create_directories(lib / "prefix" / "celeste" / "drive_c");
   Touch(lib / "prefix" / "celeste" / "system.reg");
+  // Nor is an uninstalled game's leftover tree of empty folders.
+  fs::create_directories(lib / "Uninstalled" / "Data" / "Saves");
 
   library::ScanSummary first = scanner.ScanAll();
   CHECK(first.added == 1);

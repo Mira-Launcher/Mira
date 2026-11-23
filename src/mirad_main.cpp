@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <filesystem>
@@ -91,10 +92,16 @@ int main(int argc, char** argv) {
   std::filesystem::permissions(mira::paths::UserDir(), std::filesystem::perms::owner_all, ec);
 
   // One mirad per library: a second would scan, reconcile sessions and clear caches under the
-  // first, then take its socket. The lock goes with the process.
+  // first, then take its socket. The lock goes with the process. One that is stopping (an update
+  // restarting Mira) has closed its socket but may still be finishing its work: wait for it.
   const std::filesystem::path lock_file = mira::paths::UserDir() / "mirad.lock";
-  if (const int lock = ::open(lock_file.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
-      lock < 0 || ::flock(lock, LOCK_EX | LOCK_NB) != 0) {
+  const int lock = ::open(lock_file.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+  bool locked = lock >= 0 && ::flock(lock, LOCK_EX | LOCK_NB) == 0;
+  for (int waited = 0; lock >= 0 && !locked && waited < 100; ++waited) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    locked = ::flock(lock, LOCK_EX | LOCK_NB) == 0;
+  }
+  if (!locked) {
     std::fprintf(stderr, "mirad: another mirad is already running for %s\n",
                  mira::paths::UserDir().c_str());
     return 1;

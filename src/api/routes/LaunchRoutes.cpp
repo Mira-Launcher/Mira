@@ -131,8 +131,11 @@ void ApplyGpuFlags(Command& command, const config::Resolver& resolver, const con
   if (const auto listed = runner::FindAntiCheat(config, game);
       listed && !listed->anticheats.empty())
     return;
-  if (gpu.nvidia && resolver.GetBool("launch.nvapi"))
+  if (gpu.nvidia && resolver.GetBool("launch.nvapi")) {
     command.env.try_emplace("PROTON_DLSS_UPGRADE", "1");
+    command.env.try_emplace("PROTON_ENABLE_NGX_UPDATER", "1");  // the driver's own newer DLSS
+    command.env.try_emplace("PROTON_STREAMLINE_UPGRADE", "1");  // newer frame generation
+  }
   if (gpu.rdna4) command.env.try_emplace("PROTON_FSR4_UPGRADE", "1");
 }
 

@@ -112,7 +112,8 @@ int RepointRemovedBuilds(config::Config& config, store::GameStore& games,
 }
 
 int RepointRefs(config::Config& config, store::GameStore& games, const MovedRef& moved,
-                std::vector<std::string>* game_ids) {
+                std::vector<std::string>* game_ids,
+                const std::function<bool(const model::Game&)>& moves_game) {
   int changed = 0;
   std::vector<const config::Entry*> runner_keys;
   for (const config::Entry& entry : config::Schema::Instance().Entries()) {
@@ -127,6 +128,7 @@ int RepointRefs(config::Config& config, store::GameStore& games, const MovedRef&
   }
 
   for (const model::Game& game : games.All()) {
+    if (moves_game && !moves_game(game)) continue;
     auto to = moved(game.runner_ref);
     nlohmann::json overrides = game.overrides;
     bool overrides_changed = false;

@@ -993,7 +993,8 @@ Result<json> Services::DownloadRunner(const std::string& kind, const std::string
   library::RetryBrokenProvisioning(config, games, events);
   json finished = base;
   if (!replacing.empty()) {
-    // Move what used the old build onto the new one.
+    // The settings and the games "auto" set up move to the new build; a game whose build was
+    // chosen by hand keeps the old one, which stays installed.
     const runner::RunnerRegistry registry(config);
     const std::vector<model::RunnerBuild> builds = runner::BuildsOfKind(registry, kind);
     const auto fresh = std::ranges::find_if(builds, [&](const model::RunnerBuild& build) {
@@ -1009,7 +1010,8 @@ Result<json> Services::DownloadRunner(const std::string& kind, const std::string
           [&](const std::string& ref) {
             return ref == replacing ? std::optional(to) : std::nullopt;
           },
-          &ids);
+          &ids,
+          [](const model::Game& game) { return game.runner_config.contains(runner::kAutoPicked); });
       json moved = json::array();
       const RecordSettings settings = CurrentRecordSettings();
       for (const std::string& id : ids) {

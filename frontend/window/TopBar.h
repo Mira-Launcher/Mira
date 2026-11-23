@@ -8,6 +8,8 @@ class QToolButton;
 
 namespace mira_gui {
 
+class IconButton;
+
 // The library window's title bar: brand, tile size, Activity, Refresh, Shortcuts, About, then the
 // window's own buttons.
 class TopBar : public TitleBar {
@@ -21,6 +23,8 @@ class TopBar : public TitleBar {
   QToolButton* activity_button() const { return activity_; }
   // Running downloads and installs, shown beside the Activity icon.
   void SetActivityCount(int running);
+  // The refresh button spins while a refresh runs.
+  void SetRefreshing(bool refreshing);
   QToolButton* updates_button() const { return updates_; }
   // What has a newer release, shown beside the Updates icon.
   void SetUpdatesCount(int pending);
@@ -54,7 +58,7 @@ class TopBar : public TitleBar {
   QToolButton* updates_ = nullptr;
   QToolButton* notice_ = nullptr;
   QToolButton* big_screen_ = nullptr;
-  QToolButton* refresh_ = nullptr;
+  IconButton* refresh_ = nullptr;
   QToolButton* shortcuts_ = nullptr;
   QToolButton* about_ = nullptr;
 };

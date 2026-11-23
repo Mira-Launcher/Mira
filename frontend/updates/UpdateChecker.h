@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <functional>
 #include <vector>
 
 #include "../client/Types.h"
@@ -18,17 +19,19 @@ class UpdateChecker : public QObject {
   const std::vector<UpdateInfo>& Updates() const { return updates_; }
 
   // While updates.check is on. `refresh` is someone asking: it checks regardless, past mirad's
-  // cached answers.
-  void Check(bool refresh = false);
+  // cached answers. `done` runs once an answer lands, or fails.
+  void Check(bool refresh = false, std::function<void()> done = {});
 
  signals:
   void Changed();
 
  private:
   void Ask(bool refresh);
+  void Answered();
 
   std::vector<UpdateInfo> updates_;
   int request_ = 0;  // only the newest answer is kept
+  std::vector<std::function<void()>> waiting_;
 };
 
 }  // namespace mira_gui

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <json.hpp>
 #include <string>
+#include <utility>
 
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
@@ -27,27 +28,37 @@ UpdateChecker::UpdateChecker(QObject* parent) : QObject(parent) {
           });
 }
 
-void UpdateChecker::Check(bool refresh) {
+void UpdateChecker::Check(bool refresh, std::function<void()> done) {
+  // Kept until an answer lands, so a newer check superseding this one still runs it.
+  if (done) waiting_.push_back(std::move(done));
   if (refresh) return Ask(true);
   const int request = ++request_;
   api::GetConfigAsync(this, [this, request](ConfigResult config) {
-    if (request != request_ || !config.ok) return;
+    if (request != request_) return;
+    if (!config.ok) return Answered();
     const auto check = config.values.find("updates.check");
     if (check != config.values.end() && check->second == "false") {
       updates_.clear();
       emit Changed();
-      return;
+      return Answered();
     }
     Ask(false);
   });
 }
 
+void UpdateChecker::Answered() {
+  for (const auto& done : std::exchange(waiting_, {})) done();
+}
+
 void UpdateChecker::Ask(bool refresh) {
   const int request = ++request_;
   api::GetUpdatesAsync(this, refresh, [this, request](UpdatesResult result) {
-    if (request != request_ || !result.ok) return;
-    updates_ = std::move(result.updates);
-    emit Changed();
+    if (request != request_) return;
+    if (result.ok) {
+      updates_ = std::move(result.updates);
+      emit Changed();
+    }
+    Answered();
   });
 }
 

@@ -362,6 +362,7 @@ class LibraryWindow : public QMainWindow,
   mira_gui::OwnedTitles* owned_titles_ = nullptr;  // what a library search finds in the stores
   mira_gui::DaemonSupervisor* daemon_supervisor_ = nullptr;  // "Start mirad" from a failure
   bool mirad_reachable_ = true;  // as of the last request or event connection, for the footer
+  int refreshing_ = 0;           // parts of a refresh still running
   bool stream_dropped_ = false;  // the event stream lost mirad; its return resyncs the list
   // Bumped per RefreshGames, so an older reply landing late can't undo a newer one.
   int games_request_ = 0;
