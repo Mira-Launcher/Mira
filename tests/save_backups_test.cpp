@@ -126,7 +126,10 @@ TEST_CASE("Saves are backed up after play, once per change, keeping mtimes and s
   CHECK_FALSE(
       fs::equivalent(backups / first["id"].get<std::string>() / "files/install/saves/slot2.sav",
                      backups / second / "files/install/saves/slot2.sav"));
-  CHECK(saves::BackupBytes(backups) == paths::TreeBytes(backups) - 3);
+  // The file both snapshots hard-link is counted once.
+  CHECK(saves::BackupBytes(backups) == paths::TreeBytes(backups / first["id"].get<std::string>()) +
+                                           paths::TreeBytes(backups / second) -
+                                           fs::file_size(copy));
 
   // By hand: unchanged takes none; the newest saves.keep are kept.
   json job = saver.BackUp();
