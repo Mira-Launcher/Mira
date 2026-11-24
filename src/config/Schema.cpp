@@ -1432,6 +1432,15 @@ Schema::Schema() {
          .keywords = "cloud sync timeout offline",
          .unit = "s"});
 
+  s.Add({.key = "saves.rclone_bin",
+         .label = "rclone binary",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Path to the rclone binary. Empty uses the copy Mira downloaded, then the one on "
+                "your PATH.",
+         .path = PathKind::File,
+         .keywords = "cloud sync rclone"});
+
   s.Group("Where saves are", Sections::Fold::Collapsed);
 
   s.Add({.key = "saves.manifest_url",

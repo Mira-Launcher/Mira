@@ -174,7 +174,7 @@ bool DownloadTracker::HandleJobEvent(const std::string& type, const std::string&
   // Achievements refresh quietly behind the game card, which shows the result.
   if (kind == "achievements") return true;
   if (kind == "install" || kind == "update" || kind == "runner" ||
-      (kind == "setup" && (target == "umu" || target == "winetricks"))) {
+      (kind == "setup" && (target == "umu" || target == "winetricks" || target == "rclone"))) {
     // Kept so that row can cancel it.
     if (type == "job.started") {
       job_by_target_[QString::fromStdString(target)] = id;

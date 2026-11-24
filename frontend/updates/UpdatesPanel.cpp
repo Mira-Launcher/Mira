@@ -353,7 +353,7 @@ void UpdatesPanel::Update(const UpdateRow& update) {
   } else if (update.kind == "mod_manager") {
     api::InstallModManagerAsync(this, update.id,
                                 [done](StoreActionResult r) { done(r.ok, r.error); });
-  } else if (update.id == "umu" || update.id == "winetricks") {
+  } else if (update.id == "umu" || update.id == "winetricks" || update.id == "rclone") {
     api::SetupRunnerToolAsync(this, update.id,
                               [done](RunnerDownloadResult r) { done(r.ok, r.error); });
   } else {

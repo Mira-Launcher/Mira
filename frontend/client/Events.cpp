@@ -263,6 +263,7 @@ bool ParseStoreEvent(const std::string& event_type, const std::string& data, Sto
   static const std::pair<std::string_view, std::string_view> kSetupPrefixes[] = {
       {"umu.setup.", "umu"},
       {"winetricks.setup.", "winetricks"},
+      {"rclone.setup.", "rclone"},
   };
   std::string_view state;
   for (const auto& [prefix, source] : kSetupPrefixes) {

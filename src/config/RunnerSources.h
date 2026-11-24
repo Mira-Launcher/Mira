@@ -90,4 +90,14 @@ inline constexpr std::string_view kHumbleCliBinaryName = "humble-cli-linux-amd64
 inline constexpr std::string_view kNileRepo = "imLinguin/nile";
 inline constexpr std::string_view kNileAssetPattern = "nile_linux_x86_64";
 
+// rclone moves saves to a remote.
+inline constexpr std::string_view kRcloneRepo = "rclone/rclone";
+#if defined(__APPLE__)
+inline constexpr std::string_view kRcloneAssetPattern = "rclone-v*-osx-arm64.zip";
+#elif defined(__aarch64__)
+inline constexpr std::string_view kRcloneAssetPattern = "rclone-v*-linux-arm64.zip";
+#else
+inline constexpr std::string_view kRcloneAssetPattern = "rclone-v*-linux-amd64.zip";
+#endif
+
 }  // namespace mira::config::runner_sources

@@ -54,6 +54,11 @@ Result<Source> SourceFor(const config::Config& config, const std::string& kind) 
                   .asset_pattern = std::string(config::runner_sources::kUmuLauncherAssetPattern),
                   .exclude = {}};
   }
+  if (kind == "rclone") {
+    return Source{.repo = std::string(config::runner_sources::kRcloneRepo),
+                  .asset_pattern = std::string(config::runner_sources::kRcloneAssetPattern),
+                  .exclude = {}};
+  }
   return Err("unknown_runner_kind", std::format("no downloadable source for kind \"{}\"", kind));
 }
 

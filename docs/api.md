@@ -497,8 +497,8 @@ Body `{"reference": "kind:name"}`. Installs the newer release like a download, t
 
 A copy on `PATH` wins over Mira's own in `~/.config/mira/tools`.
 
-### `POST /v1/runners/tools/{umu|winetricks}/setup`
-A job (kind `setup`) that installs the latest umu-launcher zipapp (needs python3) or winetricks script into `~/.config/mira/tools`. Events: `umu.setup.*` or `winetricks.setup.*`.
+### `POST /v1/runners/tools/{umu|winetricks|rclone}/setup`
+A job (kind `setup`) that installs the latest umu-launcher zipapp (needs python3) or winetricks script, or rclone (for [cloud saves](#saves)) into `~/.config/mira/tools`. Events: `umu.setup.*`, `winetricks.setup.*` or `rclone.setup.*`.
 
 ### `DELETE /v1/runners/{kind}:{name}`
 Removes a build that lives inside a search path. `400` for system builds, `auto`/`latest`, or kinds without builds; `404` if the build isn't installed. Publishes `runners.removed`.
@@ -690,7 +690,7 @@ Undoes what it did for the game, then takes it off. A [job](#jobs) (kind `mod_ma
 ## Updates
 
 ### `GET /v1/updates`
-What has a newer release: Mira itself, and the emulators, mod managers, store tools, umu, winetricks and runner builds Mira downloaded. Copies the system or the user installed aren't checked. Sources that can't be reached are left out.
+What has a newer release: Mira itself, and the emulators, mod managers, store tools, umu, winetricks, rclone and runner builds Mira downloaded. Copies the system or the user installed aren't checked. Sources that can't be reached are left out.
 
 ```json
 [{ "kind": "mira", "id": "mira", "name": "Mira", "installed": "0.14.1", "latest": "v0.15.0",
@@ -700,7 +700,7 @@ What has a newer release: Mira itself, and the emulators, mod managers, store to
 
 `?refresh=1` asks every source again instead of using its answer from the last ten minutes.
 
-`kind` says how to install it: `emulator` through `POST /v1/emulators/{id}/install`, `tool` through `POST /v1/stores/{id}/setup` (or `POST /v1/runners/tools/{id}/setup` for `umu` and `winetricks`), `mod_manager` through `POST /v1/mod-managers/{id}/install`, `runner` through `POST /v1/runners/update` with `id` as the reference, `mira` through `POST /v1/updates/mira`. A `mira` entry's `install` says how this copy updates: `appimage`, `deb` or `rpm` by itself, `manual` for an install it can't replace (Arch, rpm-ostree, files it doesn't own), `none` for a build of your own. comet is a `tool` with `id` `gog`, since GOG's setup updates it; while GOG's gogdl is Mira's copy and comet isn't there yet (GOG set up before Mira fetched comet), it's listed with `installed` empty. Epic's EOS overlay isn't listed: it has no release to compare with, and Epic's setup updates it. A release that keeps its tag (DuckStation's `latest`) is newer when it was published later. `updates.check` says whether a client should ask.
+`kind` says how to install it: `emulator` through `POST /v1/emulators/{id}/install`, `tool` through `POST /v1/stores/{id}/setup` (or `POST /v1/runners/tools/{id}/setup` for `umu`, `winetricks` and `rclone`), `mod_manager` through `POST /v1/mod-managers/{id}/install`, `runner` through `POST /v1/runners/update` with `id` as the reference, `mira` through `POST /v1/updates/mira`. A `mira` entry's `install` says how this copy updates: `appimage`, `deb` or `rpm` by itself, `manual` for an install it can't replace (Arch, rpm-ostree, files it doesn't own), `none` for a build of your own. comet is a `tool` with `id` `gog`, since GOG's setup updates it; while GOG's gogdl is Mira's copy and comet isn't there yet (GOG set up before Mira fetched comet), it's listed with `installed` empty. Epic's EOS overlay isn't listed: it has no release to compare with, and Epic's setup updates it. A release that keeps its tag (DuckStation's `latest`) is newer when it was published later. `updates.check` says whether a client should ask.
 
 ### `POST /v1/updates/mira`
 A [job](#jobs) of kind `mira_update` that downloads Mira's latest release and checks it against the SHA-256 GitHub lists for it; one with no such digest or a different one fails (`checksum_missing`, `checksum_mismatch`) and changes nothing. An AppImage is then swapped in place for the next start to run, which needs write access to its folder (`update_not_writable`). The result is `{"install": [argv...]}`: the command a client runs as root to install a downloaded `.deb` or `.rpm`, empty for an AppImage. mirad removes a package left behind when it next starts.
@@ -997,7 +997,7 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `concealed` | No payload: a buffered event about a hidden game, blanked when hidden games locked. |
 | `job.started`, `job.progress`, `job.finished`, `job.failed` | See [Jobs](#jobs). |
 | `runners.download.*`, `runners.updated`, `runners.removed` | See the runner endpoints. |
-| `umu.setup.*`, `winetricks.setup.*` | Tool installs. |
+| `umu.setup.*`, `winetricks.setup.*`, `rclone.setup.*` | Tool installs. |
 | `launcher.install.*` | See `POST /v1/launchers/{id}/install`. |
 | `game.saves_activity` | `{id, doing}` when what's being done with a game's saves changes: `backing_up`, `restoring` or `syncing` as it starts, empty when it's done (as `doing` in `GET /v1/games/{id}/saves`). |
 | `notification` | A message for the user, with its level. `persistent: true` marks one that should stay until dismissed; a game's carries its `id`, and one from an error carries `code`, `error`, `hint` and `fix`. |

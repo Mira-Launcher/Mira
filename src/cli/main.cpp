@@ -465,12 +465,13 @@ int CmdRunners(int argc, char** argv) {
   if (sub == "updates") return CmdRunnersUpdates();
   if (sub == "update") return CmdRunnersUpdate(argc - 1, argv + 1);
   if (sub == "tools") return CmdRunnersTools(argc - 1, argv + 1);
-  std::fprintf(stderr,
-               "usage: mira runners [sources [KIND] | catalog [--kind K] [--source ID] |\n"
-               "                     download --kind K --tag TAG [--source ID] | updates | update "
-               "<kind:name> |\n"
-               "                     tools [install umu|winetricks] | schema <kind> | remove "
-               "<kind:name>]\n");
+  std::fprintf(
+      stderr,
+      "usage: mira runners [sources [KIND] | catalog [--kind K] [--source ID] |\n"
+      "                     download --kind K --tag TAG [--source ID] | updates | update "
+      "<kind:name> |\n"
+      "                     tools [install umu|winetricks|rclone] | schema <kind> | remove "
+      "<kind:name>]\n");
   return 2;
 }
 
@@ -2219,7 +2220,7 @@ void PrintUsage() {
       "  runners catalog [--kind K] [--source ID] list downloadable versions\n"
       "  runners download --kind K --tag TAG [--source ID]   download and install one\n"
       "  runners updates | update <kind:name>     list or install newer builds\n"
-      "  runners tools [install umu|winetricks]   check or install runner helpers\n"
+      "  runners tools [install umu|winetricks|rclone]   check or install runner helpers\n"
       "  launch <id> [--saves keep_local|use_cloud|skip]\n"
       "                         launch a game (or hand it to Steam for a\n"
       "                         Steam game, depending on steam.launch_mode);\n"
