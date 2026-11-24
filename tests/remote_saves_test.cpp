@@ -6,6 +6,7 @@
 #include "config/Config.h"
 #include "core/Files.h"
 #include "saves/remote/Rclone.h"
+#include "saves/remote/RemoteConfig.h"
 #include "saves/remote/Revisions.h"
 #include "support/TestEnv.h"
 
@@ -57,6 +58,7 @@ void UseFakeRclone(config::Config& config, const fs::path& dir) {
               std::format(R"sh(#!/bin/sh
 [ "$1" = "--version" ] && {{ echo 'rclone v1.76.0'; exit 0; }}
 echo "$* [$RCLONE_CONFIG]" >> '{0}/calls'
+case "$*" in *" obscure -") pw="$(cat)"; echo "obscured_${{#pw}}"; exit 0 ;; esac
 [ -e '{0}/offline' ] && exit 5
 at() {{ case "$1" in box:*) echo "{0}/box/${{1#box:}}" ;; *) echo "$1" ;; esac; }}
 case "$*" in *--files-from-raw*--max-size*) exit 1 ;; esac  # as rclone does
@@ -130,7 +132,8 @@ TEST_CASE("a revision goes to the remote and back, and a damaged or unfinished o
   test::Isolate(config);
   UseFakeRclone(config, dir);
   const test::EnvVar inherited("RCLONE_CONFIG", "/elsewhere");
-  const saves::remote::Remote remote{.config_file = dir / "rclone.conf", .root = "box:"};
+  const saves::remote::Remote remote{
+      .config_file = dir / "rclone.conf", .root = "box:", .ca_file = {}};
 
   auto none = saves::remote::ListRevisions(config, remote, "gog-1");
   REQUIRE(none);
@@ -170,4 +173,128 @@ TEST_CASE("a revision goes to the remote and back, and a damaged or unfinished o
   const auto offline = saves::remote::ListRevisions(config, remote, "gog-1");
   REQUIRE_FALSE(offline);
   CHECK(offline.error().code == "remote_offline");
+}
+
+TEST_CASE("a remote request is checked before anything is stored") {
+  using Values = std::map<std::string, std::string>;
+  const fs::path dir = test::TempDir("remote-config-check");
+  test::Touch(dir / "key", "key");
+  test::Touch(dir / "known_hosts", "host");
+  const std::string key = (dir / "key").string();
+  const std::string known = (dir / "known_hosts").string();
+  const auto make = [](std::string provider, Values values, std::string folder = "saves") {
+    return saves::remote::RemoteRequest{.slot = "primary",
+                                        .provider = std::move(provider),
+                                        .name = "Home",
+                                        .folder = std::move(folder),
+                                        .ca_file = {},
+                                        .values = std::move(values)};
+  };
+  const auto with = [](Values base, const char* key, std::string value) {
+    base[key] = std::move(value);
+    return base;
+  };
+  const Values dav = {
+      {"url", "https://dav.example.com/remote.php"}, {"user", "me"}, {"password", "secret"}};
+  const Values sftp = {{"host", "nas.example.com"},
+                       {"port", "2222"},
+                       {"user", "me"},
+                       {"key_file", key},
+                       {"known_hosts_file", known}};
+  const Values s3 = {{"endpoint", "https://s3.example.com"},
+                     {"region", "eu"},
+                     {"access_key_id", "AK"},
+                     {"secret_access_key", "SK"}};
+
+  CHECK(saves::remote::CheckRequest(make("webdav", dav)));
+  CHECK(saves::remote::CheckRequest(make("sftp", sftp)));
+  CHECK(saves::remote::CheckRequest(make("s3", s3, "bucket/saves")));
+  CHECK(saves::remote::CheckRequest(make("webdav", with(dav, "url", "HTTPS://dav.example.com"))));
+
+  CHECK_FALSE(
+      saves::remote::CheckRequest(make("webdav", with(dav, "url", "http://dav.example.com"))));
+  CHECK_FALSE(
+      saves::remote::CheckRequest(make("webdav", with(dav, "url", "https://me@dav.example.com"))));
+  CHECK_FALSE(saves::remote::CheckRequest(make("webdav", with(dav, "user", "me\nx"))));
+  CHECK_FALSE(
+      saves::remote::CheckRequest(make("webdav", with(dav, "no_check_certificate", "true"))));
+  Values no_known = sftp;
+  no_known.erase("known_hosts_file");
+  CHECK_FALSE(saves::remote::CheckRequest(make("sftp", no_known)));
+  CHECK_FALSE(saves::remote::CheckRequest(make("sftp", with(sftp, "host", "-oProxyCommand"))));
+  CHECK_FALSE(
+      saves::remote::CheckRequest(make("sftp", with(sftp, "known_hosts_file", "known_hosts"))));
+  CHECK_FALSE(saves::remote::CheckRequest(make("webdav", with(dav, "user", "`me"))));
+  CHECK(saves::remote::CheckRequest(make("webdav", with(dav, "password", " \"pass "))));
+  CHECK_FALSE(
+      saves::remote::CheckRequest(make("s3", with(s3, "endpoint", "http://s3.example.com"), "b")));
+  CHECK_FALSE(saves::remote::CheckRequest(make("ftp", dav)));
+  CHECK_FALSE(saves::remote::CheckRequest(make("webdav", dav, "../x")));
+}
+
+TEST_CASE(
+    "a remote is saved beside other rclone sections, found, forgotten and kept off the logs") {
+  const fs::path dir = test::TempDir("remote-config-save");
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  test::Isolate(config);
+  UseFakeRclone(config, dir);
+  const fs::path conf = dir / "rclone.conf";
+  const fs::path remotes = dir / "remotes.json";
+  test::Touch(conf, "[other]\nx = 1\n");
+
+  saves::remote::RemoteRequest request{.slot = "primary",
+                                       .provider = "webdav",
+                                       .name = "Home",
+                                       .folder = "saves",
+                                       .ca_file = {},
+                                       .values = {{"url", "https://dav.example.com/remote.php"},
+                                                  {"user", "me"},
+                                                  {"password", "hunter2-secret"}}};
+  const auto saved = saves::remote::SaveRemote(config, request);
+  REQUIRE(saved);
+  CHECK(saved->name == "Home");
+  for (const fs::path& file : {conf, remotes})
+    CHECK((fs::status(file).permissions() & fs::perms::all) ==
+          (fs::perms::owner_read | fs::perms::owner_write));
+
+  const std::string text = files::ReadFile(conf).value_or("");
+  CHECK(text.starts_with("[other]\nx = 1\n"));
+  CHECK(text.find("[primary]") != std::string::npos);
+  CHECK(text.find("hunter2-secret") == std::string::npos);
+  CHECK(files::ReadFile(remotes).value_or("").find("hunter2-secret") == std::string::npos);
+  CHECK(files::ReadFile(dir / "calls").value_or("").find("hunter2-secret") == std::string::npos);
+
+  const auto found = saves::remote::FindRemote(config, "primary");
+  REQUIRE(found);
+  CHECK(found->id == saved->id);
+  CHECK(found->provider == "webdav");
+  CHECK_FALSE(saves::remote::FindRemote(config, "mirror"));
+  const saves::remote::Remote remote = saves::remote::RemoteFor(config, *found);
+  CHECK(remote.config_file == conf);
+  CHECK(remote.root == "primary:saves");
+
+  request.values["user"] = "you";
+  REQUIRE(saves::remote::SaveRemote(config, request));
+  const std::string again = files::ReadFile(conf).value_or("");
+  CHECK(again.find("[primary]") == again.rfind("[primary]"));
+  CHECK(again.find("user = you") != std::string::npos);
+  CHECK(again.starts_with("[other]\nx = 1\n"));
+
+  saves::remote::RemoteRequest mirror = request;
+  mirror.slot = "mirror";
+  mirror.name = "Backup";
+  REQUIRE(saves::remote::SaveRemote(config, mirror));
+  REQUIRE(saves::remote::ForgetRemote(config, "primary"));
+  CHECK_FALSE(saves::remote::FindRemote(config, "primary"));
+  const auto kept = saves::remote::FindRemote(config, "mirror");
+  REQUIRE(kept);
+  CHECK(kept->name == "Backup");
+  const std::string left = files::ReadFile(conf).value_or("");
+  CHECK(left.find("[mirror]") != std::string::npos);
+  CHECK(left.find("[primary]") == std::string::npos);
+
+  CHECK(saves::remote::ForgetRemote(config, "primary"));
+  REQUIRE(saves::remote::ForgetRemote(config, "mirror"));
+  CHECK(files::ReadFile(conf) == "[other]\nx = 1\n");
 }
