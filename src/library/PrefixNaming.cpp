@@ -32,7 +32,7 @@ std::filesystem::path NamedDir(const config::Config& config, const model::Game& 
 
 bool NeedsProvisioning(const std::optional<model::Game>& existing) {
   return !existing || existing->runner_ref.empty() || existing->data_dir.empty() ||
-         existing->status == model::GameStatus::Broken ||
+         existing->status == model::GameStatus::NotSetUp ||
          existing->status == model::GameStatus::SettingUp;
 }
 
@@ -82,7 +82,7 @@ std::optional<std::filesystem::path> PrefixInGameFolder(const config::Config& co
                                                         const model::Game& game) {
   std::error_code ec;
   // An installer's folder (Downloads, a disc) isn't the game's: the game goes into its prefix.
-  if (game.status == model::GameStatus::NeedsInstall || game.install_path.empty() ||
+  if (game.setup == model::SetupStep::Install || game.install_path.empty() ||
       !std::filesystem::is_directory(game.install_path, ec))
     return std::nullopt;
   const std::optional<dev_t> disk = DiskOf(game.install_path);

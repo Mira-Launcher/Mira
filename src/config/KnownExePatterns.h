@@ -55,11 +55,13 @@ inline constexpr std::array kDeny = {
     "battleye*",
     "beservice*",
     "pnkbstr*",
+    // checksum tools repacks ship beside their setup
+    "quicksfv*",
+    "*checksum*",
 };
 
-// A candidate matching one of these, combined with a size signal (see
-// detect.installer_min_size_mb), is flagged as an installer rather than the
-// game itself.
+// A candidate matching one of these is taken for an installer rather than the game itself, until
+// the user says otherwise.
 inline constexpr std::array kInstaller = {
     "setup*", "*setup*", "install*", "*installer*", "*_setup_*",
 };

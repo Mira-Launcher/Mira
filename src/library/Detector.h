@@ -18,15 +18,17 @@ struct DetectorSettings {
   std::vector<std::string> rules = {"deny_patterns", "name_similarity", "depth", "shallowest"};
   double name_match_bonus = 3.0;
   double depth_penalty = 0.5;
-  double low_confidence_threshold = 0.5;
   std::vector<std::string> deny_name_patterns;
   std::vector<std::string> installer_name_patterns;
-  std::int64_t installer_min_size_mb = 50;
   // Applied during the walk itself (skips whole subtrees), distinct from
   // deny_name_patterns which only penalises a candidate's score. Should
   // include scan.ignore_globs plus the caller's prefix_root exclusion.
   std::vector<std::string> ignore_globs;
 };
+
+// Whether a program's name says it installs something: setup.exe, an .msi. Only a guess, which the
+// user confirms.
+bool LooksLikeInstaller(const std::string& name, const DetectorSettings& settings);
 
 // An .html or .htm file.
 bool IsWebPage(const std::filesystem::path& file);
@@ -63,6 +65,11 @@ class Detector {
   // `name` is the game's own name, matched instead of the folder's when the folder says nothing
   // (a store's "game-543813").
   Result Detect(const std::filesystem::path& folder, const std::string& name = {}) const;
+
+  // The programs an archive would leave in its folder, from what it lists (paths in it), by name
+  // alone: a Windows program by its extension, a native one as an .sh, AppImage or .x86_64.
+  Result DetectListed(const std::vector<std::filesystem::path>& files,
+                      const std::string& name) const;
 
  private:
   DetectorSettings settings_;

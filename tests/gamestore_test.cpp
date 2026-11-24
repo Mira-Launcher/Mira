@@ -227,6 +227,47 @@ TEST_CASE("a game found again where a removed one was gets the removed one's id"
   CHECK(store.NextId("Celeste Classic", "/games/celeste") == "celeste-classic");
 }
 
+namespace {
+
+// Back to the games table and version from before `setup`, whose step adds columns.
+void Rewind(const fs::path& file, int version) {
+  store::Database db;
+  REQUIRE(db.Open(file).has_value());
+  REQUIRE(db.Exec("ALTER TABLE games DROP COLUMN setup").has_value());
+  REQUIRE(
+      db.Exec("ALTER TABLE games ADD COLUMN old_status TEXT NOT NULL DEFAULT 'ready'").has_value());
+  REQUIRE(db.Exec("UPDATE games SET old_status = status").has_value());
+  REQUIRE(db.Exec("ALTER TABLE games DROP COLUMN status").has_value());
+  REQUIRE(db.Exec("ALTER TABLE games RENAME COLUMN old_status TO status").has_value());
+  REQUIRE(db.Exec(std::format("PRAGMA user_version = {}", version)).has_value());
+}
+
+}  // namespace
+
+TEST_CASE("an older library's broken and needs_install games become not set up, others stay") {
+  const fs::path file = TempFile("games-setup.db");
+  {
+    store::GameStore store(file);
+    store.Load();
+    for (const char* id : {"bad", "waiting", "fine", "gone"})
+      REQUIRE(store.Upsert(MakeGame(id, id)).has_value());
+  }
+  Rewind(file, 11);
+  {
+    store::Database db;
+    REQUIRE(db.Open(file).has_value());
+    REQUIRE(db.Exec("UPDATE games SET status = CASE id WHEN 'bad' THEN 'broken' WHEN 'waiting' "
+                    "THEN 'needs_install' WHEN 'gone' THEN 'missing' ELSE 'ready' END")
+                .has_value());
+  }
+  store::GameStore store(file);
+  store.Load();
+  CHECK(model::WaitsFor(*store.Find("bad"), model::SetupStep::Failed));
+  CHECK(model::WaitsFor(*store.Find("waiting"), model::SetupStep::Install));
+  CHECK(store.Find("fine")->status == model::GameStatus::Ready);
+  CHECK(store.Find("gone")->status == model::GameStatus::Missing);
+}
+
 TEST_CASE("an older library's tags are cased as Steam's, merging tags that only differed in case") {
   const fs::path file = TempFile("games-tag-case.db");
   {
@@ -236,11 +277,7 @@ TEST_CASE("an older library's tags are cased as Steam's, merging tags that only 
     game.tags = {"rpg", "Rpg", "open world", "eSports", "favorite"};
     REQUIRE(store.Upsert(game).has_value());
   }
-  {
-    store::Database db;
-    REQUIRE(db.Open(file).has_value());
-    REQUIRE(db.Exec("PRAGMA user_version = 6").has_value());  // from before the step
-  }
+  Rewind(file, 6);  // from before the step
   store::GameStore store(file);
   store.Load();
   CHECK(store.Find("celeste")->tags ==
@@ -262,15 +299,7 @@ TEST_CASE("an older library keeps only the chosen program of a confirmed game's 
     unsure.candidates = {{.rel_path = "Hades.exe", .chosen = true}, {.rel_path = "Setup.exe"}};
     REQUIRE(store.Upsert(unsure).has_value());
   }
-  {
-    store::Database db;
-    REQUIRE(db.Open(file).has_value());
-    auto version = db.Prepare("PRAGMA user_version");
-    REQUIRE(version.has_value());
-    REQUIRE(version->Step().value_or(false));
-    const std::int64_t before = version->Int(0) - 1;  // from before the step
-    REQUIRE(db.Exec(std::format("PRAGMA user_version = {}", before)).has_value());
-  }
+  Rewind(file, 10);  // from before the step
   store::GameStore store(file);
   store.Load();
   REQUIRE(store.Find("celeste")->candidates.size() == 1);

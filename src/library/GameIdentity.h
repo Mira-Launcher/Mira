@@ -24,7 +24,8 @@ struct GameIdentity {
   std::string exe_title;    // the name its exe gives itself (ProductName), when that's a game's
   // Where steam_appid came from: "override" (metadata.steam_appid), "steam" (a Steam game),
   // "file" (a steam_appid.txt beside it), "umu" (the umu database) or "name" (Steam's game of its
-  // exact name, which a metadata fetch found); empty with no steam_appid.
+  // exact name, which a metadata fetch found); empty with no steam_appid, but
+  // "none" when the user said it isn't on Steam.
   std::string steam_from;
 };
 

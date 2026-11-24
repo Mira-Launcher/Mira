@@ -59,7 +59,7 @@ TEST_CASE("Watcher picks up a new game folder in each of two watched roots") {
 
   auto celeste = games.Find("celeste");
   REQUIRE(celeste.has_value());
-  CHECK(celeste->status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(*celeste, model::SetupStep::Confirm));
   CHECK(celeste->platform == model::Platform::Native);
   CHECK(celeste->install_path == (games_root / "Celeste").string());
 
@@ -119,76 +119,62 @@ TEST_CASE("Watcher never rediscovers its own prefix directory as a game") {
   CHECK_FALSE(games.Find("celeste").has_value());
 }
 
-TEST_CASE("Watcher auto-extracts a dropped archive and picks up the resulting folder as a game") {
+TEST_CASE("Watcher offers a dropped archive untouched, unless another app has or extracts it") {
   const fs::path root = TempDir("watch-archive-root");
   test::TestEnv env("watch-archive-state");
-  config::Config& config = env.config;
-  REQUIRE(config.Set("library_roots", nlohmann::json::array({root.string()})).has_value());
-  REQUIRE(config.Set("prefix_root", (root / "prefix").string()).has_value());
-  REQUIRE(config.Set("scan.debounce_ms", 100).has_value());
-  REQUIRE(config.Set("scan.auto_extract_archives", true).has_value());
-
-  store::GameStore& games = env.games;
-  api::EventBus& events = env.events;
-  library::Watcher watcher(config, games, events);
-
+  REQUIRE(env.config.Set("library_roots", nlohmann::json::array({root.string()})).has_value());
+  REQUIRE(env.config.Set("prefix_root", (root / "prefix").string()).has_value());
+  REQUIRE(env.config.Set("scan.debounce_ms", 100).has_value());
+  library::FoundArchives archives(env.events);
+  library::Watcher watcher(env.config, env.games, env.events);
+  watcher.UseFoundArchives(archives);
   std::thread watcher_thread([&] { watcher.Run(); });
   REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 0; }));
 
-  // Build a real tar.gz containing a native game folder's shape, and drop
-  // it directly into the watched root, exactly like a user extracting a
-  // download by hand, except here Mira does it.
   const fs::path staging = TempDir("watch-archive-staging");
-  fs::create_directories(staging / "Celeste");
   Touch(staging / "Celeste" / "Celeste", "", /*executable=*/true);
-  const fs::path archive = root / "Celeste.tar.gz";
-  REQUIRE(std::system(
-              ("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) ==
-          0);
+  const auto pack = [&](const std::string& name) {
+    const fs::path made = staging / name;
+    REQUIRE(std::system(
+                ("cd " + staging.string() + " && 7z a -bso0 -bsp0 " + made.string() + " Celeste")
+                    .c_str()) == 0);
+    fs::rename(made, root / name);
+    return root / name;
+  };
+  const fs::path archive = pack("free.zip");
+  CHECK(test::WaitUntil([&] { return archives.Find(archive).has_value(); }));
+  CHECK(archives.Find(archive)->taken_by.empty());
+  CHECK(fs::exists(archive));
+  CHECK(env.games.All().empty());
 
-  CHECK(test::WaitUntil([&] { return games.Find("celeste").has_value(); }));
-  CHECK(test::WaitUntil([&] { return !fs::exists(archive); }));  // the archive itself is gone
+  // Someone unpacks it after all: the card goes, and the folder is the game.
+  fs::copy(staging / "Celeste", root / "Celeste", fs::copy_options::recursive);
+  CHECK(test::WaitUntil([&] { return !archives.Find(archive); }));
+  CHECK(test::WaitUntil([&] { return env.games.Find("celeste").has_value(); }));
+
+  // Another process that has it open and gets on with it: held back.
+  const fs::path busy = staging / "busy.zip";
+  {
+    std::ofstream out(busy);
+    out << std::string(1 << 20, 'x');
+  }
+  const std::string held = (root / "busy.zip").string();
+  fs::rename(busy, held);
+  REQUIRE(std::system(("setsid -f sh -c 'exec 3<" + held +
+                       "; for i in 1 2 3 4 5 6; do head -c 1000 <&3 >/dev/null; sleep 0.5; done'")
+                          .c_str()) == 0);
+  CHECK(test::WaitUntil([&] {
+    const auto found = archives.Find(held);
+    return found && !found->taken_by.empty();
+  }));
+  // Done without leaving anything: offered.
+  CHECK(test::WaitUntil([&] {
+    const auto found = archives.Find(held);
+    return found && found->taken_by.empty();
+  }));
 
   watcher.Stop();
   watcher_thread.join();
-  CHECK(fs::exists(root / "Celeste" / "Celeste"));
-
-  auto celeste = games.Find("celeste");
-  REQUIRE(celeste.has_value());
-  CHECK(celeste->platform == model::Platform::Native);
-  CHECK(celeste->install_path == (root / "Celeste").string());
-}
-
-TEST_CASE("Watcher leaves a dropped archive alone when auto_extract_archives is off") {
-  const fs::path root = TempDir("watch-archive-off-root");
-  test::TestEnv env("watch-archive-off-state");
-  config::Config& config = env.config;
-  REQUIRE(config.Set("library_roots", nlohmann::json::array({root.string()})).has_value());
-  REQUIRE(config.Set("prefix_root", (root / "prefix").string()).has_value());
-  REQUIRE(config.Set("scan.debounce_ms", 100).has_value());
-  REQUIRE(config.Set("scan.auto_extract_archives", false).has_value());
-
-  store::GameStore& games = env.games;
-  api::EventBus& events = env.events;
-  library::Watcher watcher(config, games, events);
-
-  std::thread watcher_thread([&] { watcher.Run(); });
-  REQUIRE(test::WaitUntil([&] { return watcher.RootsWatched() > 0; }));
-
-  const fs::path staging = TempDir("watch-archive-off-staging");
-  fs::create_directories(staging / "Celeste");
-  Touch(staging / "Celeste" / "Celeste", "", /*executable=*/true);
-  const fs::path archive = root / "Celeste.tar.gz";
-  REQUIRE(std::system(
-              ("tar -C " + staging.string() + " -czf " + archive.string() + " Celeste").c_str()) ==
-          0);
-  DropPartnerGame(root, games);
-
-  watcher.Stop();
-  watcher_thread.join();
-
-  CHECK(fs::exists(archive));  // untouched
-  CHECK(games.All().size() == 1);
 }
 
 TEST_CASE(
@@ -208,7 +194,6 @@ TEST_CASE(
   REQUIRE(config.Set("runner_search_paths", nlohmann::json::array({root.string()})).has_value());
   REQUIRE(config.Set("prefix_root", (root / "prefix").string()).has_value());
   REQUIRE(config.Set("scan.debounce_ms", 100).has_value());
-  REQUIRE(config.Set("scan.auto_extract_archives", true).has_value());
 
   store::GameStore& games = env.games;
   api::EventBus& events = env.events;

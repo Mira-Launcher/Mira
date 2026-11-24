@@ -1,9 +1,12 @@
 #include <doctest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
 #include "library/ArchiveExtractor.h"
+#include "library/Detector.h"
+#include "library/FoundArchives.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -46,33 +49,63 @@ TEST_CASE("AnyOpenForWriting sees a file still being written") {
   CHECK_FALSE(library::AnyOpenForWriting({file}));
 }
 
-TEST_CASE(
-    "ExtractAndRemove only moves a fully extracted archive into place, and never over a folder") {
+TEST_CASE("ExtractFound only moves a fully extracted archive into place, and never over a folder") {
   const fs::path dir = test::TempDir("archive-extract");
   test::Touch(dir / "src" / "Game.exe", std::string(200000, 'x'));
   const fs::path archive = dir / "Game.tar.gz";
   REQUIRE(
       std::system(("tar -C " + (dir / "src").string() + " -czf " + archive.string() + " Game.exe")
                       .c_str()) == 0);
+  test::TestEnv env("archive-extract-state");
+  const auto extract = [&](const fs::path& path, bool delete_archive) {
+    return library::ExtractFound(
+        env.config, {.path = path, .root = dir, .drop = false, .taken_by = {}, .outputs = {}},
+        {.password = {},
+         .choices = {.name = "Chosen", .exe_path = "Game.exe"},
+         .delete_archive = delete_archive},
+        {});
+  };
 
   // A truncated copy fails, leaves no folder behind and keeps the archive.
   const fs::path truncated = dir / "Broken.tar.gz";
   fs::copy_file(archive, truncated);
   fs::resize_file(truncated, fs::file_size(archive) / 2);
-  CHECK_FALSE(library::ExtractAndRemove(truncated, dir / "Broken").has_value());
+  CHECK_FALSE(extract(truncated, true).has_value());
   CHECK_FALSE(fs::exists(dir / "Broken"));
-  CHECK_FALSE(fs::exists(dir / (std::string(library::kExtractingPrefix) + "Broken")));
+  CHECK_FALSE(fs::exists(dir / (std::string(library::kExtractingPrefix) + "Broken.tar.gz")));
   CHECK(fs::exists(truncated));
 
-  // A folder already there keeps its files; the archive goes beside it.
+  // A folder already there keeps its files; the archive goes beside it, set up as chosen.
   test::Touch(dir / "Game" / "Game.exe", "the installed game");
-  REQUIRE(library::ExtractAndRemove(archive, dir / "Game").has_value());
+  CHECK(extract(archive, false).value() == dir / "Game (2)");
   CHECK(fs::file_size(dir / "Game" / "Game.exe") == 18);
   CHECK(fs::file_size(dir / "Game (2)" / "Game.exe") == 200000);
+  CHECK(fs::exists(archive));
+  CHECK(library::TakeConfirmed(dir / "Game (2)")->name == "Chosen");
+  REQUIRE(extract(archive, true).has_value());
   CHECK_FALSE(fs::exists(archive));
+}
 
-  const fs::path text = dir / "readme.txt";
-  test::Touch(text, "not an archive");
-  CHECK_FALSE(library::ExtractAndRemove(text, dir / "out").has_value());
-  CHECK(fs::exists(text));
+TEST_CASE("An archive's listing gives its files, and what could start it") {
+  const fs::path dir = test::TempDir("archive-list");
+  test::Touch(dir / "src" / "Hades" / "Hades.exe", "game");
+  test::Touch(dir / "src" / "Hades" / "_CommonRedist" / "vc.exe", "redist");
+  test::Touch(dir / "src" / "Hades" / "data.pak", "data");
+  // "tar" in a name makes no tarball.
+  const fs::path archive = dir / "Star.tarot.zip";
+  REQUIRE(std::system(("cd " + (dir / "src").string() + " && 7z a -bso0 " + archive.string() +
+                       " Hades > /dev/null")
+                          .c_str()) == 0);
+  const auto listing = library::ListArchive(archive, {});
+  REQUIRE(listing.has_value());
+  CHECK(listing->password == std::string());
+  REQUIRE(listing->entries.size() == 3);
+  std::vector<fs::path> files;
+  for (const library::ArchiveEntry& entry : listing->entries) files.push_back(entry.path);
+  test::TestEnv env("archive-list-state");
+  const auto found =
+      library::Detector(library::SettingsFromConfig(env.config)).DetectListed(files, "Hades");
+  REQUIRE(found.candidates.size() == 1);
+  CHECK(found.candidates[0].rel_path == "Hades/Hades.exe");
+  CHECK(std::ranges::contains(library::OutputsOf(archive), dir / "Hades"));
 }

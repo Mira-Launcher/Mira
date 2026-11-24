@@ -196,13 +196,13 @@ TEST_CASE("Relocate leaves Steam's compatdata prefix where Steam keeps it") {
   CHECK_FALSE(library::Relocate(config, game, request).has_value());
 }
 
-TEST_CASE("NeedsProvisioning retries a broken store game") {
+TEST_CASE("NeedsProvisioning retries a failed store game") {
   model::Game game;
   game.runner_ref = "proton:GE-Proton9-20";
   game.data_dir = "/prefixes/celeste";
   game.status = model::GameStatus::Ready;
   CHECK_FALSE(library::NeedsProvisioning(game));
-  game.status = model::GameStatus::Broken;
+  game.status = model::GameStatus::NotSetUp;
   CHECK(library::NeedsProvisioning(game));
   CHECK(library::NeedsProvisioning(std::nullopt));
 }

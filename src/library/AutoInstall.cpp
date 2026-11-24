@@ -106,14 +106,6 @@ InstallerFormat DetectInstallerFormat(const fs::path& file) {
   return sniffed ? SilentFormat(*sniffed) : InstallerFormat::kUnknown;
 }
 
-bool IsBuiltInstaller(const fs::path& file) {
-  if (strings::ToLower(file.extension().string()) == ".msi") return true;
-  const std::optional<Sniffed> sniffed = Sniff(file);
-  if (!sniffed) return false;
-  return SilentFormat(*sniffed) != InstallerFormat::kUnknown || sniffed->Has(".wixburn") ||
-         sniffed->Has("InstallShield") || sniffed->Has("MojoSetup");
-}
-
 namespace {
 
 struct Tracked {
@@ -283,7 +275,7 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   model::Game to_provision = game;
   if (to_provision.runner_ref.empty()) to_provision.runner_ref = config.GetString("install.runner");
   const model::Game provisioned = runners.ProvisionGame(to_provision);
-  if (provisioned.status == model::GameStatus::Broken) {
+  if (provisioned.status == model::GameStatus::NotSetUp) {
     return Err("provision_failed",
                "couldn't set up a Wine prefix for the installer: " + provisioned.last_error,
                "The runner may be broken. Try a different one.", Fix::Runners());
@@ -365,15 +357,20 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
     fs::remove(inno_log, ec);
   }
   if (!result) {
-    // Wine's own processes leave the installer's group, so a cancel ends them through the prefix.
-    if (result.error().code == "cancelled" && !provisioned.data_dir.empty()) {
+    // Wine's own processes leave the installer's group, so they're ended through the prefix.
+    if (!provisioned.data_dir.empty()) {
       for (pid_t found : proc::FindPrefixProcesses(provisioned.data_dir)) ::kill(found, SIGKILL);
     }
     return std::unexpected(result.error());
   }
   WaitForInstallerChildren(provisioned.data_dir, std::chrono::minutes(15));
   // A GUI installer's exit code isn't reliable; detection below decides.
-  if (silent && result->exit_code != 0) {
+  // An MSI's 3010 and 1641: installed, wants a restart.
+  const bool wants_restart =
+      format == InstallerFormat::kMsi && (result->exit_code == 3010 || result->exit_code == 1641);
+  if (silent && result->exit_code != 0 && !wants_restart) {
+    // A later try is told apart by being new, so nothing of this one stays.
+    if (std::error_code ec; !before.contains(target)) fs::remove_all(target, ec);
     return Err(
         "installer_failed",
         std::format("the quiet install failed (exit code {})", result->exit_code),
@@ -407,14 +404,14 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
   }
   if (!exe) {
     return Err("no_executable", "the installer finished, but Mira couldn't find the installed game",
-               "Choose the installed game's executable, then mark it installed.",
-               Fix::Game(game.id, "exe"));
+               "Choose the installed game's program.", Fix::Game(game.id, "exe"));
   }
 
   done.exe_path = exe->rel_path;
   done.candidates = detected.candidates;
   done.confidence = detected.confidence;
-  done.status = model::GameStatus::Ready;
+  done.status = model::GameStatus::NotSetUp;  // the user confirms what was found
+  done.setup = model::SetupStep::Confirm;
   done.last_error.clear();
   return done;
 }
@@ -768,10 +765,8 @@ bool IsAutoInstallRequested(const fs::path& folder) {
 }
 
 bool AutoInstalls(const config::Config& config, const model::Game& game) {
-  if (game.status != model::GameStatus::NeedsInstall) return false;
-  if (!config.GetBool("auto_setup")) return false;
-  if (!config.GetBool("scan.auto_run_installers") && !IsAutoInstallRequested(game.install_path))
-    return false;
+  if (!model::WaitsFor(game, model::SetupStep::Install)) return false;
+  if (!config.GetBool("auto_setup") || !IsAutoInstallRequested(game.install_path)) return false;
   if (!config.GetBool("install.retry_failed") &&
       game.last_error.starts_with("Install didn't finish"))
     return false;
@@ -807,7 +802,8 @@ void AnnounceInstallerLeftover(const config::Config& config, api::EventBus& even
                                              {"bytes", TreeBytes(game.installer_dir)}});
 }
 
-Result<void> DeleteInstallerFolder(const config::Config& config, const model::Game& game) {
+Result<void> DeleteInstallerFolder(const config::Config& config, const model::Game& game,
+                                   const std::vector<model::Game>& library) {
   if (game.installer_dir.empty()) {
     return Err("no_installer_dir", "this game has no installer folder left over from its install");
   }
@@ -816,6 +812,16 @@ Result<void> DeleteInstallerFolder(const config::Config& config, const model::Ga
     if (!kept.empty() &&
         paths::IsWithin(fs::weakly_canonical(kept), {folder}, /*allow_equal=*/true)) {
       return Err("installer_dir_in_use", "the installer folder also holds the game or its prefix");
+    }
+  }
+  for (const model::Game& other : library) {
+    if (other.id == game.id) continue;
+    for (const std::string& kept : {other.install_path, other.data_dir}) {
+      std::error_code ec;
+      if (!kept.empty() &&
+          paths::IsWithin(fs::weakly_canonical(kept, ec), {folder}, /*allow_equal=*/true))
+        return Err("installer_dir_in_use",
+                   std::format("the installer folder also holds {}", other.name));
     }
   }
   if (auto deleted = DeleteInside(game.installer_dir, config.GetPathArray("library_roots"));
@@ -907,11 +913,11 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
     Finish(id, "no such game");
     return Err("game_not_found", "no such game");
   }
-  const bool installable = game->status == model::GameStatus::NeedsInstall ||
-                           (installer && game->status == model::GameStatus::Broken);
+  const bool installable = model::WaitsFor(*game, model::SetupStep::Install) ||
+                           (installer && game->status == model::GameStatus::NotSetUp);
   if (!installable) {
     Finish(id, "game isn't waiting on an installer");
-    return Err("not_needs_install", "game isn't waiting on an installer");
+    return Err("no_installer", "game isn't waiting on an installer");
   }
   {
     const std::int64_t estimate = EstimatedInstallBytes(games.Metadata().Read(id));
@@ -931,7 +937,8 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
     const bool inside = !relative.empty() && *relative.begin() != "..";
     auto saved = games.Update(id, [&](model::Game& stored) {
       stored.exe_path = inside ? relative.string() : installer->string();
-      stored.status = model::GameStatus::NeedsInstall;
+      stored.status = model::GameStatus::NotSetUp;
+      stored.setup = model::SetupStep::Install;
     });
     if (!saved) {
       Finish(id, saved.error().message);
@@ -964,17 +971,21 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
       stored.exe_path = done->exe_path;
       stored.candidates = done->candidates;
       stored.confidence = done->confidence;
-      stored.runner_ref = done->runner_ref;
+      runner::TakeRunner(stored, *done);
       stored.data_dir = done->data_dir;
       stored.status = done->status;
+      stored.setup = done->setup;
+      stored.reviewed = false;
       stored.last_error.clear();
     } else {
       stored.data_dir = game->data_dir;  // a prefix moved to the target's disk was made there
+      // Stopped on purpose: nothing went wrong with it.
+      if (done.error().code == "cancelled" || done.error().code == "shutting_down") return;
       // The installer ran: running it again won't help, picking what it installed will.
       stored.last_error =
           done.error().code == "no_executable"
-              ? "The installer finished, but Mira couldn't find the game. Choose its program in "
-                "the game's settings (it's in drive C of its prefix), then mark it installed."
+              ? "The installer finished, but Mira couldn't find the game. Choose its program "
+                "(it's in drive C of its prefix)."
               : std::format(
                     "Install didn't finish: {}. Run the installer again with its window shown.",
                     done.error().message);

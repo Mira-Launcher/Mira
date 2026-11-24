@@ -25,6 +25,7 @@
 #include "library/Catalog.h"
 #include "library/Drops.h"
 #include "library/FolderTags.h"
+#include "library/FoundArchives.h"
 #include "library/ImportSummary.h"
 #include "library/Scanner.h"
 #include "library/UnclearMoves.h"
@@ -62,6 +63,7 @@ class Services {
   // While hidden games are locked: whether to answer as if this game, or the game or store title
   // with this id ("<source>-<ref>" for a title), weren't there.
   bool Conceals(const model::Game& game) const;
+  // `id` may also be a path on disk.
   bool Conceals(const std::string& id) const;
   // Locks hidden games, blanks buffered events about them and publishes hidden.changed; nothing
   // when they're locked already.
@@ -71,12 +73,8 @@ class Services {
   void PublishHiddenState();
 
  private:
-  // Prefix program folders as each running Windows game launched, for CheckForInstall.
-  // Before `supervisor`, whose watcher threads use it.
-  std::mutex install_watch_mutex_;
   std::mutex scan_mutex_;
   std::shared_future<library::ScanSummary> scan_;  // the running scan's, guarded by scan_mutex_
-  std::map<std::string, std::set<std::filesystem::path>> install_watch_;
 
  public:
   proc::ProcessSupervisor supervisor;
@@ -97,6 +95,8 @@ class Services {
   library::UnclearMoves unclear_moves{events};
   // What was dropped into a Mira folder that Mira couldn't sort itself.
   library::Drops drops{config, games, events};
+  // The archives in library and Mira folders that wait for the user to say who extracts them.
+  library::FoundArchives found_archives{events};
   // After everything a job's work touches, so it's joined first on the way down.
   JobRegistry jobs{events};
 
@@ -137,11 +137,10 @@ class Services {
 
   // The settings a record is built from, read once by a caller building many records at once.
   struct RecordSettings {
-    double threshold;  // detect.low_confidence_threshold
     library::SortRules rules;
   };
   RecordSettings CurrentRecordSettings() const;
-  // A game as the API shows it: model::ToJson plus `running`, `art`, `needs_check` and its
+  // A game as the API shows it: model::ToJson plus `running`, `art` and its
   // sorting (`sort_root`, `folder_tags`, `folder`).
   nlohmann::json Record(const model::Game& game, const RecordSettings* settings = nullptr);
   // Adds those fields to a model::ToJson record.
@@ -180,8 +179,6 @@ class Services {
   // Closes out any session a previous mirad left behind and tells clients those games are idle.
   void ReconcileSessions();
 
-  // Remembers the prefix program folders a launch started with; CheckForInstall compares at exit.
-  void WatchForInstall(const std::string& game_id, std::set<std::filesystem::path> folders);
   // After a program run in the game's prefix exits: publishes game.programs_found with what it
   // installed since `before` (from library::ProgramFolders), to offer as launch options.
   void OfferNewPrograms(const std::string& game_id, const std::string& by,
@@ -339,9 +336,6 @@ class Services {
   // concealed.
   std::mutex job_targets_mutex_;
   std::map<std::string, std::string> job_targets_;
-  // After a launched game exits: publishes game.install_detected when the run
-  // added a program folder to its prefix, i.e. the "game" was an installer.
-  void CheckForInstall(const std::string& game_id);
 
   // After library_roots changed: games found in a library folder that was taken out are marked
   // missing, as if their drive were unplugged. Adding the folder back (or the same games in another

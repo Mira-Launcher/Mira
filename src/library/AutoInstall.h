@@ -27,15 +27,10 @@ enum class InstallerFormat { kUnknown, kInnoSetup, kNsis, kMsi };
 InstallerFormat DetectInstallerFormat(const std::filesystem::path& file);
 
 // The user asked for what's in `folder` to be added, as with a download from links: its installer
-// runs on its own even with scan.auto_run_installers off. Lasts until mirad restarts.
+// runs on its own. Lasts until mirad restarts.
 void RequestAutoInstall(const std::filesystem::path& folder);
 bool IsAutoInstallRequested(const std::filesystem::path& folder);
 std::string_view ToString(InstallerFormat format);
-
-// Whether an installer builder made the file: the silent formats above, plus WiX Burn bundles,
-// InstallShield and GOG's MojoSetup scripts. Their uninstallers and redistributables carry the
-// same marks, so a caller filters those by name.
-bool IsBuiltInstaller(const std::filesystem::path& file);
 
 struct InstallerInfo {
   std::filesystem::path path;
@@ -52,7 +47,7 @@ struct InstallerInfo {
   std::vector<Target> targets;
 };
 
-// The installer a needs_install game points at (its exe_path).
+// The installer a game not set up points at (its exe_path).
 Result<InstallerInfo> DescribeInstaller(const config::Config& config, const model::Game& game);
 
 struct InstallProgress {
@@ -103,11 +98,11 @@ enum class InstallMode {
 // Queues `id` for an install; false if one is already queued or running.
 bool BeginInstall(const std::string& id);
 
-// Runs a needs_install (or broken) game's installer in its prefix, one at a time, writing its
+// Runs the installer of a game that isn't set up in its prefix, one at a time, writing its
 // output to the game's log. A quiet install targets C:\Games\<name> in the prefix. Then finds the
 // game exe there, among what it wrote to install_path, or in a new drive_c folder.
 // `installer` overrides exe_path and is saved as the game's installer.
-// Saves the result: Ready on success, last_error on failure.
+// Saves the result: to confirm on success, last_error on failure.
 // `target`, a library root, makes a prefix not yet in Mira's prefix folders on that root's disk
 // instead, for an installer on a disc or mounted image.
 Result<model::Game> Install(config::Config& config, store::GameStore& games, const std::string& id,
@@ -127,11 +122,12 @@ Result<void> RunInstall(config::Config& config, store::GameStore& games, api::Ev
 void AnnounceInstallerLeftover(const config::Config& config, api::EventBus& events,
                                const model::Game& game);
 
-// Deletes the game's installer_dir, only inside a library root and never when it holds the
-// game itself or its prefix.
-Result<void> DeleteInstallerFolder(const config::Config& config, const model::Game& game);
+// Deletes the game's installer_dir, only inside a library root and never when it holds a game of
+// `library` (itself included) or its prefix.
+Result<void> DeleteInstallerFolder(const config::Config& config, const model::Game& game,
+                                   const std::vector<model::Game>& library);
 
-// Whether a scan runs this game's installer on its own (quietly, scan.auto_run_installers).
+// Whether a scan runs this game's installer on its own (quietly, downloads.auto_install).
 bool AutoInstalls(const config::Config& config, const model::Game& game);
 
 // Points `game` at the folder its installer put it in, remembering the installer's folder

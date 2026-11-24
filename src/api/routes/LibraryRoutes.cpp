@@ -18,10 +18,13 @@
 #include "emulators/Emulators.h"
 #include "heroic/HeroicImporter.h"
 #include "launchers/Launchers.h"
+#include "library/ArchiveExtractor.h"
 #include "library/AutoInstall.h"
 #include "library/Catalog.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
+#include "library/FoundArchives.h"
+#include "library/GameSetup.h"
 #include "library/Import.h"
 #include "library/InstallSize.h"
 #include "library/Relocate.h"
@@ -225,6 +228,126 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                });
   });
 
+  // --- archives ----------------------------------------------------------
+
+  http.Get("/v1/library/archives", [&s](const Request&, Response& res) {
+    json archives = json::array();
+    for (const library::FoundArchive& archive : s.found_archives.All())
+      if (!s.Conceals(archive.path.string()))
+        archives.push_back(library::FoundArchives::ToJson(archive));
+    SendJson(res, {{"archives", std::move(archives)}});
+  });
+
+  // What's inside, so everything is asked before extracting. `password` is tried after the saved
+  // ones.
+  http.Post("/v1/library/archives/inspect", [&s](const Request& req, Response& res) {
+    const auto body = BodyObject(req, res, R"({"path": "...", "password"?: "..."})");
+    if (!body) return;
+    const auto archive = s.found_archives.Find(core::JsonString(*body, "path"));
+    if (!archive || s.Conceals(archive->path.string()))
+      return SendError(res, 404, "archive_not_found", "no archive waits there");
+    std::vector<std::string> passwords = s.downloads.Passwords();
+    const std::string given = core::JsonString(*body, "password");
+    if (!given.empty()) passwords.push_back(given);
+    const auto listing = library::ListArchive(archive->path, passwords);
+    if (!listing) return SendError(res, 409, listing.error());
+    const std::string stem = library::StemWithoutArchiveExtension(archive->path).string();
+    std::vector<std::filesystem::path> files;
+    std::map<std::string, std::uintmax_t> sizes;
+    std::uintmax_t bytes = 0;
+    for (const library::ArchiveEntry& entry : listing->entries) {
+      files.push_back(entry.path);
+      sizes[entry.path.generic_string()] = entry.size;
+      bytes += entry.size;
+    }
+    const library::Detector::Result found =
+        library::Detector(library::SettingsFromConfig(s.config)).DetectListed(files, stem);
+    json programs = json::array();
+    for (const model::Candidate& candidate : found.candidates)
+      programs.push_back({{"path", candidate.rel_path},
+                          {"bytes", sizes[candidate.rel_path]},
+                          {"platform", model::ToString(candidate.kind)},
+                          {"installer", candidate.is_installer}});
+    json answer = library::FoundArchives::ToJson(*archive);
+    answer["password_needed"] = !listing->password.has_value();
+    // Named for the one folder it holds when its own name says nothing.
+    std::string name = strings::CleanGameName(stem);
+    if (strings::IsGenericName(name) && !files.empty()) {
+      const std::filesystem::path top = *files.front().begin();
+      const bool single = std::ranges::all_of(files, [&](const std::filesystem::path& file) {
+        return file.has_parent_path() && *file.begin() == top;
+      });
+      if (single) name = strings::CleanGameName(top.string());
+    }
+    answer["suggested_name"] = name;
+    answer["programs"] = std::move(programs);
+    answer["unpacked_bytes"] = bytes;
+    std::error_code ec;
+    const auto space = std::filesystem::space(archive->path.parent_path(), ec);
+    answer["free_bytes"] = ec ? json() : json(space.available);
+    SendJson(res, answer);
+  });
+
+  http.Post("/v1/library/archives/extract", [&s](const Request& req, Response& res) {
+    const auto body = BodyObject(
+        req, res,
+        R"({"path": "...", "password"?, "delete_archive"?, "name"?, "exe_path"?, "app"?, "installer"?, "steam_appid"?})");
+    if (!body) return;
+    const auto archive = s.found_archives.Find(core::JsonString(*body, "path"));
+    if (!archive || s.Conceals(archive->path.string()))
+      return SendError(res, 404, "archive_not_found", "no archive waits there");
+    auto choices = library::ParseSetupChoices(*body);
+    if (!choices) return SendError(res, 400, choices.error());
+    if (body->contains("delete_archive") && !(*body)["delete_archive"].is_boolean())
+      return SendError(res, 400, "invalid_body", "\"delete_archive\" must be true or false");
+    const auto holder = library::HolderOf(archive->path, archive->outputs);
+    if (holder && holder->certain)
+      return SendError(res, 409, "archive_busy", std::format("{} is extracting it", holder->name));
+    std::vector<std::string> passwords = s.downloads.Passwords();
+    const std::string given = core::JsonString(*body, "password");
+    if (!given.empty()) passwords.push_back(given);
+    library::ExtractOptions options{.password = {},
+                                    .choices = std::move(*choices),
+                                    .delete_archive = body->value("delete_archive", true)};
+    // Taken now, so a second request or a new folder of its name doesn't touch it.
+    if (!s.found_archives.Take(archive->path))
+      return SendError(res, 404, "archive_not_found", "no archive waits there");
+    s.StartJob(req, res, "extract_archive", archive->path.string(),
+               "Extracting " + archive->path.filename().string(),
+               [&s, archive = *archive, options, passwords,
+                given](JobRegistry::Progress& progress) mutable -> Result<json> {
+                 const auto run = [&]() -> Result<std::filesystem::path> {
+                   const auto password = library::FindPassword(archive.path, passwords);
+                   if (!password) return std::unexpected(password.error());
+                   if (!*password) return Err("password_needed", "No saved password opens it.");
+                   options.password = **password;
+                   if (!given.empty() && given == options.password)
+                     s.downloads.RememberPassword(given);
+                   return library::ExtractFound(s.config, archive, options, [&](int percent) {
+                     progress.Report(percent, 100);
+                   });
+                 };
+                 const auto placed = run();
+                 if (!placed) {
+                   // Still there to try again.
+                   std::error_code ec;
+                   if (std::filesystem::exists(archive.path, ec)) s.found_archives.Offer(archive);
+                   return std::unexpected(placed.error());
+                 }
+                 return json{{"folder", placed->string()}};
+               });
+  });
+
+  // Another app extracts it: its folder is picked up like any other.
+  http.Post("/v1/library/archives/leave", [&s](const Request& req, Response& res) {
+    const auto body = BodyObject(req, res, R"({"path": "..."})");
+    if (!body) return;
+    const std::string path = core::JsonString(*body, "path");
+    if (s.Conceals(path) || !s.found_archives.Take(path))
+      return SendError(res, 404, "archive_not_found", "no archive waits there");
+    res.status = 204;
+  });
+
   // --- import ------------------------------------------------------------
 
   http.Post("/v1/library/import/classify", [&s](const Request& req, Response& res) {
@@ -255,34 +378,17 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
                             {"installer", candidate.is_installer}});
       }
     } else {
-      const std::string ext = strings::ToLower(std::filesystem::path(path).extension().string());
-      programs.push_back({{"path", std::filesystem::path(path).filename().string()},
+      const std::string name = std::filesystem::path(path).filename().string();
+      programs.push_back({{"path", name},
                           {"platform", std::string(model::ToString(library::PlatformOfFile(path)))},
-                          {"installer", ext == ".msi" || library::IsBuiltInstaller(path)}});
+                          {"installer", library::LooksLikeInstaller(
+                                            name, library::SettingsFromConfig(s.config))}});
     }
     const bool installer = !programs.empty() && programs.front()["installer"].get<bool>();
     json out{{"kind", std::string(library::ImportKindName(guess.kind))},
              {"name", guess.name},
              {"reason", guess.reason},
              {"installer", installer}};
-    // What installing would be like, for a file (picked as an installer, whatever it looks like)
-    // or a folder led by an installer: there's no game yet to ask GET /v1/games/{id}/installer.
-    const bool folder = std::filesystem::is_directory(path, ec);
-    if (!programs.empty() && (!folder || installer)) {
-      model::Game probe;
-      probe.install_path = folder ? path : std::filesystem::path(path).parent_path().string();
-      probe.exe_path = programs.front()["path"].get<std::string>();
-      if (const auto info = library::DescribeInstaller(s.config, probe)) {
-        json targets = json::array();
-        for (const auto& target : info->targets)
-          targets.push_back({{"path", target.root.string()}, {"free_bytes", target.free_bytes}});
-        out["installer_info"] = {{"path", info->path.string()},
-                                 {"size_bytes", info->size_bytes},
-                                 {"format", library::ToString(info->format)},
-                                 {"silent", info->silent},
-                                 {"targets", std::move(targets)}};
-      }
-    }
     out["programs"] = std::move(programs);
     SendJson(res, out);
   });

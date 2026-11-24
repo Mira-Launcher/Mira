@@ -27,7 +27,7 @@ class DesktopEntries {
   DesktopEntries(config::Config& config, const store::MetadataStore& cache);
 
   // Writes an entry per launchable game and removes the ones that no longer
-  // apply (deleted, missing, broken, or still needing an install). A no-op
+  // apply (deleted, missing or not set up). A no-op
   // when desktop_entries.enabled is false, except that it then removes any
   // entries previously written.
   Result<void> Sync(const std::vector<model::Game>& games);

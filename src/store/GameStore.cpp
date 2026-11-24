@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 11> kMigrations = {
+constexpr std::array<std::string_view, 12> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -174,6 +174,16 @@ UPDATE games SET candidates = (SELECT json_group_array(json(value)) FROM json_ea
                                WHERE json_extract(value, '$.rel_path') = games.exe_path)
 WHERE reviewed <> 0;
 )sql",
+    R"sql(
+-- One status for every game that waits for the user; `setup` says for what.
+ALTER TABLE games ADD COLUMN setup TEXT NOT NULL DEFAULT '';
+UPDATE games SET setup = CASE status WHEN 'needs_install' THEN 'install' WHEN 'broken' THEN 'failed' ELSE '' END;
+ALTER TABLE games ADD COLUMN new_status TEXT NOT NULL DEFAULT 'not_set_up'
+  CHECK(new_status IN ('setting_up', 'ready', 'not_set_up', 'missing'));
+UPDATE games SET new_status = status WHERE status IN ('setting_up', 'ready', 'missing');
+ALTER TABLE games DROP COLUMN status;
+ALTER TABLE games RENAME COLUMN new_status TO status;
+)sql",
 };
 
 // The fields a removed game keeps: what the user chose, not what a store or scan finds again.
@@ -229,11 +239,11 @@ void Restore(model::Game& game, const json& kept, const std::vector<model::Game>
   }
 }
 
-constexpr std::array<std::string_view, 16> kTextColumns = {
+constexpr std::array<std::string_view, 17> kTextColumns = {
     "id",         "install_path", "name",          "status",      "platform",
     "source",     "exe_path",     "args",          "working_dir", "runner_ref",
     "source_ref", "data_dir",     "installer_dir", "last_error",  "library_link",
-    "folder_tag"};
+    "folder_tag", "setup"};
 constexpr std::array<std::string_view, 4> kIntColumns = {"created_at", "updated_at", "play_seconds",
                                                          "last_session_at"};
 constexpr std::array<std::string_view, 5> kJsonColumns = {"runner_config", "overrides", "env",
@@ -497,7 +507,12 @@ void GameStore::Load() {
   log::Info("loaded {} game(s) from {}", games_.size(), file_.string());
 }
 
-Result<void> GameStore::Write(const model::Game& game) {
+Result<void> GameStore::Write(model::Game& game) {
+  if (game.status == model::GameStatus::Ready || game.status == model::GameStatus::SettingUp) {
+    game.setup = model::SetupStep::None;
+  } else if (game.status == model::GameStatus::NotSetUp && game.setup == model::SetupStep::None) {
+    game.setup = model::SetupStep::Failed;
+  }
   const std::vector<std::string_view> columns = Columns();
   std::string sql = std::format("INSERT INTO games({}) VALUES({}) ON CONFLICT(id) DO UPDATE SET {}",
                                 Joined(columns, "{}"),
@@ -1075,7 +1090,7 @@ Result<std::vector<model::Game>> GameStore::UpdateMany(const std::vector<std::st
   }
   if (updated.empty()) return updated;
   const auto written = Transact([&]() -> Result<void> {
-    for (const model::Game& game : updated) {
+    for (model::Game& game : updated) {
       if (auto done = Write(game); !done) return done;
     }
     return {};

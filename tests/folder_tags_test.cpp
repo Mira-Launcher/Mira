@@ -252,7 +252,7 @@ TEST_CASE("A scan follows folders moved by hand and prunes what they left") {
   alpha = env.games.Find("alpha");
   CHECK(alpha->install_path == (root / ".hidden" / "RPG" / "Alpha").string());
   CHECK(alpha->tags == std::vector<std::string>{"RPG", "hidden"});
-  CHECK(alpha->status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(*alpha, model::SetupStep::Confirm));
 
   // A folder whose program several missing games share is unclear: not added, and none of them is
   // marked missing while it waits to be settled.
@@ -390,7 +390,7 @@ TEST_CASE("A game moved by hand into another library folder keeps its history") 
   REQUIRE(foo.has_value());
   CHECK(foo->install_path == (apps_root / "Foo").string());
   CHECK(foo->play_seconds == 600);
-  CHECK(foo->status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(*foo, model::SetupStep::Confirm));
   CHECK(env.games.All().size() == 1);
 }
 

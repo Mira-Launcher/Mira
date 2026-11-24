@@ -23,6 +23,8 @@
 #include "config/Config.h"
 #include "config/Schema.h"
 #include "core/Paths.h"
+#include "library/GameIdentity.h"
+#include "library/GameSetup.h"
 #include "metadata/MetadataFetcher.h"
 #include "store/GameStore.h"
 #include "support/LiveServer.h"
@@ -186,7 +188,8 @@ TEST_CASE(
   game.id = "celeste";
   game.name = "Celeste";
   game.platform = model::Platform::Native;
-  game.status = model::GameStatus::NeedsInstall;  // not provisioned, so no real prefix is built
+  game.status = model::GameStatus::NotSetUp;
+  game.setup = model::SetupStep::Install;  // not provisioned, so no real prefix is built
   REQUIRE(server.games().Upsert(game).has_value());
 
   httplib::Client client = server.Client();
@@ -261,8 +264,8 @@ TEST_CASE(
   CHECK(fs::exists(lib / "Clustertruck"));
 }
 
-TEST_CASE("A detected game Mira wasn't sure about needs a check until someone confirms it") {
-  LiveServer server(TempDir("server-needs-check"));
+TEST_CASE("Reviewing a game keeps only its program, and detecting again rebuilds the list") {
+  LiveServer server(TempDir("server-reviewed"));
 
   model::Game unsure;
   unsure.id = "splodey";
@@ -272,26 +275,15 @@ TEST_CASE("A detected game Mira wasn't sure about needs a check until someone co
   unsure.candidates = {{.rel_path = "Splodey.exe", .score = 4.0, .chosen = true},
                        {.rel_path = "Launcher.exe", .score = 3.0}};
   REQUIRE(server.games().Upsert(unsure).has_value());
-  model::Game imported;  // an importer's game: no candidates, no confidence
-  imported.id = "balatro";
-  imported.name = "Balatro";
-  REQUIRE(server.games().Upsert(imported).has_value());
-
+  model::Game folderless;
+  folderless.id = "balatro";
+  folderless.name = "Balatro";
+  REQUIRE(server.games().Upsert(folderless).has_value());
   httplib::Client client = server.Client();
-  const auto needs_check = [&](const std::string& id) {
-    auto res = client.Get("/v1/games/" + id);
-    REQUIRE(res != nullptr);
-    return nlohmann::json::parse(res->body).value("needs_check", true);
-  };
-  CHECK(needs_check("splodey"));
-  CHECK_FALSE(needs_check("balatro"));
 
   auto confirmed = client.Patch("/v1/games/splodey", R"({"reviewed": true})", "application/json");
   REQUIRE(confirmed != nullptr);
   CHECK(confirmed->status == 200);
-  CHECK_FALSE(nlohmann::json::parse(confirmed->body).value("needs_check", true));
-  CHECK_FALSE(needs_check("splodey"));
-  // Confirmed, only the chosen program is kept of what detection weighed.
   const std::vector<model::Candidate> kept = server.games().Find("splodey")->candidates;
   REQUIRE(kept.size() == 1);
   CHECK(kept.front().rel_path == "Splodey.exe");
@@ -444,14 +436,15 @@ TEST_CASE("POST /v1/games/{id}/launch refuses a command_wrappers entry that isn'
   CHECK(res->body.find("wrapper_not_found") != std::string::npos);
 }
 
-TEST_CASE("POST /v1/games/{id}/launch refuses a needs_install game with a message") {
+TEST_CASE("POST /v1/games/{id}/launch refuses a game that isn't set up with a message") {
   LiveServer server(TempDir("server-launch-needs-install"));
 
   model::Game game;
   game.id = "setup-game";
   game.name = "setup-game";
   game.platform = model::Platform::Windows;
-  game.status = model::GameStatus::NeedsInstall;
+  game.status = model::GameStatus::NotSetUp;
+  game.setup = model::SetupStep::Install;
   game.install_path = "/tmp";
   game.exe_path = "Setup.exe";
   REQUIRE(server.games().Upsert(game).has_value());
@@ -461,7 +454,7 @@ TEST_CASE("POST /v1/games/{id}/launch refuses a needs_install game with a messag
   REQUIRE(res != nullptr);
   CHECK(res->status == 409);
   const auto error = nlohmann::json::parse(res->body, nullptr, false)["error"];
-  CHECK(error.value("code", "") == "needs_install");
+  CHECK(error.value("code", "") == "not_set_up");
   CHECK_FALSE(error.value("message", "").empty());
 }
 
@@ -1372,7 +1365,6 @@ TEST_CASE("Adding by hand: classify names a folder's programs and installers, an
   CHECK(game["programs"][0]["path"] == "Nine Sols.exe");  // the name match, scored as a scan does
   CHECK(game["programs"][0]["platform"] == "windows");
   CHECK(game["installer"] == false);
-  CHECK_FALSE(game.contains("installer_info"));
 
   const fs::path msi = TempDir("server-add-by-hand-setup") / "setup.msi";
   test::Touch(msi, "msi");
@@ -1380,11 +1372,6 @@ TEST_CASE("Adding by hand: classify names a folder's programs and installers, an
   REQUIRE(setup["programs"].size() == 1);
   CHECK(setup["programs"][0]["path"] == "setup.msi");
   CHECK(setup["installer"] == true);
-  // Described as the install would run it, before any game exists.
-  REQUIRE(setup.contains("installer_info"));
-  CHECK(setup["installer_info"]["path"] == msi.string());
-  CHECK(setup["installer_info"]["size_bytes"] == 3);
-  CHECK(setup["installer_info"]["silent"] == true);
 
   const fs::path tool = TempDir("server-add-by-hand-app");
   test::Touch(tool / "tool", "#!/bin/sh\n", /*executable=*/true);
@@ -1475,7 +1462,7 @@ TEST_CASE(
   CHECK(server.games().FindByInstallPath(celeste.string())->exe_path == "Celeste.bin.x86_64");
 }
 
-TEST_CASE("POST /v1/games/manual with is_installer=true creates a needs_install game") {
+TEST_CASE("POST /v1/games/manual with is_installer=true creates a game to install") {
   LiveServer server(TempDir("server-manual-add-installer-state"));
   const fs::path outside_dir = TempDir("server-manual-add-installer-outside");
   std::ofstream(outside_dir / "Setup.exe") << "not really an installer";
@@ -1488,9 +1475,10 @@ TEST_CASE("POST /v1/games/manual with is_installer=true creates a needs_install 
   REQUIRE(res->status == 200);
 
   const auto parsed = nlohmann::json::parse(res->body, nullptr, false);
-  CHECK(parsed.value("status", "") == "needs_install");
+  CHECK(parsed.value("status", "") == "not_set_up");
+  CHECK(parsed.value("setup", "") == "install");
   CHECK(parsed.value("platform", "") == "windows");
-  CHECK_FALSE(parsed.value("last_error", "").empty());
+  CHECK(parsed.value("last_error", "x").empty());
   // The installer runs in the game's prefix, so it needs one before it can run.
   CHECK_FALSE(parsed.value("data_dir", "").empty());
 }
@@ -1561,7 +1549,7 @@ TEST_CASE(
   CHECK(WaitForLogContains(client, "logged-game", "hello-from-the-game"));
 }
 
-TEST_CASE("POST /v1/games/{id}/finish-install refuses while exe_path is still the installer") {
+TEST_CASE("POST /v1/games/{id}/confirm sets a game up with the user's answers, once") {
   LiveServer server(TempDir("server-finish-install-state"));
   const fs::path dir = TempDir("server-finish-install-game");
   std::ofstream(dir / "setup.exe") << "installer";
@@ -1571,25 +1559,51 @@ TEST_CASE("POST /v1/games/{id}/finish-install refuses while exe_path is still th
   game.name = "Pending";
   game.install_path = dir.string();
   game.exe_path = "setup.exe";
-  game.status = model::GameStatus::NeedsInstall;
+  game.status = model::GameStatus::NotSetUp;
+  game.setup = model::SetupStep::Install;
   game.candidates = {{.rel_path = "setup.exe", .is_installer = true}};
   REQUIRE(server.games().Upsert(game));
 
   httplib::Client client = server.Client();
-  auto res = client.Post("/v1/games/pending/finish-install");
+  // Still an installer: it waits for it to be run, under the name given.
+  auto res = client.Post("/v1/games/pending/confirm", R"({"name": "Hades"})", "application/json");
+  REQUIRE(res != nullptr);
+  CHECK(res->status == 200);
+  auto game_now = server.games().Find("pending");
+  CHECK(model::WaitsFor(*game_now, model::SetupStep::Install));
+  CHECK(game_now->name == "Hades");
+
+  res = client.Post("/v1/games/pending/confirm", R"({"exe_path": "missing"})", "application/json");
   REQUIRE(res != nullptr);
   CHECK(res->status == 409);
 
-  std::ofstream(dir / "game.exe") << "game";
-  REQUIRE(client.Patch("/v1/games/pending", R"({"exe_path": "game.exe"})", "application/json"));
-  res = client.Post("/v1/games/pending/finish-install");
+  test::Touch(dir / "hades", "", /*executable=*/true);
+  res = client.Post("/v1/games/pending/confirm",
+                    R"({"exe_path": "hades", "app": true, "steam_appid": 1145360})",
+                    "application/json");
   REQUIRE(res != nullptr);
   CHECK(res->status == 200);
+  game_now = server.games().Find("pending");
+  CHECK(game_now->status == model::GameStatus::Ready);
+  CHECK(game_now->setup == model::SetupStep::None);
+  CHECK(game_now->exe_path == "hades");
+  CHECK(game_now->overrides["metadata.steam_appid"] == 1145360);
+  CHECK(std::ranges::contains(game_now->tags, "app"));
+  CHECK(library::Identify(server.config(), *game_now).steam_appid == "1145360");
+  // 0 is the user's "not on Steam", which a guess by name or title doesn't undo.
+  model::Game other = *game_now;
+  other.status = model::GameStatus::NotSetUp;
+  other.steam_match = "1145360";
+  REQUIRE(library::ConfirmSetup(server.config(), server.games(), other, {.steam_appid = 0}));
+  CHECK(library::Identify(server.config(), other).steam_from == "none");
+  CHECK(library::Identify(server.config(), other).steam_appid.empty());
+
+  res = client.Post("/v1/games/pending/confirm");
+  REQUIRE(res != nullptr);
+  CHECK(res->status == 409);
 }
 
-TEST_CASE(
-    "POST /v1/games/{id}/finish-install adopts a program installed in the prefix, and nothing "
-    "outside it") {
+TEST_CASE("POST /v1/games/{id}/confirm adopts the folder of a program installed in the prefix") {
   LiveServer server(TempDir("server-adopt-install-state"));
   const fs::path prefix = TempDir("server-adopt-install-prefix");
   const fs::path app = prefix / "drive_c" / "Program Files" / "App";
@@ -1605,18 +1619,14 @@ TEST_CASE(
   game.exe_path = "App-Setup.exe";
   game.data_dir = prefix.string();
   game.platform = model::Platform::Windows;
-  game.status = model::GameStatus::Ready;
+  game.status = model::GameStatus::NotSetUp;
+  game.setup = model::SetupStep::Install;
   REQUIRE(server.games().Upsert(game));
 
   httplib::Client client = server.Client();
-  auto res = client.Post("/v1/games/adopt/finish-install", R"({"install_path": "/tmp"})",
+  auto res = client.Post("/v1/games/adopt/confirm",
+                         nlohmann::json{{"exe_path", (app / "app.exe").string()}}.dump(),
                          "application/json");
-  REQUIRE(res != nullptr);
-  CHECK(res->status == 400);
-
-  res = client.Post("/v1/games/adopt/finish-install",
-                    nlohmann::json{{"install_path", app.string()}, {"exe_path", "app.exe"}}.dump(),
-                    "application/json");
   REQUIRE(res != nullptr);
   CHECK(res->status == 200);
   const auto adopted = server.games().Find("adopt");
@@ -1625,7 +1635,7 @@ TEST_CASE(
   CHECK(adopted->exe_path == "app.exe");
 }
 
-TEST_CASE("finish-install looks up the moved game's art only while automatic metadata is on") {
+TEST_CASE("Confirming looks up the moved game's art only while automatic metadata is on") {
   LiveServer server(TempDir("server-adopt-metadata-state"));
   // No SteamGridDB key and no Steam lookup, so each fetch that runs fails offline with
   // game.metadata_failed.
@@ -1644,12 +1654,12 @@ TEST_CASE("finish-install looks up the moved game's art only while automatic met
     game.exe_path = "Setup.exe";
     game.data_dir = prefix.string();
     game.platform = model::Platform::Windows;
-    game.status = model::GameStatus::NeedsInstall;
+    game.status = model::GameStatus::NotSetUp;
+    game.setup = model::SetupStep::Install;
     REQUIRE(server.games().Upsert(game));
-    auto res =
-        client.Post("/v1/games/" + id + "/finish-install",
-                    nlohmann::json{{"install_path", app.string()}, {"exe_path", "app.exe"}}.dump(),
-                    "application/json");
+    auto res = client.Post("/v1/games/" + id + "/confirm",
+                           nlohmann::json{{"exe_path", (app / "app.exe").string()}}.dump(),
+                           "application/json");
     REQUIRE(res != nullptr);
     REQUIRE(res->status == 200);
     server.services().fetches.WaitIdle();
@@ -1664,7 +1674,7 @@ TEST_CASE("finish-install looks up the moved game's art only while automatic met
   CHECK(adopt("on"));
 }
 
-TEST_CASE("POST /v1/games/{id}/install refuses a game that isn't needs_install") {
+TEST_CASE("POST /v1/games/{id}/install refuses a game with no installer to run") {
   LiveServer server(TempDir("server-install-ready-state"));
   model::Game game;
   game.id = "done";
@@ -1689,7 +1699,8 @@ TEST_CASE(
   game.id = "pick";
   game.name = "Pick";
   game.install_path = dir.string();
-  game.status = model::GameStatus::NeedsInstall;
+  game.status = model::GameStatus::NotSetUp;
+  game.setup = model::SetupStep::Install;
   REQUIRE(server.games().Upsert(game));
 
   httplib::Client client = server.Client();
@@ -1888,7 +1899,8 @@ TEST_CASE("An installer on a disc gets its prefix off the disc, silent or shown"
     game.install_path = disc.string();
     game.exe_path = "setup.exe";
     game.data_dir = (disc / "prefix").string();  // where it landed before: on the disc
-    game.status = model::GameStatus::NeedsInstall;
+    game.status = model::GameStatus::NotSetUp;
+    game.setup = model::SetupStep::Install;
     REQUIRE(server.games().Upsert(game));
   };
   add("quiet");
@@ -1910,7 +1922,7 @@ TEST_CASE("An installer on a disc gets its prefix off the disc, silent or shown"
   CHECK(AwaitJob(client, client.Post("/v1/games/quiet/install", body.dump(), "application/json"))
             .value("state", "") == "finished");
   const model::Game quiet = *server.games().Find("quiet");
-  CHECK(quiet.status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(quiet, model::SetupStep::Confirm));
   CHECK(quiet.install_path == (fs::path(quiet.data_dir) / "drive_c" / "Games" / "Disc Game"));
   CHECK(quiet.installer_dir == disc.string());
 
@@ -1920,7 +1932,7 @@ TEST_CASE("An installer on a disc gets its prefix off the disc, silent or shown"
                  client.Post("/v1/games/shown/install", shown_body.dump(), "application/json"))
             .value("state", "") == "finished");
   const model::Game shown = *server.games().Find("shown");
-  CHECK(shown.status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(shown, model::SetupStep::Confirm));
   CHECK(paths::IsWithin(shown.install_path, {shown.data_dir}));
 
   for (const model::Game& game : {quiet, shown}) {

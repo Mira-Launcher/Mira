@@ -54,7 +54,7 @@ class Scanner {
   ScanSummary ScanAll();
   ScanSummary ScanRoot(const std::filesystem::path& root);
 
-  // Where an installer it runs on its own (scan.auto_run_installers) queues the installed
+  // Where an installer it runs on its own (downloads.auto_install) queues the installed
   // game's art. Must outlive the install, which continues after the scan.
   void UseMetadataQueue(metadata::FetchQueue& queue) { metadata_fetches_ = &queue; }
   // Where an installer it runs on its own is run; without one, scans skip those installs.
@@ -64,6 +64,11 @@ class Scanner {
   // Games it must not remove (library.remove_missing) because they're running.
   void UseRunningCheck(std::function<bool(const std::string&)> is_running) {
     is_running_ = std::move(is_running);
+  }
+
+  // New folders it doesn't add yet: they're still being copied.
+  void LeaveForLater(std::set<std::filesystem::path> unsettled) {
+    unsettled_ = std::move(unsettled);
   }
 
   // Settles an unclear move: `folder` is game `id`'s, moved by hand, or a new game without one.
@@ -82,10 +87,11 @@ class Scanner {
   Lane* installs_ = nullptr;
   UnclearMoves* unclear_moves_ = nullptr;
   std::function<bool(const std::string&)> is_running_;
+  std::set<std::filesystem::path> unsettled_;
 };
 
-// Provisions again every Windows game left broken by a missing or failing
-// runner, once a runner resolves for it. Returns how many became ready.
+// Provisions again every Windows game a missing or failing
+// runner kept from being set up, once a runner resolves for it. Returns how many became ready.
 int RetryBrokenProvisioning(config::Config& config, store::GameStore& games, api::EventBus& events);
 // Same for one game. Returns whether it became ready.
 bool RetryBrokenProvisioning(config::Config& config, store::GameStore& games, api::EventBus& events,

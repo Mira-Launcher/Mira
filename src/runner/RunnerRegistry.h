@@ -79,14 +79,14 @@ class RunnerRegistry {
   // best available windows runner. Used by launch paths that must not
   // re-run a runner's Provision() (wineboot, prefix init, ...) on every
   // launch the way ProvisionGame does -- only ProvisionGame's own callers
-  // (install/scan/finish-install) should provision.
+  // (install/scan/confirm) should provision.
   std::string ResolveRef(const model::Game& game) const;
 
   // Resolves game.runner_ref (or, if unset, default_runner.<platform>),
   // pins the concrete reference onto the returned copy, and provisions it.
   // Can't fail in the Result sense: "no runner found" or "provisioning
-  // failed" are both normal outcomes, reflected as status=broken with
-  // last_error set, same as AutoSetup does for "no executable found".
+  // failed" are both normal outcomes, reflected as not_set_up (failed)
+  // with last_error set, same as AutoSetup does for "no executable found".
   // Doesn't persist anything; the caller saves the result via GameStore.
   model::Game ProvisionGame(model::Game game) const;
 

@@ -27,6 +27,10 @@ ImportGuess ClassifyImport(const std::filesystem::path& path);
 Result<std::filesystem::path> ImportInto(const config::Config& config,
                                          const std::filesystem::path& path, ImportKind kind);
 
+// ImportInto as "<name> (2)" and so on when the name is taken, `path` being renamed for it.
+Result<std::filesystem::path> ImportUnderFreeName(const config::Config& config,
+                                                  std::filesystem::path path, ImportKind kind);
+
 std::string_view ImportKindName(ImportKind kind);                  // "game", "app", "unknown"
 std::optional<ImportKind> ParseImportKind(std::string_view text);  // "game"/"app" only
 

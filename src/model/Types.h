@@ -16,9 +16,16 @@ enum class Platform { Unknown, Windows, Native, Web };
 enum class GameStatus {
   SettingUp,  // detected and configured; its data directory is being provisioned
   Ready,
-  Broken,        // provisioning or launching failed; last_error says what to do
-  Missing,       // the folder disappeared, but the configuration is kept
-  NeedsInstall,  // the only thing found was an installer, not the game itself
+  NotSetUp,  // waits for the user; Game::setup says for what
+  Missing,   // the folder disappeared, but the configuration is kept
+};
+
+// What a game that isn't set up waits for.
+enum class SetupStep {
+  None,
+  Confirm,  // the user hasn't said its program, name and title are right
+  Install,  // its program is an installer, not run yet
+  Failed,   // no program was found, or setting up its runner failed; last_error says what to do
 };
 
 // Windows and web games get a data folder and a runner set up before they run (a prefix, a
@@ -30,6 +37,8 @@ inline bool NeedsRunnerSetup(Platform platform) {
 std::string_view ToString(Platform platform);
 std::string_view ToString(GameStatus status);
 Platform PlatformFromString(std::string_view text);
+std::string_view ToString(SetupStep step);
+SetupStep SetupStepFromString(std::string_view text);
 GameStatus GameStatusFromString(std::string_view text);
 
 // Severity of a `notification` event (EventBus::PublishNotification), the
@@ -45,8 +54,7 @@ struct Candidate {
   Platform kind = Platform::Unknown;
   double score = 0.0;
   bool chosen = false;
-  bool is_installer =
-      false;  // an installer builder's mark, or name + size, say this is a setup.exe, not the game
+  bool is_installer = false;  // its name, or being an .msi, says it's a setup.exe, not the game
 };
 
 // A game's id is a filesystem-safe slug derived from its name (e.g.
@@ -58,6 +66,8 @@ struct Game {
   std::string install_path;
   std::string name;
   GameStatus status = GameStatus::SettingUp;
+  // Set while NotSetUp, and kept while Missing; GameStore clears it otherwise.
+  SetupStep setup = SetupStep::None;
   double confidence = 0.0;
   bool reviewed = false;
   Platform platform = Platform::Unknown;
@@ -117,6 +127,10 @@ struct Game {
   // hands a game out and never saves it; library::Identify reads it.
   std::string steam_match;
 };
+
+inline bool WaitsFor(const Game& game, SetupStep step) {
+  return game.status == GameStatus::NotSetUp && game.setup == step;
+}
 
 // An installed runner build, e.g. GE-Proton11-7. Rediscovered at startup and
 // on demand rather than persisted, so it has no stored id, so a game refers to

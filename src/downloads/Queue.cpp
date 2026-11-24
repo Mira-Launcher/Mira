@@ -578,7 +578,10 @@ Result<void> Queue::Extract(const Download& download, const fs::path& dir) {
     const fs::path kept = HomeOf(download) / "Archives" / FolderName(download.name);
     fs::create_directories(kept, ec);
     for (const fs::path& path : entries) {
-      if (fs::exists(path, ec)) fs::rename(path, kept / path.filename(), ec);
+      if (!fs::exists(path, ec)) continue;
+      fs::rename(path, kept / path.filename(), ec);
+      // Another disk.
+      if (ec) fs::copy_file(path, kept / path.filename(), ec);
     }
     if (ec) log::Warn("couldn't keep the archives of {}: {}", download.name, ec.message());
   }
@@ -618,19 +621,14 @@ Result<void> Queue::Place(const Download& download, const fs::path& dir, const f
                                        ? library::ImportKind::kApp
                                        : library::ImportKind::kGame;
   // The same name in the library already: this one is kept beside it.
-  for (int copy = 2;; ++copy) {
-    const auto imported = library::ImportInto(config_, staged, kind);
-    if (imported) {
-      if (config_.GetBool("downloads.auto_install")) library::RequestAutoInstall(*imported);
-      return {};
-    }
-    if (imported.error().code != "target_exists" || copy > 20)
-      return std::unexpected(imported.error());
-    const fs::path next = staged_dir / std::format("{} ({})", name, copy);
-    fs::rename(staged, next, ec);
-    if (ec) return Err("move_failed", ec.message(), kDiskHint);
-    staged = next;
+  auto imported = library::ImportUnderFreeName(config_, staged, kind);
+  if (!imported) {
+    if (imported.error().code == "move_failed" && imported.error().hint.empty())
+      imported.error().hint = kDiskHint;
+    return std::unexpected(imported.error());
   }
+  if (config_.GetBool("downloads.auto_install")) library::RequestAutoInstall(*imported);
+  return {};
 }
 
 void Queue::Finish(const std::string& id) {
@@ -820,9 +818,15 @@ Result<void> Queue::SubmitPassword(const std::string& id, const std::string& pas
   std::lock_guard lock(mutex_);
   Download* download = FindLocked(id);
   if (download == nullptr) return Err("unknown_download", "no such download");
-  if (download->state != "password")
-    return Err("not_waiting", "that download isn't waiting for a password");
+  if (download->state == "extracting" || download->state == "done")
+    return Err("not_waiting", "that download can't take a password now");
   download->password = password;
+  // Not there yet: tried once it's downloaded.
+  if (download->state != "password") {
+    Announce(*download);
+    Save();
+    return {};
+  }
   SetState(*download, "extracting");
   work_.Post([this, id] { Finish(id); });
   return {};

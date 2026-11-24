@@ -226,7 +226,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
         game.data_dir = prefix_dir;
       provision = turned && model::NeedsRunnerSetup(game.platform) &&
                   (game.status == model::GameStatus::Ready ||
-                   (was_unknown && game.status == model::GameStatus::Broken));
+                   (was_unknown && model::WaitsFor(game, model::SetupStep::Failed)));
       if (provision) game.status = model::GameStatus::SettingUp;
     });
     if (!result) return SendStoreError(res, result.error());
@@ -240,8 +240,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
       s.SortByTags({id});
   });
 
-  // Detects the game's program again from scratch: the old candidates are dropped, the program
-  // stays when it's still found, and the game reads "Not checked" until it's confirmed.
+  // Detects the game's program again from scratch: the old candidates are dropped and the program
+  // stays when it's still found. A game no program was found for then waits to be confirmed.
   http.Post(R"(/v1/games/([^/]+)/detect)", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
     const auto before = s.games.Find(id);
@@ -261,6 +261,13 @@ void RegisterGameRoutes(Router& http, Services& s) {
       for (model::Candidate& candidate : game.candidates)
         candidate.chosen = candidate.rel_path == game.exe_path;
       game.reviewed = false;
+      if (before->exe_path.empty() && !game.candidates.empty() &&
+          model::WaitsFor(game, model::SetupStep::Failed)) {
+        game.platform = game.candidates.front().kind;
+        game.setup = game.candidates.front().is_installer ? model::SetupStep::Install
+                                                          : model::SetupStep::Confirm;
+        game.last_error.clear();
+      }
     });
     if (!result) return SendStoreError(res, result.error());
     s.SyncDesktopEntry(id);
@@ -690,7 +697,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
         break;
       }
       // A loose installer's folder (Downloads) is nobody's game folder.
-      const bool loose_installer = is_installer || known.status == model::GameStatus::NeedsInstall;
+      const bool loose_installer =
+          is_installer || model::WaitsFor(known, model::SetupStep::Install);
       if (!appimage && !is_appimage(known.exe_path) && !folder_game && !loose_installer)
         folder_game = known;
     }
@@ -714,8 +722,9 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (!existing) game.created_at = game.updated_at;
     if (is_installer) {
       // An installer isn't the game, so it isn't provisioned or launchable yet.
-      game.status = model::GameStatus::NeedsInstall;
-      game.last_error = "This is an installer, not the game itself. Install it to play.";
+      game.status = model::GameStatus::NotSetUp;
+      game.setup = model::SetupStep::Install;
+      game.last_error.clear();
     } else {
       // A Windows game's prefix (a web game's browser) is set up in the background; it's
       // setting_up until then.
@@ -736,10 +745,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
 
     s.SyncDesktopEntry(game.id);
     if (!existing) s.fetches.EnqueueNew(s.config, s.events, game);
-    json record = s.Record(game);
-    // The client adding an installer already asked whether to run it.
-    if (is_installer) record["auto_install"] = true;
-    SendJson(res, s.events.Publish(existing ? "game.updated" : "game.added", record).payload);
+    SendJson(res,
+             s.events.Publish(existing ? "game.updated" : "game.added", s.Record(game)).payload);
     if (game.status == model::GameStatus::SettingUp) s.ProvisionLater(game);
   });
 }

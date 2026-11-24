@@ -10,9 +10,8 @@
 namespace mira::library {
 
 // Turns one Detector::Result for a freshly-found folder into a stored,
-// auto-configured model::Game, and publishes `game.added`. It does not
-// provision anything: a Windows game is stored `setting_up` for the scanner
-// to provision, and a native game is stored `ready`.
+// model::Game that waits for the user to confirm it (unless they already have; see
+// ConfirmWhenFound), and publishes `game.added`. It provisions nothing.
 class AutoSetup {
  public:
   AutoSetup(config::Config& config, store::GameStore& games, api::EventBus& events);
@@ -25,6 +24,8 @@ class AutoSetup {
                                  const std::filesystem::path& appimage);
 
  private:
+  void ConfirmIfAnswered(const std::filesystem::path& found, model::Game& game) const;
+
   config::Config& config_;
   store::GameStore& games_;
   api::EventBus& events_;

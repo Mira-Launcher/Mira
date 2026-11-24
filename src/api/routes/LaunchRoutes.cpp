@@ -29,6 +29,7 @@
 #include "library/AutoInstall.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
+#include "library/GameSetup.h"
 #include "library/InstallSize.h"
 #include "library/LaunchOptions.h"
 #include "library/Relocate.h"
@@ -618,22 +619,25 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
   http.Post(R"(/v1/games/([^/]+)/launch)", [&s](const Request& req, Response& res) {
     auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
-    if (game->status == model::GameStatus::Broken &&
+    if (model::WaitsFor(*game, model::SetupStep::Failed) &&
         library::RetryBrokenProvisioning(s.config, s.games, s.events, game->id)) {
       game = s.games.Find(game->id);
       if (!game) return SendError(res, 404, "game_not_found", "no such game");
     }
     // Still broken for want of a runner: that error, with its fix (installing a browser, say).
-    if (game->status == model::GameStatus::Broken && model::NeedsRunnerSetup(game->platform)) {
+    if (model::WaitsFor(*game, model::SetupStep::Failed) &&
+        model::NeedsRunnerSetup(game->platform)) {
       const runner::RunnerRegistry runners(s.config);
       if (auto resolved = runners.Resolve(runners.ResolveRef(*game)); !resolved)
         return SendError(res, 409, resolved.error());
     }
-    if (game->status == model::GameStatus::NeedsInstall) {
-      return SendError(res, 409, "needs_install",
-                       game->last_error.empty()
-                           ? std::format("\"{}\" needs installing before it can launch", game->id)
-                           : game->last_error);
+    if (game->status == model::GameStatus::NotSetUp) {
+      return SendError(
+          res, 409, "not_set_up",
+          !game->last_error.empty() ? game->last_error
+          : game->setup == model::SetupStep::Install
+              ? std::format("\"{}\" needs installing before it can launch", game->name)
+              : std::format("\"{}\" needs setting up before it can launch", game->name));
     }
     if (game->status != model::GameStatus::Ready) {
       return SendError(res, 409, "not_ready",
@@ -839,14 +843,6 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       return SendError(res, PrepareStatus(command.error()), command.error());
     }
 
-    // A Windows "game" that turns out to be an installer is caught at exit (CheckForInstall).
-    // Only for an existing prefix: a new one's own Program Files would all look installed.
-    if (std::error_code ec;
-        game->platform == model::Platform::Windows && !game->data_dir.empty() &&
-        std::filesystem::exists(std::filesystem::path(game->data_dir) / "drive_c", ec)) {
-      s.WatchForInstall(game->id, library::ProgramFolders(s.config, game->data_dir));
-    }
-
     LaunchUnderWrapper(s, res, *game, *command, pre_script, post_script, extras);
     StartAlongside(s, *game);
   });
@@ -970,8 +966,12 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       const model::Game provisioned = provisioner.ProvisionGame(*game);
       auto saved = s.games.Update(game->id, [&](model::Game& g) {
         runner::TakeRunner(g, provisioned);
-        if (provisioned.status == model::GameStatus::Broken) {
-          g.status = model::GameStatus::Broken;
+        if (provisioned.status == model::GameStatus::NotSetUp) {
+          // One that waits for the user still does.
+          if (g.status != model::GameStatus::NotSetUp) {
+            g.status = model::GameStatus::NotSetUp;
+            g.setup = model::SetupStep::Failed;
+          }
           g.last_error = provisioned.last_error;
         } else {
           g.last_error.clear();
@@ -979,7 +979,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       });
       if (!saved) return SendStoreError(res, saved.error());
       game = *saved;
-      if (game->status == model::GameStatus::Broken) {
+      if (provisioned.status == model::GameStatus::NotSetUp) {
         return SendError(res, 409,
                          Error{"provision_failed",
                                "couldn't set up this game's Wine prefix: " + game->last_error,
@@ -1089,10 +1089,10 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         return SendError(res, 400, "invalid_body", "target must be one of library_roots");
       target = *it;
     }
-    const bool installable = game->status == model::GameStatus::NeedsInstall ||
-                             (installer && game->status == model::GameStatus::Broken);
+    const bool installable = model::WaitsFor(*game, model::SetupStep::Install) ||
+                             (installer && game->status == model::GameStatus::NotSetUp);
     if (!installable)
-      return SendError(res, 409, "not_needs_install", "game isn't waiting on an installer");
+      return SendError(res, 409, "no_installer", "game isn't waiting on an installer");
     if (!library::BeginInstall(game->id)) {
       return SendError(res, 409, "install_running", "an install is already running for this game");
     }
@@ -1113,86 +1113,70 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
         &s.operations);
   });
 
-  http.Post(R"(/v1/games/([^/]+)/finish-install)", [&s](const Request& req, Response& res) {
-    auto game = s.games.Find(req.matches[1]);
+  // The user's answers for a game that isn't set up: what starts it, its name, which title it is.
+  http.Post(R"(/v1/games/([^/]+)/confirm)", [&s](const Request& req, Response& res) {
+    const auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
-    const auto needs_exe = [&](std::string message) {
-      SendError(res, 409,
-                Error{"no_executable", std::move(message),
-                      "Choose the installed game's executable, then mark it installed again.",
-                      Fix::Game(game->id, "exe")});
-    };
-    // Optionally adopting what the game's installer put in its prefix (game.install_detected).
-    bool adopted = false;
-    if (!req.body.empty()) {
-      const auto body = BodyObject(req, res, R"({"install_path"?: "...", "exe_path"?: "..."})");
-      if (!body) return;
-      if (const std::string install_path = core::JsonString(*body, "install_path");
-          !install_path.empty()) {
-        if (!paths::IsWithin(install_path, {game->data_dir})) {
-          return SendError(res, 400, "invalid_install_path",
-                           "the install folder must be inside the game's prefix");
-        }
-        if (s.supervisor.IsRunning(game->id))
-          return SendError(res, 409, GameRunningError(game->id));
-        const library::Detector::Result detected =
-            library::Detector(library::SettingsFromConfig(s.config)).Detect(install_path);
-        library::AdoptInstallFolder(*game, install_path);
-        game->working_dir.clear();
-        game->candidates = detected.candidates;
-        game->confidence = detected.confidence;
-        adopted = true;
-      }
-      if (const std::string exe_path = core::JsonString(*body, "exe_path"); !exe_path.empty()) {
-        game->exe_path = exe_path;
-      }
-      for (model::Candidate& candidate : game->candidates)
-        candidate.chosen = candidate.rel_path == game->exe_path;
+    const json body = json::parse(req.body.empty() ? "{}" : req.body, nullptr, false);
+    if (body.is_discarded() || !body.is_object())
+      return SendError(res, 400, "invalid_body", "expected a JSON object");
+    const auto choices = library::ParseSetupChoices(body);
+    if (!choices) return SendError(res, 400, choices.error());
+    if (game->status != model::GameStatus::NotSetUp)
+      return SendError(res, 409, "already_set_up", "the game is already set up");
+    if (library::Installing(game->id))
+      return SendError(res, 409, "install_running", "its installer is running");
+    if (s.supervisor.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
+    model::Game set = *game;
+    // Until saved, so no other game takes the prefix it picks.
+    auto folders_lock = s.games.LockFolders();
+    if (auto done = library::ConfirmSetup(s.config, s.games, set, *choices); !done) {
+      Error error = done.error();
+      error.fix = Fix::Game(game->id, "exe");
+      return SendError(res, 409, std::move(error));
     }
-    if (game->exe_path.empty()) return needs_exe("this game has no executable set");
-    const bool still_installer = std::ranges::any_of(
-        game->candidates,
-        [&](const model::Candidate& c) { return c.is_installer && c.rel_path == game->exe_path; });
-    if (still_installer) return needs_exe("the game's executable is still the installer");
-    std::error_code ec;
-    if (!std::filesystem::exists(std::filesystem::path(game->install_path) / game->exe_path, ec)) {
-      return needs_exe("the game's executable isn't in its install folder");
-    }
-    const bool moved = s.games.Find(game->id).value_or(*game).install_path != game->install_path;
-    // Only what this request set, so a rename or move made during detection stays.
+    // Only what confirming changed, so a change made meanwhile stays.
+    bool waits = true;
     auto result = s.games.Update(game->id, [&](model::Game& g) {
-      if (adopted) {
-        g.install_path = game->install_path;
-        g.installer_dir = game->installer_dir;
-        g.name = game->name;
-        g.working_dir = game->working_dir;
-        g.candidates = game->candidates;
-        g.confidence = game->confidence;
-      }
-      g.exe_path = game->exe_path;
-      for (model::Candidate& candidate : g.candidates)
-        candidate.chosen = candidate.rel_path == g.exe_path;
-      g.status = model::GameStatus::Ready;
+      waits = g.status == model::GameStatus::NotSetUp;
+      if (!waits) return;
+      const auto take = [&](auto model::Game::* field) {
+        if (set.*field != (*game).*field) g.*field = set.*field;
+      };
+      take(&model::Game::name);
+      take(&model::Game::install_path);
+      take(&model::Game::installer_dir);
+      take(&model::Game::exe_path);
+      take(&model::Game::working_dir);
+      take(&model::Game::data_dir);
+      take(&model::Game::tags);
+      take(&model::Game::overrides);
+      g.platform = set.platform;
+      g.candidates = set.candidates;
+      g.reviewed = set.reviewed;
+      g.status = set.status;
+      g.setup = set.setup;
       g.last_error.clear();
     });
+    folders_lock.unlock();
     if (!result) return SendStoreError(res, result.error());
+    if (!waits) return SendError(res, 409, "already_set_up", "the game is already set up");
     s.SyncDesktopEntry(result->id);
-    s.events.Publish("game.updated", s.Record(*result));
-    // Its art and store info were looked up by the installer's name.
-    if (moved) {
-      s.fetches.EnqueueNew(s.config, s.events, *result);
-      library::AnnounceInstallerLeftover(s.config, s.events, *result);
-    }
-    SendJson(res, s.Record(*result));
-    // Installed in its prefix: its link goes where its tags say.
-    if (moved) s.SortByTags({result->id});
+    const json record = s.events.Publish("game.updated", s.Record(*result)).payload;
+    SendJson(res, record);
+    const bool moved = game->install_path != result->install_path;
+    if (moved) library::AnnounceInstallerLeftover(s.config, s.events, *result);
+    // Its art and store info were looked up by the guess, and its Steam tags wait for this.
+    s.fetches.EnqueueNew(s.config, s.events, *result);
+    if (result->status == model::GameStatus::SettingUp) s.ProvisionLater(*result);
+    if (moved || game->tags != result->tags) s.SortByTags({result->id});
   });
 
   http.Delete(R"(/v1/games/([^/]+)/installer)", [&s](const Request& req, Response& res) {
     const auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     if (s.supervisor.IsRunning(game->id)) return SendError(res, 409, GameRunningError(game->id));
-    if (auto deleted = library::DeleteInstallerFolder(s.config, *game); !deleted) {
+    if (auto deleted = library::DeleteInstallerFolder(s.config, *game, s.games.All()); !deleted) {
       return SendError(res, deleted.error().code == "no_installer_dir" ? 404 : 409,
                        deleted.error());
     }

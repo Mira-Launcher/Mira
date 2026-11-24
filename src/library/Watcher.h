@@ -10,11 +10,14 @@
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "library/Drops.h"
+#include "library/FoundArchives.h"
 #include "library/UnclearMoves.h"
 #include "metadata/FetchQueue.h"
 #include "store/GameStore.h"
 
 namespace mira::library {
+
+class Scanner;
 
 // Creates each missing library root that is inside $HOME, so the defaults
 // under ~/Mira work on a fresh install. A root elsewhere may be an unmounted
@@ -63,15 +66,27 @@ class Watcher {
   void UseUnclearMoves(UnclearMoves& moves) { unclear_moves_ = &moves; }
   // What sorts things dropped into a Mira folder. Before Run(); without it they're left be.
   void UseDrops(Drops& drops) { drops_ = &drops; }
+  // Games its scans must not remove because they're running. Before Run().
+  void UseRunningCheck(std::function<bool(const std::string&)> is_running) {
+    is_running_ = std::move(is_running);
+  }
+  // Where it offers the archives it finds. Before Run(); without it they're left be.
+  void UseFoundArchives(FoundArchives& archives) { archives_ = &archives; }
 
  private:
   struct Pending {
     std::filesystem::path root;
     std::uintmax_t last_size = 0;
     std::int64_t stable_since_ms = 0;
-    bool is_archive = false;  // extract-and-remove on settle, instead of scanning it as a folder
+    bool is_archive = false;  // offered to the user on settle, instead of scanned as a folder
     std::string emulator;     // in this emulator's games folder: imported into it on settle
     bool drop = false;        // dropped into a Mira folder: sorted on settle
+    // An archive's: what it may unpack to (once it settled), the ones
+    // of those already there when it was found, and how far that app is.
+    std::vector<std::filesystem::path> outputs;
+    std::set<std::filesystem::path> beside;
+    std::uint64_t position = 0;
+    std::int64_t moved_ms = 0;
   };
 
   void HandleInotify();
@@ -82,6 +97,10 @@ class Watcher {
   void ScheduleDrop(const std::filesystem::path& folder, const std::filesystem::path& path);
   // Imports into each emulator and fetches art for what it added.
   void ImportRoms(const std::set<std::string>& emulators);
+  // Whether another app is done with the archive, or never had it; what it takes care of is
+  // settled.
+  bool ArchiveIsFree(const std::filesystem::path& archive, Pending& entry, std::int64_t now);
+  void PrepareScanner(Scanner& scanner);
   void RearmTimer();
   // Drops every root watch and adds library_roots, each added emulator's games folder and each
   // Mira folder afresh.
@@ -102,6 +121,8 @@ class Watcher {
   Lane* installs_ = nullptr;
   UnclearMoves* unclear_moves_ = nullptr;
   Drops* drops_ = nullptr;
+  FoundArchives* archives_ = nullptr;
+  std::function<bool(const std::string&)> is_running_;
 
   int inotify_fd_ = -1;
   int epoll_fd_ = -1;

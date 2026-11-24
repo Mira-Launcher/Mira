@@ -138,16 +138,18 @@ Result<fs::path> ImportInto(const config::Config& config, const fs::path& droppe
     return Err("already_in_library", std::format("{} is already in the library", path.string()));
   }
 
-  // A page goes in a folder of its own, named for it, since a scan finds games as folders.
-  const bool page = fs::is_regular_file(path, ec) && IsWebPage(path);
-  const fs::path entry = page ? path.stem() : path.filename();
+  // A file goes in a folder of its own, named for it, since a scan finds games as folders; an
+  // AppImage is a game by itself.
+  const bool wrap =
+      fs::is_regular_file(path, ec) && strings::ToLower(path.extension().string()) != ".appimage";
+  const fs::path entry = wrap ? path.stem() : path.filename();
   const fs::path target = *root / entry;
   if (fs::exists(target, ec))
     return Err("target_exists", std::format("{} already exists", target.string()));
   // From another drive it's copied beside the root first, so the watcher never sees half of it.
   const fs::path staging = root->parent_path() / ".mira-import" / entry;
   fs::remove_all(staging, ec);
-  if (auto moved = MovePath(path, page ? staging / path.filename() : staging, /*allow_copy=*/true);
+  if (auto moved = MovePath(path, wrap ? staging / path.filename() : staging, /*allow_copy=*/true);
       !moved)
     return std::unexpected(moved.error());
   fs::create_directories(*root, ec);
@@ -158,6 +160,19 @@ Result<fs::path> ImportInto(const config::Config& config, const fs::path& droppe
                            path.filename().string(), staging.parent_path().string(), ec.message()));
   fs::remove(staging.parent_path(), ec);
   return target;
+}
+
+Result<fs::path> ImportUnderFreeName(const config::Config& config, fs::path path, ImportKind kind) {
+  const std::string name = path.filename().string();
+  for (int copy = 2;; ++copy) {
+    auto imported = ImportInto(config, path, kind);
+    if (imported || imported.error().code != "target_exists" || copy > 20) return imported;
+    const fs::path next = path.parent_path() / std::format("{} ({})", name, copy);
+    std::error_code ec;
+    fs::rename(path, next, ec);
+    if (ec) return Err("move_failed", ec.message());
+    path = next;
+  }
 }
 
 std::string_view ImportKindName(ImportKind kind) {

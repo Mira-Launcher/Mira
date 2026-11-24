@@ -27,14 +27,33 @@ std::string_view ToString(GameStatus status) {
       return "setting_up";
     case GameStatus::Ready:
       return "ready";
-    case GameStatus::Broken:
-      return "broken";
+    case GameStatus::NotSetUp:
+      return "not_set_up";
     case GameStatus::Missing:
       return "missing";
-    case GameStatus::NeedsInstall:
-      return "needs_install";
   }
-  return "broken";
+  return "not_set_up";
+}
+
+std::string_view ToString(SetupStep step) {
+  switch (step) {
+    case SetupStep::Confirm:
+      return "confirm";
+    case SetupStep::Install:
+      return "install";
+    case SetupStep::Failed:
+      return "failed";
+    case SetupStep::None:
+      break;
+  }
+  return "";
+}
+
+SetupStep SetupStepFromString(std::string_view text) {
+  if (text == "confirm") return SetupStep::Confirm;
+  if (text == "install") return SetupStep::Install;
+  if (text == "failed") return SetupStep::Failed;
+  return SetupStep::None;
 }
 
 std::string_view ToString(NotifyLevel level) {
@@ -62,8 +81,7 @@ GameStatus GameStatusFromString(std::string_view text) {
   if (text == "setting_up") return GameStatus::SettingUp;
   if (text == "ready") return GameStatus::Ready;
   if (text == "missing") return GameStatus::Missing;
-  if (text == "needs_install") return GameStatus::NeedsInstall;
-  return GameStatus::Broken;
+  return GameStatus::NotSetUp;
 }
 
 std::int64_t NowSeconds() {
@@ -88,6 +106,7 @@ json ToJson(const Game& game) {
       {"install_path", game.install_path},
       {"name", game.name},
       {"status", ToString(game.status)},
+      {"setup", ToString(game.setup)},
       {"confidence", game.confidence},
       {"reviewed", game.reviewed},
       {"platform", ToString(game.platform)},
@@ -136,7 +155,10 @@ Game GameFromJson(const json& document) {
   game.id = document.value("id", std::string());
   game.install_path = document.value("install_path", std::string());
   game.name = document.value("name", std::string());
-  game.status = GameStatusFromString(document.value("status", "broken"));
+  game.status = GameStatusFromString(document.value("status", "not_set_up"));
+  // An older library's "needs_install" is a step now.
+  game.setup = SetupStepFromString(
+      document.value("status", "") == "needs_install" ? "install" : document.value("setup", ""));
   game.confidence = document.value("confidence", 0.0);
   game.reviewed = document.value("reviewed", false);
   game.platform = PlatformFromString(document.value("platform", "unknown"));

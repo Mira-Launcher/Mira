@@ -596,7 +596,7 @@ Result<model::Game> InstallInto(config::Config& config, store::GameStore& games,
     // wait on them.
     if (!game.data_dir.empty()) EndSession(launcher, game.data_dir);
     const model::Game provisioned = runners.ProvisionGame(game);
-    if (provisioned.status == model::GameStatus::Broken) {
+    if (provisioned.status == model::GameStatus::NotSetUp) {
       return Err("provision_failed",
                  "couldn't set up the launcher's Wine prefix: " + provisioned.last_error,
                  "The runner may be broken. Try a different one.", Fix::Runners());
@@ -1000,7 +1000,7 @@ Result<model::Game> Install(config::Config& config, store::GameStore& games,
     if (done) {
       stored = *done;
     } else {
-      stored.status = model::GameStatus::Broken;
+      stored.status = model::GameStatus::NotSetUp;
       stored.last_error = done.error().message;
     }
     stored.updated_at = model::NowSeconds();

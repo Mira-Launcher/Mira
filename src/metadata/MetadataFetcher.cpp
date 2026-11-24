@@ -512,6 +512,25 @@ void FetchProtonDb(const std::string& appid, json& info) {
 // keyed by AppID and this is the only source of one Mira has for a game
 // that isn't runner_ref="steam:<appid>" already. Never touches runner_ref
 // or how the game actually launches; it only feeds FetchProtonDb below.
+}  // namespace
+
+Result<json> SearchSteam(const std::string& name) {
+  const json search = CurlJson(
+      {"curl", "-sSL",
+       std::format("https://store.steampowered.com/api/storesearch/?term={}&l=english&cc=us",
+                   UrlEncode(name))});
+  if (search.is_discarded()) return Err("steam_error", "Steam's search didn't answer");
+  json matches = json::array();
+  for (const json& item : Value(search, "items", json::array())) {
+    if (Value(item, "type", std::string()) != "app") continue;
+    matches.push_back({{"appid", Value(item, "id", std::int64_t{0})},
+                       {"name", Value(item, "name", std::string())}});
+  }
+  return matches;
+}
+
+namespace {
+
 // Steam's own search ranks relevance server-side, same trust level this
 // file already gives SteamGridDB's own top autocomplete result
 // (FetchGriddbCandidates) -- a generic title can still match the wrong
@@ -520,6 +539,7 @@ void FetchProtonDb(const std::string& appid, json& info) {
 // The Steam game whose name matches `name` ignoring case, spaces and punctuation; empty when none
 // does. Only an exact match: a near one would be another game's art, ratings and fixes.
 std::string FindSteamAppId(const std::string& name) {
+  if (strings::IsGenericName(name)) return {};  // "New folder" is a game on Steam too
   const auto normalize = [](std::string_view text) {
     std::string out;
     for (const unsigned char c : text) {
@@ -540,17 +560,11 @@ std::string FindSteamAppId(const std::string& name) {
       term += ' ';
     term += static_cast<char>(c);
   }
-  const json search = CurlJson(
-      {"curl", "-sSL",
-       std::format("https://store.steampowered.com/api/storesearch/?term={}&l=english&cc=us",
-                   UrlEncode(term))});
-  if (search.is_discarded()) return {};
-  for (const auto& item : Value(search, "items", json::array())) {
-    // "app" (games, DLC, demos), not "sub"/"bundle". It was checked against
-    // "game", which Steam never sends, so this never matched anything.
-    if (Value(item, "type", std::string()) != "app") continue;
-    const std::int64_t id = Value(item, "id", std::int64_t{0});
-    if (id != 0 && normalize(Value(item, "name", std::string())) == normalize(name))
+  const auto matches = SearchSteam(term);
+  if (!matches) return {};
+  for (const json& match : *matches) {
+    const std::int64_t id = match.value("appid", std::int64_t{0});
+    if (id != 0 && normalize(match.value("name", std::string())) == normalize(name))
       return std::to_string(id);
   }
   return {};
@@ -584,7 +598,7 @@ std::uintmax_t SteamStorageBytes(const std::string& appid) {
 // Whether an installed game is far too small to be the Steam game `appid` (a demo or another
 // game of the same name): under a quarter of the space Steam asks for, and at least 2 GB short.
 bool TooSmallFor(const model::Game& game, const std::string& appid) {
-  if (game.install_path.empty() || game.status == model::GameStatus::NeedsInstall ||
+  if (game.install_path.empty() || model::WaitsFor(game, model::SetupStep::Install) ||
       game.status == model::GameStatus::Missing)
     return false;
   const std::uintmax_t needed = SteamStorageBytes(appid);
@@ -602,6 +616,10 @@ class SteamMatcher {
     const library::GameIdentity identity = library::Identify(config, game);
     // Known from something surer than its name: no search.
     if (identity.steam_from != "name") known_ = identity.steam_appid;
+    if (identity.steam_from == "none") {
+      found_ = std::string();  // the user said so: never searched
+      return;
+    }
     for (const std::string& name : {game.name, identity.title, identity.exe_title}) {
       if (!name.empty() && !std::ranges::contains(names_, name)) names_.push_back(name);
     }
@@ -2014,8 +2032,10 @@ std::unordered_map<std::string, std::optional<std::vector<std::string>>> StoredS
 
 bool WantsSteamTags(const config::Config& config, const model::Game& game) {
   if (!config.GetBool("tags.steam") || game.source == "launcher") return false;
+  const library::GameIdentity identity = library::Identify(config, game);
+  if (identity.steam_from == "none") return false;
   return game.runner_ref.starts_with("steam:") || config.GetBool("metadata.steam_by_name") ||
-         !library::Identify(config, game).steam_appid.empty();
+         !identity.steam_appid.empty();
 }
 
 int FetchSteamTags(const config::Config& config, store::MetadataStore& cache,
