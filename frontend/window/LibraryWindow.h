@@ -191,11 +191,13 @@ class LibraryWindow : public QMainWindow,
   void ToggleRunning(const std::string& id);
   // A double-click that didn't play anything says why, on that game's tile, for a few seconds.
   void ExplainDoubleClickOff(const std::string& id);
-  // game.install_detected: offers to switch a game that was an installer to what it installed.
-  void AskAboutInstall(const mira_gui::InstallDetectedEvent& event);
-  void ShowInstallPrompt(const mira_gui::InstallDetectedEvent& event);
-  // The card that runs a needs_install game's installer.
-  void OfferInstall(const std::string& id);
+  // Asks how to set a game up: as it arrives, or (Open) because the user wants to now.
+  void OfferSetup(const std::string& id);
+  void OpenGameSetup(const std::string& id);
+  void LoadSetupCard(const std::string& id, const std::string& key);
+  // Asks what to do with an archive found in a library or Mira folder.
+  void OpenArchive(const QString& path);
+  void OfferArchive(const mira_gui::FoundArchive& archive);
   // The card that offers to delete an installer folder an install left behind.
   void OfferInstallerDelete(const mira_gui::InstallerLeftoverEvent& event);
   void OfferPrograms(const mira_gui::ProgramsFoundEvent& event);
@@ -207,6 +209,12 @@ class LibraryWindow : public QMainWindow,
   // One per `key`; a second ask while it waits is dropped.
   void QueueCard(const std::string& key, std::function<void()> show);
   void ShowNextCard();
+  // Whether a card has to wait, for what's open or for the window to show.
+  bool CardsWait() const;
+  // Takes the card off the queue, or closes it: nothing is left to ask.
+  void DropCard(const std::string& key);
+  // Shows the card QueueCard started loading, null when there's nothing to ask after all.
+  void ShowLoadedCard(const std::string& key, QWidget* card);
   void LaunchGame(const std::string& id, const std::string& option = {});
   void OpenGameDialog(const std::string& id);
   // The same card for a store title that isn't installed: its cover only.
@@ -314,8 +322,11 @@ class LibraryWindow : public QMainWindow,
   QWidget* sidebar_card_overlay_ = nullptr;
   QGridLayout* sidebar_card_layout_ = nullptr;
   QWidget* sidebar_card_ = nullptr;
-  // Installer prompts waiting for Settings, a game's card or another card to close.
+  // Cards waiting for Settings, a game's card or another card to close, or the window to show.
   std::deque<std::pair<std::string, std::function<void()>>> pending_cards_;  // key, show
+  std::string card_key_;             // the queued card shown or loading; empty for any other
+  std::function<void()> card_show_;  // shows it again, when it has to wait after loading
+  bool card_loading_ = false;        // it's being read, to show whole
   QElapsedTimer last_row_click_;
   bool drag_select_ = true;
   bool double_click_play_ = true;
@@ -382,8 +393,6 @@ class LibraryWindow : public QMainWindow,
   Notice notice_ = Notice::None;
   // game.added events asking for their settings to open, gathered briefly
   // so a scan's burst of them opens nothing.
-  std::vector<std::string> pending_added_;
-  QTimer* added_timer_ = nullptr;
   // A rise in the activity count waits a moment, so a job over in a blink (a refresh's scan)
   // doesn't flash a number that shifts the top bar.
   QTimer* activity_timer_ = nullptr;

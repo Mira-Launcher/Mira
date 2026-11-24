@@ -57,7 +57,7 @@ GameSummary ToGameSummary(const json& entry) {
   game.runner_ref = entry.value("runner_ref", std::string());
   game.last_error = entry.value("last_error", std::string());
   game.install_path = entry.value("install_path", std::string());
-  game.needs_check = entry.value("needs_check", false);
+  game.setup = entry.value("setup", std::string());
   if (entry.contains("last_played_at") && entry["last_played_at"].is_number()) {
     game.last_played_at = entry["last_played_at"].get<std::int64_t>();
   }
@@ -200,6 +200,24 @@ UnclearDrop ToUnclearDrop(const json& entry) {
   return drop;
 }
 
+FoundArchive ToFoundArchive(const json& entry) {
+  return {.path = Str(entry, "path"),
+          .name = Str(entry, "name"),
+          .bytes = entry.value("bytes", std::int64_t{0}),
+          .volumes = Int(entry, "volumes"),
+          .taken_by = Str(entry, "taken_by")};
+}
+
+json FromSetupChoices(const SetupChoices& choices) {
+  json body = json::object();
+  if (choices.name) body["name"] = *choices.name;
+  if (choices.exe_path) body["exe_path"] = *choices.exe_path;
+  if (choices.installer) body["installer"] = *choices.installer;
+  if (choices.app) body["app"] = *choices.app;
+  if (choices.steam_appid) body["steam_appid"] = *choices.steam_appid;
+  return body;
+}
+
 std::optional<ArtVersions> ToArtVersions(const json& entry) {
   if (!entry.is_object() || !entry.contains("art") || !entry["art"].is_object())
     return std::nullopt;
@@ -224,7 +242,7 @@ GameDetail ToGameDetail(const json& entry) {
   game.runner_ref = entry.value("runner_ref", std::string());
   game.data_dir = entry.value("data_dir", std::string());
   game.last_error = entry.value("last_error", std::string());
-  game.needs_check = entry.value("needs_check", false);
+  game.setup = entry.value("setup", std::string());
   if (entry.contains("last_played_at") && entry["last_played_at"].is_number()) {
     game.last_played_at = entry["last_played_at"].get<std::int64_t>();
   }

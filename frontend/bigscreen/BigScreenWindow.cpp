@@ -15,6 +15,7 @@
 #include <QWindow>
 #include <algorithm>
 
+#include "../app/Notify.h"
 #include "../client/Jobs.h"
 #include "../client/api/Config.h"
 #include "../client/api/Games.h"
@@ -703,9 +704,16 @@ void BigScreenWindow::Install(const Item& item) {
   if (!item.ref.isEmpty()) {
     api::InstallStoreTitleAsync(this, item.source.toStdString(), item.ref.toStdString(), false,
                                 [done](StoreActionResult result) { done(result.error); });
-  } else if (item.game && item.game->status == "needs_install") {
+  } else if (item.game && item.game->setup == "install") {
     api::InstallGameAsync(this, item.game->id, false, {}, {},
                           [done](GameActionResult result) { done(result.error); });
+  } else if (item.game && item.game->setup == "confirm") {
+    // With what Mira picked; anything else is chosen on the desktop's card.
+    api::ConfirmGameAsync(this, item.game->id, {}, [this, name = item.name](GameDetailResult set) {
+      if (!set.ok) notify::FailedRequest(this, "Could not set up " + name, set.error);
+    });
+  } else if (NeedsSetup(item)) {
+    notify::Notice(this, "Set up " + item.name + " on its card in the library.");
   }
 }
 
@@ -915,7 +923,7 @@ QString BigScreenWindow::QuickActionLabel(const Item& item) const {
   if (Download(item) != nullptr) return {};
   if (!item.game) return "Install";
   if (item.game->running) return "Stop";
-  return item.game->status == "needs_install" ? "Install" : "Play";
+  return NeedsSetup(item) ? SetupLabel(item) : "Play";
 }
 
 void BigScreenWindow::QuickAction(const Item& item) {

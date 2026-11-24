@@ -31,9 +31,10 @@ class DownloadTracker : public QObject {
   Q_OBJECT
 
  public:
+  // Archive: one in a library or Mira folder, with another app or waiting for the user (Paused).
   // Notice: a failure or warning the desktop's notification service didn't take (none running, or
   // rate-limiting Mira), kept here instead of interrupting with a popup.
-  enum class Kind { Game, Title, Launcher, Tool, Runner, Job, Link, Notice };
+  enum class Kind { Game, Title, Launcher, Tool, Runner, Job, Link, Archive, Notice };
   enum class State { Running, Paused, Finished, Failed };
 
   struct Entry {
@@ -50,6 +51,7 @@ class DownloadTracker : public QObject {
     qint64 downloaded_bytes = -1;  // Title, of total_bytes, when the store reports them
     qint64 total_bytes = -1;       // Title: the download's; Game: a guess at the installed size
     QString message;               // a Job's current step, or what a Link waits on or does
+    QString link_password;         // a Link's, given before it's needed
     QString link_state;            // a Link's state as mirad names it
     ApiError error;
     QDateTime changed;
@@ -91,6 +93,10 @@ class DownloadTracker : public QObject {
   static Entry FromLink(const DownloadInfo& download);
   void SetLink(const DownloadInfo& download);
   void RemoveLink(const QString& id);
+
+  void SetArchives(const std::vector<FoundArchive>& archives);
+  void SetArchive(const FoundArchive& archive);
+  void RemoveArchive(const QString& path);
 
   // A Notice row, read as failed: `text` is its name, `detail` (if any) its status line and
   // `cause`'s fix (ErrorHelp) its button. The same text again moves its row to the top instead of

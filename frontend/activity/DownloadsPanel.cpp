@@ -61,6 +61,8 @@ DownloadsPanel::DownloadsPanel(DownloadTracker* tracker, ArtworkStore* artwork, 
   connect(list_, &DownloadList::Leaving, this, &QWidget::hide);
   connect(list_, &DownloadList::ShowGameRequested, this, &DownloadsPanel::ShowGameRequested);
   connect(list_, &DownloadList::LogRequested, this, &DownloadsPanel::LogRequested);
+  connect(list_, &DownloadList::ArchiveSetupRequested, this,
+          &DownloadsPanel::ArchiveSetupRequested);
   connect(list_, &DownloadList::LinkAction, this, &DownloadsPanel::LinkAction);
   connect(list_, &DownloadList::LinkPasswordRequested, this,
           &DownloadsPanel::LinkPasswordRequested);

@@ -31,7 +31,7 @@ class GameMenus : public QObject {
     std::function<void(const std::string& id, const std::string& option)> launch;
     std::function<void(const std::string& id)> open_settings;
     std::function<void(const std::string& id)> open_details;
-    std::function<void(const std::string& id)> offer_install;
+    std::function<void(const std::string& id)> offer_setup;
     std::function<void(const std::string& id)> refresh_metadata;
     // Asks before removing these games (RemoveGamesCard).
     std::function<void(const std::vector<std::string>& ids)> remove;

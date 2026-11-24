@@ -12,6 +12,7 @@
 #include <algorithm>
 
 #include "../components/TileView.h"
+#include "../components/paint/Pill.h"
 #include "../components/paint/Rail.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
@@ -187,6 +188,8 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   // QRect::bottom() is the last pixel, so without it the scrim fell one
   // pixel short of the tile's actual bottom edge.
   const QVariant progress = index.data(ProgressRole);
+  const bool not_set_up = status == "not_set_up" && !running && !progress.isValid();
+  if (not_set_up) painter->fillRect(rect, QColor(0, 0, 0, 110));
   // Taller under an install's two lines.
   const int scrim_height =
       qMin(rect.height(), progress.isValid() ? kScrimHeight + 28 : kScrimHeight);
@@ -214,7 +217,10 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   title_font.setWeight(QFont::DemiBold);
   painter->setFont(title_font);
   painter->setPen(QColor(255, 255, 255, 235));
-  const QRect title_rect(rect.left() + 8, rect.bottom() - (progress.isValid() ? 60 : 36),
+  const QRect title_rect(rect.left() + 8,
+                         rect.bottom() - (progress.isValid() ? 60
+                                          : not_set_up       ? 25
+                                                             : 36),
                          rect.width() - 16, 18);
   painter->drawText(title_rect, Qt::AlignLeft | Qt::AlignVCenter,
                     QFontMetrics(title_font).elidedText(name, Qt::ElideRight, title_rect.width()));
@@ -242,18 +248,34 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
   const QString status_text = index.data(StatusTextRole).toString();
   // Only when nothing more pressing is on the line.
   const QString tools = index.data(ToolsRole).toString();
-  const bool unchecked = !running && tools.isEmpty() && status == "ready" &&
-                         status_text.isEmpty() && index.data(NeedsCheckRole).toBool();
   // The source shares the status line: after the status, or alone and quieter without one.
   const SourceInfo* source =
       show_source_ ? FindSourceInfo(index.data(SourceRole).toString()) : nullptr;
   const QRect status_rect(rect.left() + 8, rect.bottom() - 19, rect.width() - 16, 15);
   const QFontMetrics small_metrics(small_font);
-  if (!progress.isValid() && show_status_ &&
-      (running || !tools.isEmpty() || status != "ready" || !status_text.isEmpty() || unchecked)) {
+  if (not_set_up) {
+    // Above the title, in place of the status line, whether or not that's shown.
+    QFont badge_font = option.font;
+    badge_font.setPixelSize(11);
+    badge_font.setWeight(QFont::DemiBold);
+    painter->setFont(badge_font);
+    const QString label = StatusLabel(status);
+    const int width =
+        qMin(QFontMetrics(badge_font).horizontalAdvance(label) + 16, rect.width() - 16);
+    const QRectF badge(rect.left() + 8, rect.bottom() - 49, width, 20);
+    const QColor color = tokens.status_not_set_up;
+    // Opaque, so it reads on any cover.
+    const auto over_black = [&](qreal part) {
+      return QColor::fromRgbF(color.redF() * part, color.greenF() * part, color.blueF() * part);
+    };
+    paint::Pill(*painter, badge, 10, over_black(0.24), over_black(0.45));
+    painter->setPen(color.lighter(115));
+    painter->drawText(badge, Qt::AlignCenter,
+                      QFontMetrics(badge_font).elidedText(label, Qt::ElideRight, width - 8));
+  } else if (!progress.isValid() && show_status_ &&
+             (running || !tools.isEmpty() || status != "ready" || !status_text.isEmpty())) {
     painter->setFont(small_font);
     QColor dot = status_text.isEmpty() ? StatusColor(status) : tokens.status_setting_up;
-    if (unchecked) dot = tokens.warning;
     if (status_text.isEmpty() && !tools.isEmpty()) dot = tokens.running;
     painter->setPen(Qt::NoPen);
     painter->setBrush(dot.lighter(160));
@@ -262,7 +284,6 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     QString line = !status_text.isEmpty() ? status_text
                    : running ? QString(index.data(AppRole).toBool() ? "Running" : "Playing")
                    : !tools.isEmpty() ? tools
-                   : unchecked        ? QString("Not checked")
                                       : StatusLabel(status);
     if (source != nullptr) line += " · " + source->name;
     const QRect text_rect = status_rect.adjusted(12, 0, 0, 0);

@@ -70,8 +70,8 @@ TEST_CASE("SortGames orders by playtime and by status") {
   CHECK(Names(games) == std::vector<std::string>{"b", "a", "c"});
 
   std::vector<GameSummary> by_status = {Game("x", std::nullopt, 0, "ready"),
-                                        Game("y", std::nullopt, 0, "broken"),
-                                        Game("z", std::nullopt, 0, "needs_install")};
+                                        Game("y", std::nullopt, 0, "missing"),
+                                        Game("z", std::nullopt, 0, "not_set_up")};
   SortGames(by_status, "status", false);
   CHECK(Names(by_status) == std::vector<std::string>{"y", "z", "x"});
 }

@@ -95,6 +95,23 @@ void ListUnclearDropsAsync(QObject* context, std::function<void(UnclearDropsResu
 void SortDropAsync(QObject* context, const std::string& path, const std::string& choice,
                    std::function<void(ImportPathResult)> callback);
 
+// GET /v1/library/archives: archives in the library and Mira folders, waiting to be extracted.
+void ListArchivesAsync(QObject* context, std::function<void(FoundArchivesResult)> callback);
+// What's in one. `password` is tried after the saved ones.
+void InspectArchiveAsync(QObject* context, const std::string& path, const std::string& password,
+                         std::function<void(ArchiveContentsResult)> callback);
+// Starts extracting it, a job: called back once it started. `choices` set up what it holds.
+void ExtractArchiveAsync(QObject* context, const std::string& path, const std::string& password,
+                         bool delete_archive, const SetupChoices& choices,
+                         std::function<void(GameActionResult)> callback);
+// Another app extracts it.
+void LeaveArchiveAsync(QObject* context, const std::string& path,
+                       std::function<void(GameActionResult)> callback);
+
+// GET /v1/metadata/search: titles on Steam that match `query`, best first.
+void SearchTitlesAsync(QObject* context, const std::string& query,
+                       std::function<void(TitleMatchesResult)> callback);
+
 // What a dropped path is: kind "game", "app" or "unknown".
 void ClassifyImportAsync(QObject* context, const std::string& path,
                          std::function<void(ImportGuessResult)> callback);

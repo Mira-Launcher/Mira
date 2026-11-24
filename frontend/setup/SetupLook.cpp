@@ -281,7 +281,7 @@ class LibraryPreview : public QWidget {
       } else if (shown_.source) {
         line = picture.source;
       } else if (shown_.status && i == 4) {
-        line = "Needs install";
+        line = "Setting up";
       }
       const bool name = shown_.apps || examples;
       if (line.isEmpty() && !name) continue;
@@ -723,7 +723,7 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
       1);
   games->addWidget(separator(games_switches_), 0, Qt::AlignVCenter);
   games->addWidget(SetupRow(games_switches_, "Status on tiles",
-                            "Show Needs install, Broken, Playing and the like on a tile.", status_),
+                            "Show Setting up, Missing, Playing and the like on a tile.", status_),
                    1);
   games->addWidget(separator(games_switches_), 0, Qt::AlignVCenter);
   games->addWidget(
@@ -742,7 +742,7 @@ LookPage::LookPage(const SetupContext& context) : context_(context) {
                   1);
   apps->addWidget(separator(apps_switches_), 0, Qt::AlignVCenter);
   apps->addWidget(SetupRow(apps_switches_, "Status on tiles",
-                           "Show Installing, Broken, Running and the like on a tile", app_status_),
+                           "Show Installing, Missing, Running and the like on a tile", app_status_),
                   1);
   grid->addWidget(apps_switches_, 2, 0, 1, 2);
   grid->setColumnStretch(0, 1);

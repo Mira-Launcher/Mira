@@ -239,8 +239,6 @@ QVariant GameLibraryModel::data(const QModelIndex& index, int role) const {
     }
     case GameTileDelegate::SourceRole:
       return QString::fromStdString(game.source);
-    case GameTileDelegate::NeedsCheckRole:
-      return game.needs_check;
     case GameTileDelegate::AppRole:
       return IsApp(game);
     case GameTileDelegate::ToolsRole:
@@ -284,8 +282,7 @@ bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key, Ap
   if (key == "apps") return IsApp(game);
   if (key == "never") return !game.last_played_at.has_value() && !IsApp(game);
   if (key == "attention") {
-    return game.status == "needs_install" || game.status == "broken" || game.status == "missing" ||
-           game.needs_check;
+    return game.status == "not_set_up" || game.status == "missing";
   }
   return key == QLatin1StringView(game.status.data(), static_cast<qsizetype>(game.status.size()));
 }

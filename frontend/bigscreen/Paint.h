@@ -82,6 +82,9 @@ double DrawPill(QPainter& painter, QPointF top_left, double unit, const QString&
 // "Ready", "Not installed", "Installing · 42%", "Running"... and its color.
 QString StatusText(const Item& item, double progress, bool paused);
 QColor StatusColor(const Item& item, double progress);
+// A game that isn't set up, and what its button says.
+bool NeedsSetup(const Item& item);
+QString SetupLabel(const Item& item);
 
 QString SourceName(const QString& source);
 

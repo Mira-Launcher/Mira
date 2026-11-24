@@ -31,9 +31,8 @@ info = "#4c9aff"
 
 status_ready = "#4caf50"
 status_setting_up = "#4c9aff"
-status_broken = "#e5484d"
 status_missing = "#7d848f"
-status_needs_install = "#f0883e"
+status_not_set_up = "#f0883e"
 
 tile_placeholder = "#272b33"
 scrim_alpha = 225

@@ -30,9 +30,8 @@ inline QColor StatusColor(const std::string& status) {
   if (status == "running") return tokens.running;  // not a mirad status: "playing right now"
   if (status == "ready") return tokens.status_ready;
   if (status == "setting_up") return tokens.status_setting_up;
-  if (status == "broken") return tokens.status_broken;
   if (status == "missing") return tokens.status_missing;
-  if (status == "needs_install") return tokens.status_needs_install;
+  if (status == "not_set_up") return tokens.status_not_set_up;
   return tokens.text_muted;
 }
 
@@ -68,7 +67,7 @@ inline QColor ContrastingTextColor(const QColor& background) {
 // Shared so the same game reads identically in the
 // grid, its hover card, and its edit page.
 inline QString StatusLabel(const std::string& status) {
-  if (status == "needs_install") return "Needs install";
+  if (status == "not_set_up") return "Not set up";
   if (status == "setting_up") return "Setting up";
   QString label = QString::fromStdString(status);
   if (!label.isEmpty()) label[0] = label[0].toUpper();

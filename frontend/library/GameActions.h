@@ -70,11 +70,6 @@ void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool de
 void RunInPrefix(QWidget* parent, const std::string& id, const std::string& install_path,
                  const QString& name);
 
-// Flips a needs_install game to ready. 409s while exe_path is still empty,
-// the normal case until the user points it at the installed program, so
-// the failure message matters more here than elsewhere.
-void FinishInstall(QWidget* parent, const std::string& id, std::function<void()> on_finished);
-
 // Shows what moving each game into Mira's own layout does (MoveGamesCard), then moves them.
 // `on_done` runs once every move has answered, whatever the outcome.
 void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,

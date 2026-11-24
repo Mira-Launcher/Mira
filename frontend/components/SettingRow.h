@@ -50,6 +50,8 @@ class SettingRow : public QWidget {
   // A saved value of its own, such as a game's override: the undo button without the dot, to put
   // Settings' value back.
   void SetOverridden(bool overridden);
+  // Gives up the undo button's space, for a row that isn't a saved setting.
+  void DropUndo();
   // Shows `other`'s changes and overrides as this row's too, for a setting shown inside this row.
   void Include(SettingRow* other);
 

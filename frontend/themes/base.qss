@@ -35,6 +35,14 @@ QLabel[tone="success"] { color: @success; }
 QLabel[tone="warning"] { color: @warning; }
 QLabel[tone="danger"] { color: @error; }
 
+/* What went wrong, over a setup card's rows. */
+QLabel#problem_box {
+  background: rgba(229, 72, 77, 31);
+  color: @error;
+  border-radius: @radius_control;
+  padding: 8px 12px;
+}
+
 /* A glyph on a tile, before a card row's label (Add games' choices). */
 QLabel#tile_icon {
   background: @surface_alt;
@@ -529,6 +537,10 @@ QCheckBox::indicator, QRadioButton::indicator {
   background: @surface;
 }
 
+QRadioButton::indicator {
+  border-radius: 8px;
+}
+
 QCheckBox::indicator:hover, QRadioButton::indicator:hover {
   border-color: @accent;
 }
@@ -704,6 +716,13 @@ mira_gui--Card QSpinBox,
 mira_gui--Card QDoubleSpinBox,
 mira_gui--Card QComboBox {
   background: @window;
+}
+
+/* A choice among fields, boxed as they are. */
+mira_gui--Card QComboBox[boxed="true"]:!editable {
+  background: @window;
+  border: 1px solid @border;
+  padding-right: 6px;
 }
 
 /* An unsaved change. */
@@ -1019,6 +1038,11 @@ QWidget#segmented QPushButton:checked {
   background: @accent;
   color: @on_accent;
   font-weight: 600;
+}
+
+QWidget#segmented QPushButton:checked:disabled {
+  background: @surface_alt;
+  color: @text_muted;
 }
 
 /* A pick among a few: a store tile, a drive, a plan. Checked is outlined and washed in the accent. */

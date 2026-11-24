@@ -42,7 +42,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   play->setEnabled(CanPlayOrStop(game));
   if (host_.install_actions && host_.install_actions(menu, id)) menu.addSeparator();
   // The game's other ways to start, and its tools.
-  if (!running && CanPlayOrStop(game)) {
+  if (!running && status == "ready") {
     if (const std::vector<PlayChoice> choices = PlayChoices(game, /*all=*/true);
         choices.size() > 1) {
       QMenu* with = menu.addMenu("Play with");
@@ -113,22 +113,16 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   const bool pinned = IsPinned(game);
   QAction* toggle_pinned = menu.addAction(pinned ? "Unpin" : "Pin to sidebar");
   menu.addSeparator();
-  // Both halves of the needs_install escape hatch: run the installer inside
-  // this game's prefix, then say it worked. "Run in prefix" is offered for
-  // every game; only needs_install can be "marked installed".
   const bool installing = !host_.install_text(id).isEmpty();
-  QAction* install = menu.addAction(installing ? "Installing…" : "Install…");
-  install->setEnabled((status == "needs_install" || status == "broken") && !installing);
-  install->setToolTip("Run this game's installer, or pick a different one");
+  QAction* setup = nullptr;
+  if (status == "not_set_up") {
+    setup = menu.addAction(installing ? "Installing…" : "Set up…");
+    setup->setEnabled(!installing);
+    setup->setToolTip("Choose the program that starts or installs it");
+  }
   // Only a Windows game has a prefix; a program beside any other runs as it is.
   const bool prefix = game.platform != "native" && game.platform != "web";
   QAction* run_in_prefix = menu.addAction(prefix ? "Run in prefix…" : "Run a program…");
-  QAction* finish_install = menu.addAction("Mark as installed");
-  finish_install->setEnabled(status == "needs_install");
-  finish_install->setToolTip(status == "needs_install"
-                                 ? "Mark this game as ready once its executable points at the "
-                                   "installed program"
-                                 : "Only available for a game that still needs installing");
   QAction* refresh_metadata = menu.addAction("Refresh metadata && cover art");
   QAction* view_log = menu.addAction(running ? "View live log…" : "View log…");
   QAction* proton_log = menu.addAction("Open Proton log");
@@ -138,8 +132,7 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   // An emulator's game has no installer, prefix or folder of Mira's to move it to.
   const bool emulated = source != nullptr && source->kind == SourceInfo::Kind::Emulator;
   // Nor store info for Game details to show.
-  for (QAction* action :
-       {install, run_in_prefix, finish_install, winetricks, relocate, game_details})
+  for (QAction* action : {run_in_prefix, winetricks, relocate, game_details})
     action->setVisible(!emulated);
   winetricks->setEnabled(prefix);
   proton_log->setVisible(prefix && !emulated);
@@ -203,14 +196,12 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
     actions::OpenInstallFolder(parent_, game.install_path);
   } else if (chosen == game_details) {
     host_.open_details(id);
-  } else if (chosen == install) {
-    host_.offer_install(id);
+  } else if (setup != nullptr && chosen == setup) {
+    host_.offer_setup(id);
   } else if (chosen == relocate) {
     actions::Relocate(parent_, {{id, name}}, nullptr);
   } else if (chosen == run_in_prefix) {
     actions::RunInPrefix(parent_, id, game.install_path, name);
-  } else if (chosen == finish_install) {
-    actions::FinishInstall(parent_, id, nullptr);
   } else if (chosen == refresh_metadata) {
     host_.refresh_metadata(id);
   } else if (chosen == view_log) {

@@ -127,9 +127,8 @@ Tokens ParseTokens(const std::string& text, Tokens tokens = {}) {
   color("info", tokens.info);
   color("status_ready", tokens.status_ready);
   color("status_setting_up", tokens.status_setting_up);
-  color("status_broken", tokens.status_broken);
   color("status_missing", tokens.status_missing);
-  color("status_needs_install", tokens.status_needs_install);
+  color("status_not_set_up", tokens.status_not_set_up);
   color("tile_placeholder", tokens.tile_placeholder);
 
   number("scrim_alpha", tokens.scrim_alpha);

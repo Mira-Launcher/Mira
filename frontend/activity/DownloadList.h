@@ -38,6 +38,8 @@ class DownloadList : public QWidget {
  signals:
   void ShowGameRequested(const QString& id);
   void LogRequested(const QString& channel, const QString& title);
+  // An archive waiting to be extracted.
+  void ArchiveSetupRequested(const QString& path);
   // A link download: pause, resume, retry or front.
   void LinkAction(const QString& id, const QString& action);
   void LinkPasswordRequested(const QString& id);

@@ -325,10 +325,18 @@ QString StatusText(const Item& item, double progress, bool paused) {
   return StatusLabel(item.game->status);
 }
 
+bool NeedsSetup(const Item& item) {
+  return item.game && item.game->status == "not_set_up";
+}
+
+QString SetupLabel(const Item& item) {
+  return item.game->setup == "install" ? "Install" : "Set up";
+}
+
 QColor StatusColor(const Item& item, double progress) {
   const theme::Tokens& tokens = theme::Current();
   if (progress >= 0) return tokens.info;
-  if (!item.installed()) return tokens.status_needs_install;
+  if (!item.installed()) return tokens.status_not_set_up;
   if (item.game->running) return tokens.running;
   return mira_gui::StatusColor(item.game->status);
 }

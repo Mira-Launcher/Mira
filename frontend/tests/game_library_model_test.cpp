@@ -125,11 +125,11 @@ TEST_CASE(
   CHECK(Shown(proxy) == std::vector<std::string>{"w"});
 }
 
-TEST_CASE("Needs attention lists games mirad wants checked beside broken ones") {
+TEST_CASE("Needs attention lists games not set up beside missing ones") {
   GameSummary unsure = Game("u", "Unsure");
-  unsure.needs_check = true;
-  GameSummary broken = Game("b", "Broken");
-  broken.status = "broken";
+  unsure.status = "not_set_up";
+  GameSummary broken = Game("b", "Gone");
+  broken.status = "missing";
   GameLibraryModel library;
   library.Replace({Game("f", "Fine"), unsure, broken});
   GameFilterProxy proxy(&library);

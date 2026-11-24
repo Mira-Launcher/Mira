@@ -35,10 +35,12 @@ nlohmann::json ToJson(const GameLaunch& launch);
 UnclearMove ToUnclearMove(const nlohmann::json& entry);
 // One of GET /v1/library/drops' drops, or a library.drop_unclear event's payload.
 UnclearDrop ToUnclearDrop(const nlohmann::json& entry);
+FoundArchive ToFoundArchive(const nlohmann::json& entry);
+nlohmann::json FromSetupChoices(const SetupChoices& choices);
 // A record's or art event's `art`; unset when it has none.
 std::optional<ArtVersions> ToArtVersions(const nlohmann::json& entry);
 GameDetail ToGameDetail(const nlohmann::json& entry);
-// GET /v1/games/{id}/installer's reply, or classify's `installer_info`; ok is left to the caller.
+// GET /v1/games/{id}/installer's reply; ok is left to the caller.
 InstallerInfoResult ToInstallerInfo(const nlohmann::json& entry);
 // GET /v1/games/{id}/saves' reply; ok is left to the caller.
 SavesResult ToSaves(const nlohmann::json& entry);

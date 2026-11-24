@@ -57,6 +57,8 @@ QString DownloadTracker::KeyFor(Kind kind, const QString& source, const QString&
       return "job:" + ref;
     case Kind::Link:
       return "link:" + ref;
+    case Kind::Archive:
+      return "archive:" + ref;
     case Kind::Notice:
       return "notice:" + ref;
   }
@@ -77,6 +79,7 @@ QString DownloadTracker::LogChannelFor(const Entry& entry) {
       return "runner:" + entry.source + ":" + entry.ref;
     case Kind::Job:
     case Kind::Link:
+    case Kind::Archive:
     case Kind::Notice:
       return "daemon";
   }
@@ -107,6 +110,7 @@ QString DownloadTracker::JobFor(const Entry& entry) const {
       break;
     case Kind::Job:
     case Kind::Link:
+    case Kind::Archive:
     case Kind::Notice:
       return {};
   }
@@ -215,6 +219,7 @@ DownloadTracker::Entry DownloadTracker::FromLink(const DownloadInfo& download) {
   entry.kind = Kind::Link;
   entry.ref = QString::fromStdString(download.id);
   entry.key = KeyFor(Kind::Link, QString(), entry.ref);
+  entry.link_password = QString::fromStdString(download.password);
   entry.link_state = QString::fromStdString(download.state);
   entry.error = download.error;
   entry.changed = QDateTime::currentDateTime();
@@ -249,6 +254,32 @@ DownloadTracker::Entry DownloadTracker::FromLink(const DownloadInfo& download) {
     }
   }
   return entry;
+}
+
+void DownloadTracker::SetArchives(const std::vector<FoundArchive>& archives) {
+  if (std::erase_if(entries_, [](const Entry& entry) { return entry.kind == Kind::Archive; }) > 0)
+    emit Changed(QString());
+  for (const FoundArchive& archive : archives) SetArchive(archive);
+}
+
+void DownloadTracker::SetArchive(const FoundArchive& archive) {
+  const QString ref = QString::fromStdString(archive.path);
+  NoteTitle("archive", ref, QString::fromStdString(archive.name));
+  Entry& entry = Upsert(Kind::Archive, QString(), ref);
+  const bool taken = !archive.taken_by.empty();
+  entry.state = taken ? State::Running : State::Paused;
+  entry.message = taken ? QString(
+                              "Another app is extracting it (%1). Mira sets up its folder when "
+                              "it's done.")
+                              .arg(QString::fromStdString(archive.taken_by))
+                        : QString("Not extracted yet");
+  emit Changed(entry.key);
+}
+
+void DownloadTracker::RemoveArchive(const QString& path) {
+  const QString key = KeyFor(Kind::Archive, QString(), path);
+  if (std::erase_if(entries_, [&](const Entry& entry) { return entry.key == key; }) > 0)
+    emit Changed(key);
 }
 
 void DownloadTracker::SetLink(const DownloadInfo& download) {
@@ -493,6 +524,10 @@ QString DownloadTracker::NameFor(const Entry& entry) const {
     }
     case Kind::Link: {
       const QString label = titles_.value("link:" + entry.ref);
+      return label.isEmpty() ? entry.ref : label;
+    }
+    case Kind::Archive: {
+      const QString label = titles_.value("archive:" + entry.ref);
       return label.isEmpty() ? entry.ref : label;
     }
     case Kind::Notice:

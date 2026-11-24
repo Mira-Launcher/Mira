@@ -278,6 +278,10 @@ void SettingRow::SetOverridden(bool overridden) {
   if (included_in_ != nullptr) included_in_->ShowRevert();
 }
 
+void SettingRow::DropUndo() {
+  KeepSpaceWhenHidden(revert_, false);
+}
+
 void SettingRow::Include(SettingRow* other) {
   other->included_in_ = this;
   included_.push_back(other);
