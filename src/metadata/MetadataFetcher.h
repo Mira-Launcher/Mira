@@ -67,6 +67,8 @@ void PruneOrphanArt(const config::Config& config, const store::MetadataStore& ca
 
 // SteamGridDB's matches for `name`, best first: [{id, name, release_date?}].
 // Fetch uses the first unless the game sets metadata.steamgriddb_id.
+// Steam's games by name: [{appid, name, image}], best first.
+Result<nlohmann::json> SearchSteam(const std::string& name);
 Result<nlohmann::json> SearchSteamGridDb(const config::Config& config, const std::string& name);
 
 // Re-downloads one SteamGridDB candidate (by the id it was listed with in

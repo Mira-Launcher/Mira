@@ -214,6 +214,9 @@ int main(int argc, char** argv) {
   watcher.OnSteamChanged([&services] { services.ScanSteamLater(); });
   watcher.UseUnclearMoves(services.unclear_moves);
   watcher.UseDrops(services.drops);
+  watcher.UseFoundArchives(services.found_archives);
+  watcher.UseRunningCheck(
+      [&services](const std::string& id) { return services.supervisor.IsRunning(id); });
   services.on_roots_changed = [&watcher] { watcher.ReloadRoots(); };
   std::thread watcher_thread([&] { watcher.Run(); });
 

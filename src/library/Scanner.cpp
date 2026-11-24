@@ -18,6 +18,7 @@
 #include "library/AutoSetup.h"
 #include "library/Detector.h"
 #include "library/FolderTags.h"
+#include "library/GameSetup.h"
 #include "library/PrefixNaming.h"
 #include "library/WinePrefix.h"
 #include "runner/RunnerRegistry.h"
@@ -39,24 +40,10 @@ bool HasAnyFile(const fs::path& dir) {
   return false;
 }
 
-// What a game's status should be when its folder reappears after being
-// marked Missing. Derived from the game's own data rather than assumed:
-// "has an exe_path" is not the same as "launchable": an installer has one
-// too, and a Windows game that was never provisioned has no prefix behind
-// it. Getting this wrong silently un-did the installer guard.
+// What a game's status is when its folder reappears after being marked Missing: still waiting on
+// what it waited on, or on a prefix it never got.
 model::GameStatus RestoredStatus(const model::Game& game) {
-  const auto chosen = std::ranges::find(game.candidates, true, &model::Candidate::chosen);
-  if (chosen != game.candidates.end() && chosen->is_installer) {
-    return model::GameStatus::NeedsInstall;
-  }
-  if (game.exe_path.empty()) return model::GameStatus::SettingUp;
-  if (game.platform == model::Platform::Native) return model::GameStatus::Ready;
-
-  // Windows and web: only ready if something actually provisioned it.
-  std::error_code ec;
-  const bool provisioned =
-      !game.runner_ref.empty() && !game.data_dir.empty() && fs::exists(game.data_dir, ec);
-  return provisioned ? model::GameStatus::Ready : model::GameStatus::SettingUp;
+  return game.setup != model::SetupStep::None ? model::GameStatus::NotSetUp : RunnableStatus(game);
 }
 
 // Provisions `game` if it's a Windows game still SettingUp, and writes back
@@ -116,9 +103,10 @@ std::vector<model::Game> MovedHere(const std::vector<model::Game>& moved_away,
     // Already marked missing: likely deleted, not moved, and many games share a program name
     // (Game.exe, start.sh), so only a folder of its own name is it.
     if (game.status == model::GameStatus::Missing && !same_name(game)) continue;
-    const bool program_inside =
-        loose ? game.exe_path == found.filename().string()
-              : !game.exe_path.empty() && fs::is_regular_file(found / game.exe_path, ec);
+    const bool program_inside = loose ? game.exe_path == found.filename().string()
+                                      : !game.exe_path.empty() &&
+                                            fs::path(game.exe_path).is_relative() &&
+                                            fs::is_regular_file(found / game.exe_path, ec);
     if (program_inside || (!loose && game.exe_path.empty() && same_name(game)))
       matches.push_back(game);
   }
@@ -209,7 +197,7 @@ Result<model::Game> Scanner::Follow(const model::Game& moved, const fs::path& fo
     TagsForPlace(rules, game, old_root, root, place);
     if (game.status == model::GameStatus::Missing) {
       game.status = RestoredStatus(game);
-      if (game.status != model::GameStatus::NeedsInstall) game.last_error.clear();
+      if (game.status != model::GameStatus::NotSetUp) game.last_error.clear();
     }
     game.updated_at = model::NowSeconds();
   });
@@ -459,6 +447,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
           continue;
         }
         if (known == loose_programs.end()) {
+          if (unsettled_.contains(entry.path())) continue;
           if (adopt(entry.path(), /*loose=*/true)) continue;
           const model::Game game = auto_setup.CreateAppImageGame(folder, entry.path());
           ++summary.added;
@@ -466,7 +455,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
           log::Info("detected new game: {}", entry.path().string());
         } else if (known->second.status == model::GameStatus::Missing) {
           if (auto restored = games_.Update(known->second.id, [](model::Game& game) {
-                game.status = model::GameStatus::Ready;
+                game.status = RestoredStatus(game);
               })) {
             events_.Publish("game.updated", model::ToJson(*restored));
             ++summary.restored;
@@ -493,6 +482,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
         to_list.push_back(dir);
         continue;
       }
+      if (!existing && unsettled_.contains(dir)) continue;
       if (!existing && installer_dirs.contains(install_path)) continue;
       // A known game runs from a subfolder of it (Binaries/, bin/): not a new game.
       if (!existing && games_.HasInstallUnder(install_path)) continue;
@@ -519,7 +509,7 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
         if (existing->status == model::GameStatus::Missing) {
           auto result = games_.Update(existing->id, [](model::Game& game) {
             game.status = RestoredStatus(game);
-            if (game.status != model::GameStatus::NeedsInstall) game.last_error.clear();
+            if (game.status != model::GameStatus::NotSetUp) game.last_error.clear();
           });
           if (!result) {
             log::Error("failed to restore {}: {}", existing->id, result.error().message);
@@ -655,13 +645,13 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
 
 namespace {
 
-// Provisions a broken Windows or web game again if a runner (a browser) now resolves for it.
+// Provisions a Windows or web game that failed again if a runner (a browser) now resolves for it.
 bool Reprovision(const runner::RunnerRegistry& runners, store::GameStore& games,
                  api::EventBus& events, const model::Game& game) {
-  if (game.status != model::GameStatus::Broken ||
+  if (!model::WaitsFor(game, model::SetupStep::Failed) ||
       (game.platform != model::Platform::Windows && game.platform != model::Platform::Web))
     return false;
-  // A broken game with no executable on disk broke for another reason.
+  // One with no executable on disk failed for another reason.
   std::error_code ec;
   if (game.exe_path.empty() ||
       !fs::is_regular_file(fs::path(game.install_path) / game.exe_path, ec))

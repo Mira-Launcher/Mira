@@ -464,15 +464,17 @@ std::optional<std::string> SevenZip() {
   return found ? found : FindOnPath("7zz");
 }
 
-Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir,
-                     const std::string& password) {
+bool IsTarball(const std::filesystem::path& archive) {
   const std::string name = strings::ToLower(archive.filename().string());
-  const bool tarball = name.ends_with(".tar") || name.ends_with(".tgz") ||
-                       name.find(".tar.") != std::string::npos ||
-                       name.find(".tar_.") != std::string::npos;
+  return name.ends_with(".tar") || name.ends_with(".tgz") ||
+         name.find(".tar.") != std::string::npos || name.find(".tar_.") != std::string::npos;
+}
 
+Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir,
+                     const std::string& password,
+                     const std::function<void(int percent)>& on_progress) {
   Command command;
-  if (tarball) {
+  if (IsTarball(archive)) {
     command.argv = {"tar", "-xf", archive.string(), "-C", out_dir.string()};
   } else {
     const std::optional<std::string> seven_zip = SevenZip();
@@ -482,12 +484,29 @@ Result<void> Extract(const std::filesystem::path& archive, const std::filesystem
         return std::unexpected(ready.error());
       return Err("extractor_missing", "install 7zip to extract archives");
     }
-    command.argv = {
-        *seven_zip, "x", "-y", "-bso0", "-bsp0", archive.string(), "-o" + out_dir.string()};
+    command.argv = {*seven_zip,
+                    "x",
+                    "-y",
+                    "-bso0",
+                    on_progress ? "-bsp1" : "-bsp0",
+                    archive.string(),
+                    "-o" + out_dir.string()};
     // Always given one: without it 7-Zip stops to ask, which nothing here can answer.
     command.argv.push_back("-p" + (password.empty() ? std::string("mira-no-password") : password));
   }
-  const Result<ExecResult> result = RunAndWait(command);
+  // 7-Zip redraws one line: "\b\b 42% 7 - Data/level1".
+  int last = -1;
+  const auto watch = [&](std::string_view chunk) {
+    // Its "NN%" comes before any file name, which may hold one too.
+    const std::size_t sign = chunk.find('%');
+    if (sign == std::string_view::npos) return;
+    std::size_t start = sign;
+    while (start > 0 && std::isdigit(static_cast<unsigned char>(chunk[start - 1]))) --start;
+    int percent = -1;
+    std::from_chars(chunk.data() + start, chunk.data() + sign, percent);
+    if (percent > last && percent <= 100) on_progress(last = percent);
+  };
+  const Result<ExecResult> result = RunAndWait(command, on_progress ? OutputFn(watch) : OutputFn());
   if (!result) return std::unexpected(result.error());
   if (result->exit_code != 0) {
     return Err("extract_failed",

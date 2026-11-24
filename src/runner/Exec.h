@@ -59,12 +59,16 @@ Result<void> SpawnReaped(const Command& command, int output_fd = -1);
 // RunAndWait does. The caller owns the returned fd and must close it.
 Result<pid_t> SpawnDetachedWithStatus(const Command& command, int& status_read_fd);
 
+// Whether tar rather than 7-Zip opens `archive`, by its name.
+bool IsTarball(const std::filesystem::path& archive);
+
 // Extracts `archive` into `out_dir`: tarballs with tar, which keeps symlinks
 // and permissions, and everything else (zip, rar, 7z, split volumes) with
 // 7-Zip.
 // `password` opens an encrypted archive; a tarball has none.
 Result<void> Extract(const std::filesystem::path& archive, const std::filesystem::path& out_dir,
-                     const std::string& password = {});
+                     const std::string& password = {},
+                     const std::function<void(int percent)>& on_progress = {});
 // The 7-Zip on PATH, if any.
 std::optional<std::string> SevenZip();
 

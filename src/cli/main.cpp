@@ -557,7 +557,7 @@ int CmdRun(int argc, char** argv) {
                  "usage: mira run <id> --exe PATH [--args ARGS]\n"
                  "  runs an arbitrary exe inside this game's own prefix (tracked like a normal\n"
                  "  launch). It provisions one first if it doesn't have one yet, which is how a\n"
-                 "  needs_install game's installer actually gets run.\n");
+                 "  installer of a game that isn't set up gets run.\n");
     return 2;
   }
   auto client = Connect();
@@ -598,7 +598,7 @@ int CmdAdd(int argc, char** argv) {
                  "[--platform windows|native] [--installer]\n"
                  "  creates a game record for a path outside anywhere Mira already scans --\n"
                  "  point it at an installer with --installer, run it with `mira run`, then\n"
-                 "  `mira finish-install` once it's actually installed.\n");
+                 "  `mira confirm` once it's actually installed.\n");
     return 2;
   }
   // mirad would resolve a relative path against its own folder, not this shell's. The exe may be
@@ -683,22 +683,55 @@ int CmdInstall(int argc, char** argv) {
   return 0;
 }
 
-int CmdFinishInstall(int argc, char** argv) {
-  if (argc < 1) {
+int CmdConfirm(int argc, char** argv) {
+  json body = json::object();
+  std::string id;
+  bool ok = true;
+  for (int i = 0; i < argc; ++i) {
+    const std::string_view arg = argv[i];
+    const auto value = [&]() -> std::string {
+      if (i + 1 < argc) return argv[++i];
+      ok = false;
+      return {};
+    };
+    if (arg == "--name") {
+      body["name"] = value();
+    } else if (arg == "--exe") {
+      body["exe_path"] = value();
+    } else if (arg == "--app" || arg == "--game") {
+      body["app"] = arg == "--app";
+    } else if (arg == "--installer" || arg == "--program") {
+      body["installer"] = arg == "--installer";
+    } else if (arg == "--steam-appid") {
+      const std::string text = value();
+      std::int64_t appid = 0;
+      const auto parsed = std::from_chars(text.data(), text.data() + text.size(), appid);
+      ok = ok && parsed.ec == std::errc() && parsed.ptr == text.data() + text.size();
+      body["steam_appid"] = appid;
+    } else if (id.empty() && !arg.starts_with("--")) {
+      id = arg;
+    } else {
+      ok = false;
+    }
+  }
+  if (!ok || id.empty()) {
     std::fprintf(stderr,
-                 "usage: mira finish-install <id>\n"
-                 "  after running an installer with `mira run` and pointing --exe at whatever\n"
-                 "  it actually installed via `mira set <id> --exe ...`, this marks the game\n"
-                 "  ready to launch normally.\n");
+                 "usage: mira confirm <id> [--name N] [--exe PATH] [--app|--game]\n"
+                 "                         [--installer|--program] [--steam-appid N]\n"
+                 "  sets up a game that isn't: what's left out stays as Mira guessed it.\n"
+                 "  --exe may be inside the game's prefix, where an installer put it.\n"
+                 "  --steam-appid 0 says it isn't on Steam.\n");
     return 2;
   }
   auto client = Connect();
-  auto res = client.Post(std::format("/v1/games/{}/finish-install", Seg(argv[0])));
+  auto res =
+      client.Post(std::format("/v1/games/{}/confirm", Seg(id)), body.dump(), "application/json");
   if (!Ok(res)) {
     PrintError(res);
     return 1;
   }
-  std::puts("ready");
+  const json game = json::parse(res->body, nullptr, false);
+  std::puts(game.value("status", "").c_str());
   return 0;
 }
 
@@ -1762,8 +1795,8 @@ int CmdList(int argc, char** argv) {
   }
   for (const json& game : games) {
     std::printf("%-24s %-10s %-8s %s%s\n", game.value("id", "").c_str(),
-                game.value("status", "").c_str(),
-                game.value("reviewed", false) ? "" : "[unreviewed]", game.value("name", "").c_str(),
+                game.value("status", "").c_str(), game.value("setup", "").c_str(),
+                game.value("name", "").c_str(),
                 game.value("platform", "") == "windows" ? "  (windows)" : "");
   }
   return 0;
@@ -2194,12 +2227,13 @@ void PrintUsage() {
       "  stop <id>              stop a running game\n"
       "  open-url <url>         open a sign-in link in the app it belongs to\n"
       "  run <id> --exe PATH [--args ARGS]        run an arbitrary exe in this\n"
-      "                         game's prefix, which is how you run a needs_install game's\n"
-      "                         installer\n"
-      "  install <id> [--interactive] [--installer PATH]   run a needs_install game's\n"
+      "                         game's prefix, which is how you run an installer by\n"
+      "                         hand\n"
+      "  install <id> [--interactive] [--installer PATH]   run its\n"
       "                         installer (silent for Inno/NSIS, otherwise shown)\n"
       "  install <id> --info|--progress           describe the installer / check progress\n"
-      "  finish-install <id>    mark a needs_install game ready after installing\n"
+      "  confirm <id> [--name N] [--exe PATH] [--app|--game] [--installer|--program]\n"
+      "          [--steam-appid N]   set up a game that's waiting to be\n"
       "  list [--status S] [--tag T]        list games (hidden-tagged ones excluded\n"
       "                         by default; --tag hidden lists exactly those)\n"
       "  show <id> [--effective] show one game, or its resolved settings\n"
@@ -2262,7 +2296,7 @@ int Dispatch(int argc, char** argv) {
   if (command == "open-url") return CmdOpenUrl(rest_argc, rest);
   if (command == "run") return CmdRun(rest_argc, rest);
   if (command == "install") return CmdInstall(rest_argc, rest);
-  if (command == "finish-install") return CmdFinishInstall(rest_argc, rest);
+  if (command == "confirm") return CmdConfirm(rest_argc, rest);
   if (command == "relocate") return CmdRelocate(rest_argc, rest);
   if (command == "remove") return CmdRemove(rest_argc, rest);
   if (command == "add") return CmdAdd(rest_argc, rest);

@@ -74,13 +74,15 @@ class Queue {
   Result<void> Remove(const std::string& id);
   // Moves a queued one ahead of the others waiting.
   Result<void> MoveToFront(const std::string& id);
-  // Tries `password` on one waiting for it; download.changed says how it went.
+  // Tries `password` on one waiting for it, or keeps it for when it's downloaded; download.changed
+  // says how it went.
   Result<void> SubmitPassword(const std::string& id, const std::string& password);
   // Starts a failed one again.
   Result<void> Retry(const std::string& id);
 
   std::vector<std::string> Passwords() const;
   Result<void> SetPasswords(const std::vector<std::string>& passwords);
+  void RememberPassword(const std::string& password);
 
  private:
   void Run(std::stop_token stop);
@@ -106,7 +108,6 @@ class Queue {
   // The Mira folder it goes into, and its work folder there.
   std::filesystem::path HomeOf(const Download& download) const;
   std::filesystem::path WorkDir(const Download& download) const;
-  void RememberPassword(const std::string& password);
 
   config::Config& config_;
   store::GameStore& games_;

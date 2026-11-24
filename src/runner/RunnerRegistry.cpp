@@ -320,7 +320,8 @@ model::Game RunnerRegistry::ProvisionGame(model::Game game) const {
   const std::string ref = ResolveRef(game);
   const Result<Resolved> resolved = Resolve(ref, &game);
   if (!resolved) {
-    game.status = model::GameStatus::Broken;
+    game.status = model::GameStatus::NotSetUp;
+    game.setup = model::SetupStep::Failed;
     game.last_error = resolved.error().message;
     return game;
   }
@@ -336,7 +337,8 @@ model::Game RunnerRegistry::ProvisionGame(model::Game game) const {
   if (!game.data_dir.empty()) prefix_lock = LockPrefix(game.data_dir);
   const Result<void> provisioned = resolved->runner->Provision(game, resolved->build);
   if (!provisioned) {
-    game.status = model::GameStatus::Broken;
+    game.status = model::GameStatus::NotSetUp;
+    game.setup = model::SetupStep::Failed;
     game.last_error = provisioned.error().message;
     log::Warn("provisioning {} failed: {}", game.id, provisioned.error().message);
   } else {

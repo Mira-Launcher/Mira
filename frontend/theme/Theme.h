@@ -38,9 +38,8 @@ struct Tokens {
   QColor info{"#1e88e5"};
   QColor status_ready{"#43a047"};
   QColor status_setting_up{"#1565c0"};
-  QColor status_broken{"#e5484d"};
   QColor status_missing{"#757575"};
-  QColor status_needs_install{"#ef6c00"};
+  QColor status_not_set_up{"#ef6c00"};
   QColor tile_placeholder{"#303030"};
 
   // How dark the gradient behind a tile's title gets at the very bottom.

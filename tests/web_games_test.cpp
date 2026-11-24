@@ -168,7 +168,7 @@ TEST_CASE("Web games: a page picked for a game Mira found nothing to run in make
   model::Game game;
   game.id = "balatro";
   game.name = "Balatro";
-  game.status = model::GameStatus::Broken;
+  game.status = model::GameStatus::NotSetUp;
   game.last_error = "No executable found automatically. Set one manually.";
   game.install_path = (dir / "Balatro").string();
   game.data_dir = (dir / "prefixes" / "balatro").string();
@@ -196,7 +196,7 @@ TEST_CASE("Web games: with no browser installed, the game says to install one") 
       "application/json");
   REQUIRE(added != nullptr);
   const std::string id = json::parse(added->body)["id"];
-  REQUIRE(test::WaitUntil([&] { return Record(client, id)["status"] == "broken"; }));
+  REQUIRE(test::WaitUntil([&] { return Record(client, id)["status"] == "not_set_up"; }));
 
   const auto launched = client.Post("/v1/games/" + id + "/launch");
   REQUIRE(launched != nullptr);

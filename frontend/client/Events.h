@@ -30,8 +30,6 @@ bool ParseGameState(const std::string& data, GameStateEvent* out);
 // nothing was watching, so that is what its silence meant.
 bool ParseGameLaunched(const std::string& data, GameLaunchedEvent* out);
 
-bool ParseInstallDetected(const std::string& data, InstallDetectedEvent* out);
-
 // Parses `library.move_unclear`'s payload ({folder, games: [{id, name}]}); false without a folder
 // or with fewer than two games.
 bool ParseUnclearMove(const std::string& data, UnclearMove* out);
@@ -40,8 +38,8 @@ std::string ParseSettledFolder(const std::string& data);
 
 // Parses `library.drop_unclear`'s payload (a Drop); false without a path or with no choices.
 bool ParseUnclearDrop(const std::string& data, UnclearDrop* out);
-// The path of `library.drop_settled` ({path}), or empty.
-std::string ParseSettledDropPath(const std::string& data);
+// The path of `library.drop_settled` and `library.archive_settled` ({path}), or empty.
+std::string ParseSettledPath(const std::string& data);
 
 // The game an event is about, from its payload's `id` (`game.removed`, `game.achievements_ready`),
 // or empty.
@@ -80,11 +78,10 @@ bool ParseNotification(const std::string& data, NotificationEvent* out);
 bool ParseTitleArtworkEvent(const std::string& event_type, const std::string& data,
                             StoreEvent* out);
 
-// A game.added payload's `open_config` (open_config_on_add).
-bool ParseOpenConfig(const std::string& data);
+// library.archive_found; false without a path.
+bool ParseFoundArchive(const std::string& data, FoundArchive* out);
 
-// game.added's `auto_install`: the scan runs this installer on its own, or the client that added it
-// already asked whether to.
+// game.added's `auto_install`: the scan runs this installer on its own.
 bool ParseAutoInstall(const std::string& data);
 
 bool ParseInstallerLeftover(const std::string& data, InstallerLeftoverEvent* out);

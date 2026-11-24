@@ -53,13 +53,6 @@ std::filesystem::path SteamArtList(const config::Config& config) {
   return config.File().parent_path() / "steam-art.json";
 }
 
-// `needs_check`: Mira picked the executable itself, wasn't sure, and nobody has confirmed it yet.
-void AddNeedsCheck(json& game, double threshold) {
-  const json candidates = game.value("candidates", json::array());
-  game["needs_check"] = candidates.is_array() && !candidates.empty() &&
-                        !game.value("reviewed", false) && game.value("confidence", 1.0) < threshold;
-}
-
 // `sort_root`: the library folder (as library_roots spells it) the game is sorted in, or null when
 // its folder never moves. `folder_tags`: that folder's folder tags, or null while it isn't sorted.
 // `folder`: the folder tag the game's folder is in, or null when none.
@@ -113,7 +106,6 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
       for (const std::filesystem::path& file : files) std::filesystem::remove(file, ec);
     }
     StopSharedIfIdle(id);
-    CheckForInstall(id);
     RefreshAchievementsAfterPlay(id);
     // Its tags may have changed while it ran.
     SavesAfterPlay(id, [this, id] { SortByTags({id}); });
@@ -124,6 +116,9 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
 
 void Services::TagFromSteam(const std::string& id) {
   if (!config.GetBool("tags.steam") || !config.GetBool("tags.steam_new_games")) return;
+  // Its title may not be the one it was found by; confirming it fetches again.
+  if (const auto game = games.Find(id); !game || game->status == model::GameStatus::NotSetUp)
+    return;
   const json record = games.Metadata().Read(id);
   const json steam =
       record.contains("steam_tags") ? record["steam_tags"].value("tags", json()) : json();
@@ -177,6 +172,10 @@ bool Services::Conceals(const model::Game& game) const {
 }
 
 bool Services::Conceals(const std::string& id) const {
+  // Something on disk (a found archive, the job extracting it) by its path.
+  if (id.starts_with('/') && hidden.Locked())
+    return std::ranges::contains(std::filesystem::path(id),
+                                 std::filesystem::path(library::kHiddenFolder));
   return !id.empty() && hidden.Locked() && games.IsHiddenKey(id);
 }
 
@@ -257,6 +256,7 @@ bool Services::FilterEvent(std::string& type, json& payload, bool live) {
     return false;
   }
   if (Conceals(text("game_id"))) return false;
+  if (type.starts_with("library.archive_") && Conceals(text("path"))) return false;
   if (const std::string source = text("source"), ref = text("ref"); !source.empty() && !ref.empty())
     return !Conceals(source + "-" + ref);
   return true;
@@ -395,30 +395,6 @@ nlohmann::json Services::FinishImport(const std::string& source,
   return {{"added", summary.added}, {"updated", summary.updated}};
 }
 
-void Services::WatchForInstall(const std::string& game_id,
-                               std::set<std::filesystem::path> folders) {
-  const std::lock_guard lock(install_watch_mutex_);
-  install_watch_[game_id] = std::move(folders);
-}
-
-void Services::CheckForInstall(const std::string& game_id) {
-  std::set<std::filesystem::path> before;
-  {
-    const std::lock_guard lock(install_watch_mutex_);
-    auto watched = install_watch_.extract(game_id);
-    if (watched.empty()) return;
-    before = std::move(watched.mapped());
-  }
-  const auto game = games.Find(game_id);
-  if (!game) return;
-  const auto installed = library::NewInstall(config, game->data_dir, before);
-  if (!installed) return;
-  log::Info("{} installed {} when run; asking whether to use it", game_id, installed->dir.string());
-  events.Publish("game.install_detected", {{"id", game_id},
-                                           {"install_path", installed->dir.string()},
-                                           {"exe_path", installed->exe_path}});
-}
-
 void Services::OfferNewPrograms(const std::string& game_id, const std::string& by,
                                 const std::set<std::filesystem::path>& before) {
   const auto game = games.Find(game_id);
@@ -452,8 +428,7 @@ void Services::OfferNewPrograms(const std::string& game_id, const std::string& b
 }
 
 Services::RecordSettings Services::CurrentRecordSettings() const {
-  return {.threshold = config.GetDouble("detect.low_confidence_threshold"),
-          .rules = library::SortRules(config)};
+  return {.rules = library::SortRules(config)};
 }
 
 json Services::Record(const model::Game& game, const RecordSettings* settings) {
@@ -476,7 +451,6 @@ void Services::AddRecordFields(json& record, const model::Game& game,
   record["art"] = games.Metadata().ArtVersions(game.id);
   if (std::string page = library::StorePage(games, game); !page.empty())
     record["store_url"] = std::move(page);
-  AddNeedsCheck(record, settings.threshold);
   AddSorting(record, settings.rules, game);
 }
 
@@ -702,7 +676,8 @@ Result<proc::ProcessSupervisor::Reservation> Services::Claim(const std::string& 
 void Services::SortByTags(std::vector<std::string> ids) {
   std::erase_if(ids, [&](const std::string& id) {
     const auto game = games.Find(id);
-    return !game || !library::NeedsPlacing(config, *game);
+    // Its installer may be writing there.
+    return !game || library::Installing(id) || !library::NeedsPlacing(config, *game);
   });
   if (ids.empty()) return;
   const std::string target = ids.size() == 1 ? ids.front() : std::string();
@@ -874,7 +849,7 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   }
   // The installer it came from, still in a library folder, would be scanned back in as a game.
   if (std::error_code ec; files && std::filesystem::is_directory(game.installer_dir, ec)) {
-    if (auto deleted = library::DeleteInstallerFolder(config, game); !deleted)
+    if (auto deleted = library::DeleteInstallerFolder(config, game, games.All()); !deleted)
       log::Warn("kept {}'s installer folder: {}", game.id, deleted.error().message);
   }
   if (std::error_code ec;

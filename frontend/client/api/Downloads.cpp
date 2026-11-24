@@ -30,6 +30,7 @@ DownloadInfo ParseDownload(const json& entry) {
   info.id = entry.value("id", std::string());
   info.name = entry.value("name", std::string());
   info.state = entry.value("state", std::string());
+  info.password = entry.value("password", std::string());
   info.total = entry.value("total", std::int64_t{0});
   info.done = entry.value("done", std::int64_t{0});
   info.speed = entry.value("speed", std::int64_t{0});

@@ -73,8 +73,33 @@ fs::path FreeName(const fs::path& dest) {
 
 Result<std::optional<std::string>> FindPassword(const fs::path& archive,
                                                 const std::vector<std::string>& candidates) {
-  const std::string name = strings::ToLower(archive.filename().string());
-  if (name.ends_with(".tgz") || name.find(".tar") != std::string::npos) return std::string();
+  if (runner::IsTarball(archive)) return std::string();
+  auto listing = ListArchive(archive, candidates);
+  if (!listing) return std::unexpected(listing.error());
+  return std::move(listing->password);
+}
+
+Result<ArchiveListing> ListArchive(const fs::path& archive,
+                                   const std::vector<std::string>& candidates) {
+  ArchiveListing listing;
+  constexpr int kTimeoutSeconds = 60;
+  if (runner::IsTarball(archive)) {
+    Command command;
+    command.timeout_s = kTimeoutSeconds;  // it's unpacked whole to be listed
+    command.argv = {"tar", "-tf", archive.string()};
+    const auto listed = runner::RunAndWait(command);
+    listing.password = std::string();
+    if (!listed && listed.error().code == "exec_timeout") return listing;  // extracted unseen
+    if (!listed) return std::unexpected(listed.error());
+    if (listed->exit_code != 0)
+      return Err("extract_failed",
+                 std::format("tar can't read {}: {}", archive.filename().string(), listed->output));
+    for (std::string line : strings::Split(listed->output, '\n')) {
+      if (line.starts_with("./")) line.erase(0, 2);
+      if (!line.empty() && !line.ends_with('/')) listing.entries.push_back({line});
+    }
+    return listing;
+  }
   const std::optional<std::string> seven_zip = runner::SevenZip();
   if (!seven_zip) {
     // Its fix installs 7-Zip, as for any other tool Mira needs.
@@ -84,6 +109,7 @@ Result<std::optional<std::string>> FindPassword(const fs::path& archive,
   }
   const auto run = [&](std::vector<std::string> args) {
     Command command;
+    if (args.front() == "l") command.timeout_s = kTimeoutSeconds;
     command.argv = {*seven_zip};
     command.argv.insert(command.argv.end(), args.begin(), args.end());
     return runner::RunAndWait(command);
@@ -92,18 +118,23 @@ Result<std::optional<std::string>> FindPassword(const fs::path& archive,
   const auto list = [&](const std::string& password) {
     return run({"l", "-slt", "-p" + password, archive.string()});
   };
-  const auto listed = list("mira-no-password");
+  auto listed = list("mira-no-password");
+  std::optional<std::string> names_password;
   if (!listed) return std::unexpected(listed.error());
   if (listed->exit_code != 0) {
     // The names are encrypted too, so listing is the test.
-    if (listed->output.find("assword") == std::string::npos)
+    if (listed->output.find("rong password") == std::string::npos &&
+        listed->output.find("Enter password") == std::string::npos)
       return Err("extract_failed", std::format("7-Zip can't read {}: {}",
                                                archive.filename().string(), listed->output));
     for (const std::string& candidate : candidates) {
-      const auto attempt = list(candidate);
-      if (attempt && attempt->exit_code == 0) return candidate;
+      auto attempt = list(candidate);
+      if (!attempt || attempt->exit_code != 0) continue;
+      names_password = candidate;
+      listed = std::move(attempt);
+      break;
     }
-    return std::optional<std::string>();
+    if (!names_password) return listing;
   }
 
   // Only the contents are encrypted: testing the smallest file is enough, and quick.
@@ -113,15 +144,27 @@ Result<std::optional<std::string>> FindPassword(const fs::path& archive,
   std::uintmax_t size = 0;
   bool encrypted = false;
   bool encrypted_empty = false;
+  bool folder = false;
+  bool in_entries = false;
+  const auto keep = [&] {
+    if (in_entries && !path.empty() && !folder) listing.entries.push_back({path, size});
+  };
   std::istringstream lines(listed->output);
   for (std::string line; std::getline(lines, line);) {
     if (line.ends_with('\r')) line.pop_back();
-    if (line.starts_with("Path = ")) {
+    if (line.starts_with("----------")) {
+      in_entries = true;  // the archive's own properties come before
+      path.clear();
+    } else if (line.starts_with("Path = ")) {
+      keep();
       path = line.substr(7);
       size = 0;
       encrypted = false;
+      folder = false;
     } else if (line.starts_with("Size = ")) {
       std::from_chars(line.data() + 7, line.data() + line.size(), size);
+    } else if (line == "Folder = +" || line.starts_with("Attributes = D")) {
+      folder = true;
     } else if (line == "Encrypted = +") {
       encrypted = true;
     }
@@ -131,7 +174,11 @@ Result<std::optional<std::string>> FindPassword(const fs::path& archive,
       smallest_size = size;
     }
   }
-  if (smallest.empty() && !encrypted_empty) return std::string();
+  keep();
+  if (names_password || (smallest.empty() && !encrypted_empty)) {
+    listing.password = names_password.value_or("");
+    return listing;
+  }
   const auto opens = [&](const std::string& password) {
     std::vector<std::string> args = {"t", "-p" + password, archive.string()};
     if (!smallest.empty()) args.insert(args.end(), {"--", smallest});
@@ -139,11 +186,16 @@ Result<std::optional<std::string>> FindPassword(const fs::path& archive,
     return attempt && attempt->exit_code == 0;
   };
   // An empty file may or may not hold encrypted data, so only the test can say.
-  if (smallest.empty() && opens("mira-no-password")) return std::string();
-  for (const std::string& candidate : candidates) {
-    if (opens(candidate)) return candidate;
+  if (smallest.empty() && opens("mira-no-password")) {
+    listing.password = std::string();
+    return listing;
   }
-  return std::optional<std::string>();
+  for (const std::string& candidate : candidates) {
+    if (!opens(candidate)) continue;
+    listing.password = candidate;
+    break;
+  }
+  return listing;
 }
 
 void RemoveEscapingLinks(const fs::path& dir) {
@@ -151,7 +203,11 @@ void RemoveEscapingLinks(const fs::path& dir) {
   const fs::path root = fs::weakly_canonical(dir, ec);
   if (ec) return;
   std::vector<fs::path> escaping;
-  for (const auto& entry : fs::recursive_directory_iterator(dir, ec)) {
+  // Stepped with an error code: a folder it can't read must not throw.
+  for (fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec),
+       end;
+       !ec && it != end; it.increment(ec)) {
+    const fs::directory_entry& entry = *it;
     std::error_code link_ec;
     if (!entry.is_symlink(link_ec)) continue;
     // Resolved fully, so a chain of links can't step out where each one alone looks fine.
@@ -209,7 +265,10 @@ bool AnyOpenForWriting(const std::vector<fs::path>& paths) {
     const std::string pid = proc.path().filename().string();
     if (pid.empty() || !std::ranges::all_of(pid, ::isdigit)) continue;
     std::error_code fd_ec;
-    for (const auto& fd : fs::directory_iterator(proc.path() / "fd", fd_ec)) {
+    // Stepped with an error code: the process may end meanwhile.
+    for (fs::directory_iterator it(proc.path() / "fd", fd_ec), end; !fd_ec && it != end;
+         it.increment(fd_ec)) {
+      const fs::directory_entry& fd = *it;
       std::error_code link_ec;
       const fs::path target = fs::read_symlink(fd.path(), link_ec);
       if (link_ec || !wanted.contains(target.string())) continue;
@@ -234,39 +293,6 @@ fs::path StemWithoutArchiveExtension(const fs::path& archive) {
   std::smatch match;
   if (std::regex_search(name, match, kPart)) return name.substr(0, match.position(0));
   return name.substr(0, name.size() - SuffixOf(archive).size());
-}
-
-Result<void> ExtractAndRemove(const fs::path& archive, const fs::path& dest_dir) {
-  const std::string_view suffix = SuffixOf(archive);
-  if (suffix.empty() || IsLaterVolume(archive))
-    return Err("not_an_archive", "unrecognized archive extension");
-
-  const fs::path work_dir =
-      dest_dir.parent_path() / std::format("{}{}", kExtractingPrefix, dest_dir.filename().string());
-  std::error_code ec;
-  fs::remove_all(work_dir, ec);
-  fs::create_directories(work_dir, ec);
-  if (ec) return Err("dest_dir_failed", ec.message());
-
-  const Result<void> extracted = runner::Extract(archive, work_dir);
-  if (!extracted) {
-    fs::remove_all(work_dir, ec);
-    return extracted;
-  }
-
-  fs::rename(work_dir, FreeName(dest_dir), ec);
-  if (ec) {
-    fs::remove_all(work_dir, ec);
-    return Err("move_failed", ec.message());
-  }
-
-  // The game is in place now, so a volume left behind is only logged: failing would extract it
-  // again.
-  for (const fs::path& volume : VolumesOf(archive)) {
-    if (!fs::remove(volume, ec) && ec)
-      log::Warn("couldn't remove {}: {}", volume.string(), ec.message());
-  }
-  return {};
 }
 
 }  // namespace mira::library

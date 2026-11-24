@@ -45,6 +45,8 @@ QString RunningText(const DownloadTracker::Entry& entry) {
       return "Installing…";
     case Kind::Job:
       return entry.message.isEmpty() ? QString("Working…") : entry.message;
+    case Kind::Archive:
+      return entry.message;
     case Kind::Link:
       if (!entry.message.isEmpty()) return entry.message;
       return entry.progress >= 0 ? DownloadTracker::ProgressText(entry) : QString("Downloading…");
@@ -77,6 +79,7 @@ QString Origin(const DownloadTracker& tracker, const DownloadTracker::Entry& ent
     case Kind::Game:
     case Kind::Job:
     case Kind::Link:
+    case Kind::Archive:
     case Kind::Notice:
       return QString();
     case Kind::Runner:
@@ -186,7 +189,9 @@ bool DownloadList::UpdateRow(const QString& key) {
     if (row == nullptr || row->property("download_key").toString() != key) continue;
     if (!row->property("download_running").toBool()) return false;
     // A link's buttons follow its state.
-    if (row->property("link_state").toString() != entry->link_state) return false;
+    if (row->property("link_state").toString() != entry->link_state ||
+        row->property("link_password").toString() != entry->link_password)
+      return false;
     // Its job became known after the row was built: rebuilt with Cancel.
     if ((row->findChild<QPushButton*>("download_cancel") == nullptr) !=
         tracker_->JobFor(*entry).isEmpty())
@@ -220,6 +225,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   row->setProperty("download_key", entry.key);
   row->setProperty("download_running", entry.state == State::Running);
   row->setProperty("link_state", entry.link_state);
+  row->setProperty("link_password", entry.link_password);
   auto* layout = new QHBoxLayout(row);
   layout->setContentsMargins(kRowPaddingX, 10, kRowPaddingX, 10);
   layout->setSpacing(12);
@@ -236,12 +242,14 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
     icons::Glyph glyph = icons::Glyph::Download;
     if (entry.kind == Kind::Runner || entry.kind == Kind::Tool) glyph = icons::Glyph::Wrench;
     if (entry.kind == Kind::Job) {
+      if (entry.source == "extract_archive") glyph = icons::Glyph::Layers;
       if (entry.source == "scan") glyph = icons::Glyph::Search;
       if (entry.source == "relocate") glyph = icons::Glyph::Refresh;
       if (entry.source == "metadata") glyph = icons::Glyph::Image;
       if (entry.source == "saves") glyph = icons::Glyph::Layers;  // as the game card's saves line
       if (entry.source == "delete" || entry.source == "remove_source") glyph = icons::Glyph::Trash;
     }
+    if (entry.kind == Kind::Archive) glyph = icons::Glyph::Layers;
     if (entry.kind == Kind::Notice)
       glyph = entry.source == "error" ? icons::Glyph::CircleX : icons::Glyph::Warning;
     icons::Follow(cover, glyph, 22);
@@ -298,7 +306,8 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   // Waiting with nothing on disk yet: no rail, as a busy one would look like it's downloading.
   const bool idle =
       entry.progress < 0 && (entry.link_state == "queued" || entry.link_state == "retrying");
-  if ((entry.state == State::Running || entry.state == State::Paused) && !idle) {
+  if ((entry.state == State::Running || entry.state == State::Paused) && !idle &&
+      entry.kind != Kind::Archive) {
     // Busy unless the source reports how far along it is.
     auto* rail = new ProgressRail(row);
     rail->SetProgress(entry.progress);
@@ -309,7 +318,7 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
 
   // Every row, whatever its state: what it did, or is doing. A link's goes to the daemon's log, so
   // its row keeps to its progress and one button. A notice is no work of its own.
-  if (entry.kind != Kind::Link && entry.kind != Kind::Notice) {
+  if (entry.kind != Kind::Link && entry.kind != Kind::Archive && entry.kind != Kind::Notice) {
     auto* log = new Button("Log", ButtonKind::Link, row);
     log->setToolTip("Open its live log in a window");
     connect(log, &QPushButton::clicked, this,
@@ -328,6 +337,15 @@ QWidget* DownloadList::BuildRow(const DownloadTracker::Entry& entry, bool first)
   const bool tracked = tracker_->game_name && !tracker_->game_name(game_id.toStdString()).isEmpty();
   if (entry.kind == Kind::Link) {
     AddLinkActions(entry, row, actions, text);
+  } else if (entry.kind == Kind::Archive) {
+    if (entry.state == State::Paused) {
+      auto* setup = new QPushButton("Set up…", row);
+      connect(setup, &QPushButton::clicked, this, [this, path = entry.ref] {
+        emit Leaving();
+        emit ArchiveSetupRequested(path);
+      });
+      actions->addWidget(setup);
+    }
   } else if (const QString job = tracker_->JobFor(entry); !job.isEmpty()) {
     if (DownloadTracker::CanPause(entry)) {
       auto* pause = new QPushButton("Pause", row);
@@ -432,25 +450,46 @@ void DownloadList::AddLinkActions(const DownloadTracker::Entry& entry, QWidget* 
     });
     actions->addWidget(enter);
   }
-  if (state == "password" && full) {
-    auto* line = new QHBoxLayout();
+  if (full && state != "extracting" && state != "done") {
+    const bool waiting = state == "password";
+    const auto typed = typed_.find(id);
+    auto* box = new QWidget(row);
+    auto* line = new QHBoxLayout(box);
+    line->setContentsMargins(0, 0, 0, 0);
     line->setSpacing(8);
-    auto* password = new QLineEdit(typed_[id], row);
+    auto* password =
+        new QLineEdit(typed != typed_.end() ? typed->second : entry.link_password, row);
     password->setPlaceholderText("Archive password");
     connect(password, &QLineEdit::textChanged, this,
             [this, id](const QString& typed) { typed_[id] = typed; });
     line->addWidget(password, 1);
-    auto* extract = new QPushButton("Extract", row);
-    const auto submit = [this, id, password] {
+    auto* extract = new QPushButton(waiting ? "Extract" : "Save", row);
+    const auto submit = [this, id, box, password] {
       if (password->text().isEmpty()) return;
       const QString typed = password->text();
       typed_.erase(id);
+      box->hide();
       emit LinkPasswordEntered(id, typed);
     };
     connect(extract, &QPushButton::clicked, this, submit);
     connect(password, &QLineEdit::returnPressed, this, submit);
     line->addWidget(extract);
-    text->insertLayout(text->count() - 1, line);
+    text->insertWidget(text->count() - 1, box);
+    if (!waiting) {
+      box->setVisible(typed != typed_.end());
+      auto* add = new QPushButton(entry.link_password.isEmpty() ? "Add password" : "Password", row);
+      add->setToolTip("Tried first once it's downloaded, then the saved passwords");
+      connect(add, &QPushButton::clicked, this, [this, id, box, password] {
+        box->setVisible(box->isHidden());
+        if (box->isHidden()) {
+          typed_.erase(id);
+        } else {
+          typed_[id] = password->text();
+          password->setFocus();
+        }
+      });
+      actions->addWidget(add);
+    }
   }
   if (full && state != "extracting") {
     auto* remove = new QPushButton(state == "done" ? "Clear" : "Cancel", row);

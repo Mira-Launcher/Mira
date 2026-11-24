@@ -102,7 +102,7 @@ Result<library::ImportSummary> AmazonImporter::Import() {
     if (!existing) game.created_at = game.updated_at;
 
     if (game.exe_path.empty()) {
-      game.status = model::GameStatus::Broken;
+      game.status = model::GameStatus::NotSetUp;
       game.last_error = "no fuel.json launch command in this install";
     } else {
       const runner::RunnerRegistry provisioner(config_);

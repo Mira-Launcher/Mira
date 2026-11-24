@@ -119,13 +119,17 @@ GameIdentity Identify(const config::Config& config, const model::Game& game) {
   };
   // A Steam game is its own; anything else can be told which it is.
   if (identity.store == "steam") steam(identity.store_id, "steam");
-  if (const std::int64_t fixed =
-          config::Resolver(config, game.overrides).GetInt("metadata.steam_appid");
-      fixed > 0)
-    steam(std::to_string(fixed), "override");
-  steam(SteamAppIdFile(game), "file");
-  if (row) steam(runner::SteamAppId(row->umu_id), "umu");
-  if (config.GetBool("metadata.steam_by_name")) steam(game.steam_match, "name");
+  const std::int64_t fixed =
+      config::Resolver(config, game.overrides).GetInt("metadata.steam_appid");
+  if (fixed > 0) steam(std::to_string(fixed), "override");
+  if (fixed < 0 && identity.steam_appid.empty()) {
+    identity.steam_from = "none";
+    if (identity.store.empty()) row.reset();  // found by a title the user said it isn't
+  } else {
+    steam(SteamAppIdFile(game), "file");
+    if (row) steam(runner::SteamAppId(row->umu_id), "umu");
+    if (config.GetBool("metadata.steam_by_name")) steam(game.steam_match, "name");
+  }
 
   // The database's row names the store's fixes; a Steam game chosen by hand wins over it.
   if (row && identity.steam_from != "override") {

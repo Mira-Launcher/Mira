@@ -206,7 +206,7 @@ class GameStore {
 
  private:
   Result<void> Open();
-  Result<void> Write(const model::Game& game);
+  Result<void> Write(model::Game& game);
   Result<void> Delete(const std::string& id);
   // A new game with a removed game's id (a store game added again) takes its play totals and what
   // the user set on it back.

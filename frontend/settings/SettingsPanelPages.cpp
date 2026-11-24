@@ -354,7 +354,7 @@ void SettingsPanel::BuildInterfacePage() {
             "library cards recently played recent apps", &FrontendPrefs::library_continue_apps,
             false);
   tile_status_ = AddToggle(library, "Status on tiles",
-                           "Show Needs install, Broken, Playing and the like on a tile.",
+                           "Show Setting up, Missing, Playing and the like on a tile.",
                            "tile badge", &FrontendPrefs::tile_status, true);
   tile_source_ = AddToggle(library, "Source on tiles",
                            "Name the store or launcher a game came from under its title.",

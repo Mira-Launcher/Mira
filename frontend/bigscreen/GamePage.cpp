@@ -204,8 +204,8 @@ std::vector<GamePage::Button> GamePage::Buttons() const {
     buttons = {{Action::Install, "Install"}};
   } else if (item_.game->running) {
     buttons = {{Action::Stop, "Stop"}};
-  } else if (item_.game->status == "needs_install") {
-    buttons = {{Action::Install, "Install"}};
+  } else if (NeedsSetup(item_)) {
+    buttons = {{Action::Install, SetupLabel(item_)}};
   } else {
     const std::vector<PlayChoice> choices = PlayChoices(*item_.game, /*all=*/false);
     for (const PlayChoice& choice : choices) {
@@ -215,7 +215,7 @@ std::vector<GamePage::Button> GamePage::Buttons() const {
   }
   if (item_.game) {
     buttons.push_back({Action::Pin, IsPinned(*item_.game) ? "Unpin" : "Pin"});
-    if (download == nullptr && !item_.game->running && item_.game->status != "needs_install")
+    if (download == nullptr && !item_.game->running && !NeedsSetup(item_))
       buttons.push_back({Action::Saves, "Saves"});
     if (download == nullptr && !item_.game->running)
       buttons.push_back({Action::Uninstall, "Uninstall"});

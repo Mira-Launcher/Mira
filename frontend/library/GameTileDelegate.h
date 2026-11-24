@@ -41,8 +41,6 @@ class GameTileDelegate : public QStyledItemDelegate {
     ProgressRole,
     // Optional, with ProgressRole: a quieter line under the status line ("12.5 MB/s").
     ProgressDetailRole,
-    // mirad wants its pick of executable checked: "Not checked" on the status line.
-    NeedsCheckRole,
     // A program rather than a game: "Running", not "Playing".
     AppRole,
     // Optional: "Vortex open", for tools the game opened while it isn't running itself.

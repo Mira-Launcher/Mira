@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -15,18 +16,22 @@ namespace mira::library {
 // only place that has to know these come from config at all.
 struct DetectorSettings {
   int max_depth = 4;
-  std::vector<std::string> rules = {"deny_patterns", "name_similarity", "depth", "shallowest"};
+  std::vector<std::string> rules = {"deny_patterns", "name_similarity", "engine",
+                                    "helpers",       "depth",           "size",
+                                    "build",         "shallowest",      "program_info"};
   double name_match_bonus = 3.0;
   double depth_penalty = 0.5;
-  double low_confidence_threshold = 0.5;
   std::vector<std::string> deny_name_patterns;
   std::vector<std::string> installer_name_patterns;
-  std::int64_t installer_min_size_mb = 50;
   // Applied during the walk itself (skips whole subtrees), distinct from
   // deny_name_patterns which only penalises a candidate's score. Should
   // include scan.ignore_globs plus the caller's prefix_root exclusion.
   std::vector<std::string> ignore_globs;
 };
+
+// Whether a program's name says it installs something: setup.exe, an .msi. Only a guess, which the
+// user confirms.
+bool LooksLikeInstaller(const std::string& name, const DetectorSettings& settings);
 
 // An .html or .htm file.
 bool IsWebPage(const std::filesystem::path& file);
@@ -53,9 +58,12 @@ DetectorSettings SettingsFromConfig(const config::Config& config);
 // than needing a code change.
 class Detector {
  public:
+  struct ListedFile {
+    std::filesystem::path path;
+    std::int64_t bytes = -1;  // not known
+  };
   struct Result {
     std::vector<model::Candidate> candidates;  // sorted best first
-    double confidence = 0.0;                   // 0..1; see Detector.cpp for how this is derived
   };
 
   explicit Detector(DetectorSettings settings) : settings_(std::move(settings)) {}
@@ -63,6 +71,10 @@ class Detector {
   // `name` is the game's own name, matched instead of the folder's when the folder says nothing
   // (a store's "game-543813").
   Result Detect(const std::filesystem::path& folder, const std::string& name = {}) const;
+
+  // The programs an archive would leave in its folder, from what it lists (paths in it), by name
+  // alone: a Windows program by its extension, a native one as an .sh, AppImage or .x86_64.
+  Result DetectListed(const std::vector<ListedFile>& files, const std::string& name) const;
 
  private:
   DetectorSettings settings_;

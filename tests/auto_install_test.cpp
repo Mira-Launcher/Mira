@@ -129,7 +129,8 @@ model::Game AddWaitingGame(test::LiveServer& server, const fs::path& folder,
   game.id = "celeste";
   game.name = strings::CleanGameName(folder.filename().string());
   game.platform = model::Platform::Windows;
-  game.status = model::GameStatus::NeedsInstall;
+  game.status = model::GameStatus::NotSetUp;
+  game.setup = model::SetupStep::Install;
   game.install_path = folder.string();
   game.exe_path = "setup_celeste.exe";
   game.data_dir = (folder.parent_path() / "prefix").string();
@@ -186,7 +187,7 @@ TEST_CASE("A recognised installer runs quietly into its prefix, logging as it go
   const fs::path target = state / "prefix" / "drive_c" / "Games" / waiting.name;
   const auto game = server.games().Find("celeste");
   REQUIRE(game);
-  CHECK(game->status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(*game, model::SetupStep::Confirm));
   CHECK(game->install_path == target.string());
   CHECK(game->exe_path == "Celeste.exe");
   CHECK(game->installer_dir == (state / "setup_celeste").string());
@@ -244,7 +245,7 @@ TEST_CASE("An installer that puts the game in its prefix moves the game there, r
 
   const auto game = server.games().Find("celeste");
   REQUIRE(game);
-  CHECK(game->status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(*game, model::SetupStep::Confirm));
   CHECK(game->install_path == installed.string());
   CHECK(game->exe_path == "Celeste.exe");
   CHECK(game->name == "Celeste Classic");
@@ -294,7 +295,7 @@ TEST_CASE("An installer that installs nothing leaves the game waiting, with a wa
   CHECK(failed->payload["code"] == "no_executable");
   CHECK(failed->payload["fix"]["step"] == "exe");
   const auto game = server.games().Find("celeste");
-  CHECK(game->status == model::GameStatus::NeedsInstall);
+  CHECK(model::WaitsFor(*game, model::SetupStep::Install));
   CHECK_FALSE(game->last_error.empty());
 
   // Trying again adds to the install's log, so the first run's output is still there to read; the

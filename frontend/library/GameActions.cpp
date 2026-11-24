@@ -161,16 +161,6 @@ void RunInPrefix(QWidget* parent, const std::string& id, const std::string& inst
   cards::Show(parent, new RunInPrefixCard(id, install_path, name));
 }
 
-void FinishInstall(QWidget* parent, const std::string& id, std::function<void()> on_finished) {
-  api::FinishInstallAsync(parent, id, [parent, id, on_finished](FinishInstallResult result) {
-    if (!result.ok) {
-      notify::FailedRequest(parent, "Could not mark this game as installed", result.error);
-      return;
-    }
-    if (on_finished) on_finished();
-  });
-}
-
 void OpenInstallFolder(QWidget* parent, const std::string& install_path) {
   // install_path is already on GameSummary, so a fetch here would only ever
   // reproduce what the caller already has.

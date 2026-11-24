@@ -63,8 +63,8 @@ struct GameSummary {
   std::string runner_ref;
   std::string last_error;
   std::string install_path;
-  // mirad picked the executable itself, wasn't sure, and nobody has confirmed it.
-  bool needs_check = false;
+  // What a "not_set_up" game waits on: "confirm", "install" or "failed" (see last_error).
+  std::string setup;
   std::optional<std::int64_t> last_played_at;
   std::int64_t play_seconds = 0;
   // Free-form, user-assigned (docs/api.md). "hidden" is the one convention
@@ -192,7 +192,7 @@ inline bool IsPinned(const GameSummary& game) {
 // Play or Stop does something: it runs, or it's ready to launch. Anything else would only get a
 // 409.
 inline bool CanPlayOrStop(const GameSummary& game) {
-  return game.running || game.status == "ready";
+  return game.running || game.status == "ready" || game.status == "not_set_up";
 }
 
 struct GamesResult {
@@ -240,14 +240,6 @@ struct LaunchResult {
 struct GameLaunchedEvent {
   std::string id;
   bool tracked = false;
-};
-
-// game.install_detected: a launched game exited and had added a program
-// folder to its prefix, so it was an installer.
-struct InstallDetectedEvent {
-  std::string id;
-  std::string install_path;  // absolute, inside the game's prefix
-  std::string exe_path;      // relative to install_path; empty when none was found
 };
 
 // game.installer_leftover: an install left the game away from its installer's folder.
@@ -562,7 +554,7 @@ struct GameDetail {
     std::string kind;
     double score = 0.0;
     bool chosen = false;
-    bool is_installer = false;  // name + size say this is a setup.exe, not the game
+    bool is_installer = false;  // its name says this is a setup.exe, not the game
   };
 
   std::string id;
@@ -580,7 +572,7 @@ struct GameDetail {
   std::string runner_ref;
   std::string data_dir;
   std::string last_error;
-  bool needs_check = false;  // as GameSummary's
+  std::string setup;  // as GameSummary's
   std::optional<std::int64_t> last_played_at;
   std::int64_t play_seconds = 0;
   // `runner_config`/`env` as JSON object text; GameEditForm edits them as rows
@@ -633,8 +625,6 @@ struct GamePatch {
   // Replaces the whole set (docs/api.md); there's no per-entry merge for a
   // plain list the way env's null-removes-a-key convention gives it one.
   std::optional<std::vector<std::string>> tags;
-  // true confirms mirad's pick of executable without changing anything else.
-  std::optional<bool> reviewed;
   std::optional<GameLaunch> launch;  // replaces the whole set
 };
 
@@ -1046,10 +1036,58 @@ struct RunInPrefixResult {
   ApiError error;
 };
 
-// POST /v1/games/{id}/finish-install.
-struct FinishInstallResult {
+// The user's answers on a setup card; what's unset keeps what mirad picked.
+struct SetupChoices {
+  std::optional<std::string> name;
+  std::optional<std::string> exe_path;  // in the game's folder, or absolute
+  std::optional<bool> installer;        // exe_path installs the game rather than starting it
+  std::optional<bool> app;
+  std::optional<std::int64_t> steam_appid;  // 0: it isn't on Steam
+};
+
+// GET /v1/metadata/search: titles on Steam.
+struct TitleMatch {
+  std::int64_t appid = 0;
+  std::string name;
+};
+
+struct TitleMatchesResult {
   bool ok = false;
   ApiError error;
+  std::vector<TitleMatch> matches;
+};
+
+// An archive in a library or Mira folder, waiting to be extracted.
+struct FoundArchive {
+  std::string path;
+  std::string name;
+  std::int64_t bytes = 0;  // of all its volumes
+  int volumes = 1;
+  std::string taken_by;  // the app extracting it now; empty when it waits for the user
+};
+
+struct FoundArchivesResult {
+  bool ok = false;
+  ApiError error;
+  std::vector<FoundArchive> archives;
+};
+
+// POST /v1/library/archives/inspect.
+struct ArchiveContentsResult {
+  struct Program {
+    std::string path;
+    std::int64_t bytes = 0;
+    bool installer = false;
+  };
+
+  bool ok = false;
+  ApiError error;
+  FoundArchive archive;
+  bool password_needed = false;
+  std::string suggested_name;
+  std::vector<Program> programs;  // best first
+  std::int64_t unpacked_bytes = 0;
+  std::int64_t free_bytes = -1;  // on its disk; -1 when unknown
 };
 
 // The frontend's own preferences, which live in frontend.toml, the sibling
@@ -1269,8 +1307,6 @@ struct ImportGuessResult {
   };
   std::vector<Program> programs;
   bool installer = false;  // the first program is an installer
-  // Running it as an installer; ok only when mirad described it.
-  InstallerInfoResult installer_info;
 };
 
 // POST /v1/library/import: path is where the dropped item now lives.
@@ -1540,6 +1576,7 @@ struct DownloadInfo {
   std::int64_t total = 0;
   std::int64_t done = 0;
   std::int64_t speed = 0;
+  std::string password;         // to try first, if one was given
   std::string service;          // while a download service is fetching it
   double service_progress = 0;  // 0 to 1
   std::int64_t retry_at = 0;    // retrying: when mirad tries again, seconds since the epoch

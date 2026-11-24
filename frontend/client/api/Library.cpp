@@ -319,6 +319,91 @@ void SortDropAsync(QObject* context, const std::string& path, const std::string&
       FillImportPath, std::move(callback));
 }
 
+void ListArchivesAsync(QObject* context, std::function<void(FoundArchivesResult)> callback) {
+  async::Run(
+      context,
+      [] {
+        return ReadReply<FoundArchivesResult>(
+            transport::Get("/v1/library/archives"), "GET /v1/library/archives", Shape::Object,
+            [](FoundArchivesResult& result, const json& reply) {
+              for (const json& entry : reply.value("archives", json::array()))
+                result.archives.push_back(mapping::ToFoundArchive(entry));
+            });
+      },
+      std::move(callback));
+}
+
+void InspectArchiveAsync(QObject* context, const std::string& path, const std::string& password,
+                         std::function<void(ArchiveContentsResult)> callback) {
+  async::Run(
+      context,
+      [path, password] {
+        return ReadReply<ArchiveContentsResult>(
+            transport::PostJson("/v1/library/archives/inspect",
+                                json{{"path", path}, {"password", password}},
+                                {.read_timeout = std::chrono::seconds(180)}),
+            "POST /v1/library/archives/inspect", Shape::Object,
+            [](ArchiveContentsResult& result, const json& reply) {
+              result.archive = mapping::ToFoundArchive(reply);
+              result.password_needed = reply.value("password_needed", false);
+              result.suggested_name = mapping::Str(reply, "suggested_name");
+              for (const json& program : reply.value("programs", json::array()))
+                result.programs.push_back({.path = mapping::Str(program, "path"),
+                                           .bytes = program.value("bytes", std::int64_t{0}),
+                                           .installer = program.value("installer", false)});
+              result.unpacked_bytes = reply.value("unpacked_bytes", std::int64_t{0});
+              if (reply.contains("free_bytes") && reply["free_bytes"].is_number())
+                result.free_bytes = reply["free_bytes"].get<std::int64_t>();
+            });
+      },
+      std::move(callback), async::Lane::Slow);
+}
+
+void ExtractArchiveAsync(QObject* context, const std::string& path, const std::string& password,
+                         bool delete_archive, const SetupChoices& choices,
+                         std::function<void(GameActionResult)> callback) {
+  async::Run(
+      context,
+      [=] {
+        json body = mapping::FromSetupChoices(choices);
+        body["path"] = path;
+        body["password"] = password;
+        body["delete_archive"] = delete_archive;
+        const transport::Reply reply = transport::PostJson("/v1/library/archives/extract", body);
+        return GameActionResult{reply.ok, reply.error};
+      },
+      std::move(callback));
+}
+
+void LeaveArchiveAsync(QObject* context, const std::string& path,
+                       std::function<void(GameActionResult)> callback) {
+  async::Run(
+      context,
+      [path] {
+        const transport::Reply reply =
+            transport::PostJson("/v1/library/archives/leave", json{{"path", path}});
+        return GameActionResult{reply.ok, reply.error};
+      },
+      std::move(callback));
+}
+
+void SearchTitlesAsync(QObject* context, const std::string& query,
+                       std::function<void(TitleMatchesResult)> callback) {
+  async::Run(
+      context,
+      [query] {
+        return ReadReply<TitleMatchesResult>(
+            transport::Get("/v1/metadata/search?q=" + PercentEncode(query)),
+            "GET /v1/metadata/search", Shape::Object,
+            [](TitleMatchesResult& result, const json& reply) {
+              for (const json& match : reply.value("matches", json::array()))
+                result.matches.push_back({.appid = match.value("appid", std::int64_t{0}),
+                                          .name = mapping::Str(match, "name")});
+            });
+      },
+      std::move(callback), async::Lane::Slow);
+}
+
 void ClassifyImportAsync(QObject* context, const std::string& path,
                          std::function<void(ImportGuessResult)> callback) {
   async::Run(
@@ -337,10 +422,6 @@ void ClassifyImportAsync(QObject* context, const std::string& path,
                                            program.value("installer", false)});
               }
               result.installer = reply.value("installer", false);
-              if (reply.contains("installer_info")) {
-                result.installer_info = mapping::ToInstallerInfo(reply["installer_info"]);
-                result.installer_info.ok = true;
-              }
             });
       },
       std::move(callback));

@@ -67,7 +67,6 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
   if (patch.runner_ref) body["runner_ref"] = *patch.runner_ref;
   if (patch.data_dir) body["data_dir"] = *patch.data_dir;
   if (patch.tags) body["tags"] = *patch.tags;
-  if (patch.reviewed) body["reviewed"] = *patch.reviewed;
   if (patch.launch) body["launch"] = mapping::ToJson(*patch.launch);
 
   const auto parse_object = [&](const std::string& text, const char* field,
@@ -124,18 +123,6 @@ RunInPrefixResult RunInPrefixSync(const std::string& id, const std::string& exe_
       // genuinely slow (it's initialising Wine/Proton, see
       // docs/backend.md).
       {.read_timeout = std::chrono::seconds(120)});
-  return {reply.ok, reply.error};
-}
-
-FinishInstallResult FinishInstallSync(const std::string& id, const std::string& install_path,
-                                      const std::string& exe_path) {
-  json body = json::object();
-  if (!install_path.empty()) body["install_path"] = install_path;
-  if (!exe_path.empty()) body["exe_path"] = exe_path;
-  const transport::Reply reply =
-      body.empty()
-          ? transport::Post("/v1/games/" + PercentEncode(id) + "/finish-install")
-          : transport::PostJson("/v1/games/" + PercentEncode(id) + "/finish-install", body);
   return {reply.ok, reply.error};
 }
 
@@ -325,13 +312,20 @@ void RunInPrefixAsync(QObject* context, const std::string& id, const std::string
       std::move(callback), async::Lane::Slow);
 }
 
-void FinishInstallAsync(QObject* context, const std::string& id,
-                        std::function<void(FinishInstallResult)> callback,
-                        const std::string& install_path, const std::string& exe_path) {
+void ConfirmGameAsync(QObject* context, const std::string& id, const SetupChoices& choices,
+                      std::function<void(GameDetailResult)> callback) {
   async::Run(
       context,
-      [id, install_path, exe_path] { return FinishInstallSync(id, install_path, exe_path); },
-      std::move(callback));
+      [id, choices] {
+        return ReadReply<GameDetailResult>(
+            transport::PostJson("/v1/games/" + PercentEncode(id) + "/confirm",
+                                mapping::FromSetupChoices(choices)),
+            "POST /v1/games/{id}/confirm", Shape::Object,
+            [](GameDetailResult& result, const json& body) {
+              result.game = mapping::ToGameDetail(body);
+            });
+      },
+      std::move(callback), async::Lane::Slow);
 }
 
 void GetGameConfigAsync(QObject* context, const std::string& id,

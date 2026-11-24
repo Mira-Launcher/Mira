@@ -34,14 +34,14 @@ Tails `GET /v1/events` and prints each event as it arrives.
 `POST /v1/library/scan`. Scans every library root now and prints `added: N  missing: N  restored: N`. The watcher only reacts to changes, so run this after adding a root that already has games in it.
 
 ### `mira list [--status S] [--tag T]`
-`GET /v1/games`, optionally filtered by status (`setting_up`, `ready`, `broken`, `missing`, `needs_install`) or tag.
+`GET /v1/games`, optionally filtered by status (`setting_up`, `ready`, `not_set_up`, `missing`) or tag.
 
 ```
-celeste                  ready      [unreviewed] Celeste
-hollow-knight            setting_up              Hollow Knight  (windows)
+celeste                  not_set_up [confirm] Celeste
+hollow-knight            setting_up           Hollow Knight  (windows)
 ```
 
-`[unreviewed]` marks a game nobody has corrected since it was detected. Games tagged `hidden` are left out unless you pass `--tag hidden`. While hidden games are locked they're left out either way, and `--tag hidden` says so.
+In brackets is what a game not set up waits on (`confirm`, `install` or `failed`). Games tagged `hidden` are left out unless you pass `--tag hidden`. While hidden games are locked they're left out either way, and `--tag hidden` says so.
 
 ### `mira hidden [status]` / `mira hidden unlock|lock`
 `GET /v1/hidden`, `POST /v1/hidden/unlock` / `lock`. Whether hidden games have a password and are locked, and unlocking or locking them. `unlock` asks for the password without echoing it, or reads one line from a pipe. While locked, every command answers as if hidden games weren't there.
@@ -74,7 +74,7 @@ mira set celeste --tag hidden
 `--tag` and `--untag` edit the current tags rather than replacing them. Override values are parsed as JSON and fall back to a plain string. Changing a game field marks the game reviewed; overrides don't.
 
 ### `mira add <install_path> <exe_path> [--name N] [--platform windows|native] [--installer]`
-`POST /v1/games/manual`. Adds a game from anywhere on disk. With `--installer` it is stored `needs_install`.
+`POST /v1/games/manual`. Adds a game from anywhere on disk. With `--installer` it is stored `not_set_up`, waiting on its installer.
 
 ### `mira remove <id> [--delete-files] [--delete-prefix] [--delete-metadata] [--purge]`
 `DELETE /v1/games/{id}`. Without flags only the library entry is removed, keeping what you set on the game for when it's added again. `--delete-files` on a Steam game opens Steam's own uninstall. `--delete-metadata` forgets the game entirely. `--purge` does all three. Files are only deleted when they are inside a library root or `prefix_root`.
@@ -85,7 +85,7 @@ mira set celeste --tag hidden
 ## Playing
 
 ### `mira launch <id> [--saves keep_local|use_cloud|skip] [file...]` / `mira stop <id>`
-`POST /v1/games/{id}/launch` / `stop`. A Steam game under the default `steam.launch_mode` is started through `steam -silent -applaunch <appid>` and isn't tracked. A game left broken by a missing runner is provisioned again first. Files are passed to a Microsoft 365 app to open. When a GOG or Epic game's saves changed both here and in the cloud, the launch is refused and prints the three ways to start it; `--saves` picks one (`keep_local` uploads this computer's saves, `use_cloud` downloads the cloud's after a backup, `skip` starts without syncing).
+`POST /v1/games/{id}/launch` / `stop`. A Steam game under the default `steam.launch_mode` is started through `steam -silent -applaunch <appid>` and isn't tracked. A game a missing runner kept from being set up is provisioned again first. Files are passed to a Microsoft 365 app to open. When a GOG or Epic game's saves changed both here and in the cloud, the launch is refused and prints the three ways to start it; `--saves` picks one (`keep_local` uploads this computer's saves, `use_cloud` downloads the cloud's after a backup, `skip` starts without syncing).
 
 ### `mira run <id> --exe PATH [--args ARGS]`
 `POST /v1/games/{id}/run`. Runs any executable in the game's prefix, creating the prefix first if needed. This is the manual way to run an installer:
@@ -93,14 +93,14 @@ mira set celeste --tag hidden
 ```sh
 mira run my-game --exe UplayInstaller.exe
 mira set my-game --exe MyGame.exe
-mira finish-install my-game
+mira confirm my-game --name "My Game"
 ```
 
 ### `mira install <id> [--interactive] [--installer PATH] [--into ROOT]`
-`POST /v1/games/{id}/install`. Runs a `needs_install` game's installer and marks it ready once the game executable is found. Inno Setup, NSIS and MSI installers run silently, anything else (or `--interactive`) is shown. `--installer` picks the installer by hand and also works for a `broken` game. `--into` makes the game's prefix, where it installs, on that library root's disk, for an installer on a disc or mounted image (the first root when it's left out). `--info` shows the installer's path, size, format, silent arguments and the library roots it can install into; `--progress` shows install progress.
+`POST /v1/games/{id}/install`. Runs the installer of a game that isn't set up; what it installed is then confirmed with `mira confirm`. Inno Setup, NSIS and MSI installers run silently, anything else (or `--interactive`) is shown. `--installer` picks the installer by hand and also works for any other game not set up. `--into` makes the game's prefix, where it installs, on that library root's disk, for an installer on a disc or mounted image (the first root when it's left out). `--info` shows the installer's path, size, format, silent arguments and the library roots it can install into; `--progress` shows install progress.
 
-### `mira finish-install <id>`
-`POST /v1/games/{id}/finish-install`. Marks a `needs_install` or `broken` game ready once `exe_path` points at the installed game.
+### `mira confirm <id>`
+`POST /v1/games/{id}/confirm`. Sets up a game that isn't: `--name`, `--exe`, `--app` or `--game`, `--installer` or `--program` and `--steam-appid` (0: not on Steam) answer for it, and anything left out keeps what Mira picked.
 
 ### `mira tricks <id> <verb>`
 `POST /v1/games/{id}/tricks`. Runs a winetricks verb in the game's prefix in the background. Watch for `tricks.finished` or `tricks.failed`.

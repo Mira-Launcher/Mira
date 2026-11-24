@@ -29,6 +29,18 @@ bool AnyOpenForWriting(const std::vector<std::filesystem::path>& paths);
 // `dest`, or "<dest> (2)" and so on when something is already there.
 std::filesystem::path FreeName(const std::filesystem::path& dest);
 
+struct ArchiveEntry {
+  std::filesystem::path path;
+  std::uintmax_t size = 0;  // 0 for a tarball's: listing it doesn't say
+};
+struct ArchiveListing {
+  std::vector<ArchiveEntry> entries;    // files only; none when the names are encrypted too
+  std::optional<std::string> password;  // FindPassword's answer
+};
+// What's in `archive`, opened by one of `candidates` when it's encrypted.
+Result<ArchiveListing> ListArchive(const std::filesystem::path& archive,
+                                   const std::vector<std::string>& candidates);
+
 // Which of `candidates` opens `archive`: empty when it isn't encrypted, nullopt when none does.
 Result<std::optional<std::string>> FindPassword(const std::filesystem::path& archive,
                                                 const std::vector<std::string>& candidates);
@@ -39,15 +51,7 @@ void RemoveEscapingLinks(const std::filesystem::path& dir);
 
 std::filesystem::path StemWithoutArchiveExtension(const std::filesystem::path& archive);
 
-// Extracts into a hidden folder next to `dest_dir` and moves the result into
-// place only once the tool succeeds, so a failed or truncated archive never
-// leaves a partial game behind. Every volume is deleted on success; on
-// failure the archive is kept. A folder already at `dest_dir` is kept too: the archive goes in
-// "<dest_dir> (2)".
-Result<void> ExtractAndRemove(const std::filesystem::path& archive,
-                              const std::filesystem::path& dest_dir);
-
-// Name prefix of the hidden folders ExtractAndRemove works in.
+// Name prefix of the hidden folders archives are extracted in.
 inline constexpr std::string_view kExtractingPrefix = ".mira-extracting-";
 
 }  // namespace mira::library

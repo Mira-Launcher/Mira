@@ -277,6 +277,14 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     SendJson(res, {{"status", "fetching"}}, 202);
   });
 
+  http.Get("/v1/metadata/search", [](const Request& req, Response& res) {
+    const std::string query = Param(req, "q", "");
+    if (query.empty()) return SendError(res, 400, "invalid_param", "expected ?q=");
+    auto matches = metadata::SearchSteam(query);
+    if (!matches) return SendError(res, 502, matches.error());
+    SendJson(res, {{"query", query}, {"matches", *matches}});
+  });
+
   http.Get(R"(/v1/games/([^/]+)/metadata/matches)", [&s](const Request& req, Response& res) {
     auto game = ArtSubject(s, req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");

@@ -18,7 +18,7 @@ namespace mira_gui {
 class SheetCard;
 
 // Adding games and apps by hand, as one in-window card (cards::Show): scanning the library
-// folders, something already installed, an installer (added, then installed at once) or entries
+// folders, something already installed, an installer (its setup card takes over) or entries
 // from the app menu. Each choice replaces the first page with its own, which has a way back.
 // Steam, Lutris and Heroic aren't here: their sources add them.
 class AddGamesCard : public QWidget {
@@ -34,6 +34,8 @@ class AddGamesCard : public QWidget {
  signals:
   // A download from links was added; the card has closed.
   void DownloadStarted();
+  // An installer was added as a game to set up; the card has closed.
+  void SetupRequested(const QString& id);
 
  private:
   void ShowPage(SheetCard* page);
@@ -42,7 +44,8 @@ class AddGamesCard : public QWidget {
   // Installer page whatever the file looks like, unset lets classify decide.
   void Classify(const QString& path, std::optional<bool> installer);
   void ShowInstalled(const QString& path, const ImportGuessResult& guess);
-  void ShowInstaller(const QString& path, const ImportGuessResult& guess);
+  void AddInstaller(const QString& path, const ImportGuessResult& guess);
+  void Fail(const QString& what, const ApiError& why);
   void ShowAppMenu();
   // Links pasted, with an optional name, password and Mira folder; Enter downloads.
   void ShowLinks();

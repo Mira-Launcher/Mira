@@ -129,10 +129,32 @@ void CreateMissingRoots(const config::Config& config) {
   }
 }
 
+namespace {
+
+// What a mirad that stopped part way through extracting left.
+void RemoveUnfinishedExtractions(const config::Config& config) {
+  for (const char* key : {"library_roots", "mira_folders"}) {
+    for (const fs::path& root : config.GetPathArray(key)) {
+      for (const fs::path& entry : paths::ListDir(root)) {
+        std::error_code ec;
+        if (!entry.filename().string().starts_with(kExtractingPrefix) ||
+            !fs::is_directory(fs::symlink_status(entry, ec)))
+          continue;
+        log::Info("removing {}, left by an extraction that didn't finish", entry.string());
+        fs::remove_all(entry, ec);
+      }
+    }
+  }
+}
+
+}  // namespace
+
 void Watcher::WatchRoots() {
   for (const auto& [wd, watched] : watches_) inotify_rm_watch(inotify_fd_, wd);
   watches_.clear();
-  pending_.clear();
+  // An archive another app has is still followed.
+  std::erase_if(pending_, [](const auto& pending) { return !pending.second.is_archive; });
+  if (roots_watched_ == 0) RemoveUnfinishedExtractions(config_);
   RearmTimer();
   CreateMissingRoots(config_);
 
@@ -241,18 +263,30 @@ void Watcher::ScheduleCheck(const fs::path& root, const fs::path& path, bool is_
   entry.drop = drop;
   entry.last_size = is_archive ? ArchiveSize(path) : TotalSize(path);
   entry.stable_since_ms = NowMs();
+  if (is_archive) {
+    entry.moved_ms = entry.stable_since_ms;
+    // Another volume arriving starts over, but not what was there before the first.
+    if (const auto known = pending_.find(path.string()); known != pending_.end()) {
+      entry.beside = known->second.beside;
+    } else {
+      for (const fs::path& other : paths::ListDir(path.parent_path())) entry.beside.insert(other);
+    }
+  }
   pending_[path.string()] = entry;
   RearmTimer();
 }
 
 void Watcher::ScheduleDrop(const fs::path& folder, const fs::path& path) {
   if (drops_ == nullptr || IsMiraFoldersOwn(config_, path)) return;
-  if (!config_.GetBool("scan.auto_extract_archives")) {
-    ScheduleCheck(folder, path, /*is_archive=*/false, {}, /*drop=*/true);
-  } else if (IsLaterVolume(path)) {
+  if (IsLaterVolume(path)) {
     if (auto first = FirstVolumeOf(path)) ScheduleCheck(folder, *first, true, {}, true);
   } else {
-    ScheduleCheck(folder, path, LooksLikeArchive(path), {}, /*drop=*/true);
+    // A zipped ROM is sorted as it is.
+    const bool rom =
+        std::ranges::any_of(emulators::All(), [&](const emulators::Emulator& emulator) {
+          return games_.Source(emulator.id).added && emulators::Takes(emulator, path);
+        });
+    ScheduleCheck(folder, path, LooksLikeArchive(path) && !rom, {}, /*drop=*/true);
   }
 }
 
@@ -360,9 +394,12 @@ void Watcher::HandleInotify() {
       const fs::path path = watched->second.dir / event->name;
       if (watched->second.mira_folder) {
         if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
+          std::error_code ec;
+          if (archives_ != nullptr && fs::is_directory(path, ec)) archives_->Appeared(path);
           ScheduleDrop(root, path);
         } else if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
           pending_.erase(path.string());
+          if (archives_ != nullptr) archives_->Take(path);
           if (drops_ != nullptr) drops_->Forget(path);
         }
         continue;
@@ -381,24 +418,25 @@ void Watcher::HandleInotify() {
       if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
         if (paths::IsWithin(path, runner_roots, /*allow_equal=*/true)) continue;
         std::error_code ec;
-        const bool extract = config_.GetBool("scan.auto_extract_archives");
         // A link to a folder arrives whole (no copy to wait out, and its size is a whole game's).
         if (fs::is_symlink(fs::symlink_status(path, ec)) && fs::is_directory(path, ec)) {
           deleted_from.insert(root);  // rescanned right away, like a deletion
         } else if (fs::is_directory(path, ec)) {
+          if (archives_ != nullptr) archives_->Appeared(path);
           if (IsSortingFolder(root, path)) WatchFolder(root, path);
           if (!path.filename().string().starts_with(kExtractingPrefix)) {
             ScheduleCheck(root, path, /*is_archive=*/false);
           }
         } else if (strings::ToLower(path.extension().string()) == ".appimage") {
           ScheduleCheck(root, path, /*is_archive=*/false);  // a game in one file
-        } else if (extract && LooksLikeArchive(path)) {
+        } else if (LooksLikeArchive(path)) {
           ScheduleCheck(root, path, /*is_archive=*/true);
-        } else if (extract && IsLaterVolume(path)) {
+        } else if (IsLaterVolume(path)) {
           // Another part arriving restarts the wait on the first one.
           if (auto first = FirstVolumeOf(path)) ScheduleCheck(root, *first, /*is_archive=*/true);
         }
       } else if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
+        if (archives_ != nullptr) archives_->Take(path);
         pending_.erase(path.string());  // no point finishing a debounce for a path that's gone
         // A watch follows its folder, not the path: one moved away is dropped, and watched again
         // by its new path if it moved to another sorting folder's place (IN_MOVED_TO above).
@@ -413,9 +451,7 @@ void Watcher::HandleInotify() {
   // missing promptly. Once per root, however many entries went at once.
   if (!deleted_from.empty()) {
     library::Scanner scanner(config_, games_, events_);
-    scanner.UseMetadataQueue(*metadata_fetches_);
-    if (installs_) scanner.UseInstallLane(*installs_);
-    if (unclear_moves_) scanner.UseUnclearMoves(*unclear_moves_);
+    PrepareScanner(scanner);
     for (const fs::path& root : deleted_from) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games)
@@ -423,6 +459,47 @@ void Watcher::HandleInotify() {
     }
   }
   RearmTimer();
+}
+
+bool Watcher::ArchiveIsFree(const fs::path& archive, Pending& entry, std::int64_t now) {
+  if (archives_ == nullptr) return true;
+  // A downloader that preallocates the file keeps its size fixed, but has it open for writing.
+  if (AnyOpenForWriting(VolumesOf(archive))) return false;
+  if (entry.outputs.empty()) entry.outputs = OutputsOf(archive);
+  // What it unpacks to is still growing. One that was there before may be anything.
+  std::uintmax_t unpacked = 0;
+  for (const fs::path& output : entry.outputs) {
+    std::error_code ec;
+    if (!entry.beside.contains(output) && fs::exists(output, ec)) unpacked += TotalSize(output);
+  }
+  const auto holder = HolderOf(archive, entry.outputs);
+  const std::uint64_t position = unpacked + (holder ? holder->position : 0);
+  if (position != entry.position) {
+    entry.position = position;
+    entry.moved_ms = now;
+  }
+  // One that only keeps it open (a torrent client seeding it) isn't extracting it.
+  constexpr std::int64_t kIdleMs = 30'000;
+  const bool idle = now - entry.moved_ms >= kIdleMs;
+  const bool growing = unpacked > 0 && entry.moved_ms == now;
+  if ((!holder || (idle && !holder->certain)) && !growing) return true;
+  archives_->Offer({.path = archive,
+                    .root = entry.root,
+                    .drop = entry.drop,
+                    .taken_by = holder ? holder->name : "another app",
+                    .outputs = entry.outputs});
+  return false;
+}
+
+void Watcher::PrepareScanner(Scanner& scanner) {
+  scanner.UseMetadataQueue(*metadata_fetches_);
+  if (installs_) scanner.UseInstallLane(*installs_);
+  if (unclear_moves_) scanner.UseUnclearMoves(*unclear_moves_);
+  if (is_running_) scanner.UseRunningCheck(is_running_);
+  // What's still being copied is scanned once it settles.
+  std::set<fs::path> unsettled;
+  for (const auto& [path, pending] : pending_) unsettled.insert(path);
+  scanner.LeaveForLater(std::move(unsettled));
 }
 
 void Watcher::HandleDebounceTick() {
@@ -440,10 +517,7 @@ void Watcher::HandleDebounceTick() {
     if (now - entry.stable_since_ms < debounce_ms) continue;
     std::error_code ec;
     const std::uintmax_t current_size = entry.is_archive ? ArchiveSize(path) : TotalSize(path);
-    // A downloader that preallocates the file keeps its size fixed, so an
-    // archive also waits until nothing has it open for writing.
-    if (current_size != entry.last_size ||
-        (entry.is_archive && AnyOpenForWriting(VolumesOf(path)))) {
+    if (current_size != entry.last_size || (entry.is_archive && !ArchiveIsFree(path, entry, now))) {
       entry.last_size = current_size;
       entry.stable_since_ms = now;
       continue;
@@ -452,8 +526,7 @@ void Watcher::HandleDebounceTick() {
   }
 
   if (!settled.empty()) {
-    // Extractions run one by one; each root is scanned once afterwards, however many paths settled
-    // in it.
+    // Each root is scanned once, however many paths settled in it.
     std::set<fs::path> to_scan;
     std::set<std::string> roms;
     for (const std::string& path : settled) {
@@ -470,24 +543,28 @@ void Watcher::HandleDebounceTick() {
       }
 
       if (entry.is_archive) {
-        const fs::path archive(path);
-        const fs::path dest = entry.root / library::StemWithoutArchiveExtension(archive);
-        log::Info("{} settled, extracting into {}", path, dest.string());
-        if (auto extracted = library::ExtractAndRemove(archive, dest); !extracted) {
-          log::Error("failed to extract {}: {}", path, extracted.error().message);
-          continue;
+        if (archives_ == nullptr) continue;
+        const bool handled = std::ranges::any_of(entry.outputs, [&](const fs::path& output) {
+          std::error_code ec;
+          return !entry.beside.contains(output) && fs::exists(output, ec);
+        });
+        if (handled) {
+          log::Info("{} was extracted by another app", path);
+          archives_->Take(path);
+        } else {
+          archives_->Offer({.path = path,
+                            .root = entry.root,
+                            .drop = entry.drop,
+                            .taken_by = {},
+                            .outputs = entry.outputs});
         }
-        // Extracted into a Mira folder: sorted when its folder appears there.
-        if (entry.drop) continue;
-      } else {
-        log::Info("{} settled, scanning {}", path, entry.root.string());
+        continue;
       }
+      log::Info("{} settled, scanning {}", path, entry.root.string());
       to_scan.insert(entry.root);
     }
     library::Scanner scanner(config_, games_, events_);
-    scanner.UseMetadataQueue(*metadata_fetches_);
-    if (installs_) scanner.UseInstallLane(*installs_);
-    if (unclear_moves_) scanner.UseUnclearMoves(*unclear_moves_);
+    PrepareScanner(scanner);
     for (const fs::path& root : to_scan) {
       const ScanSummary summary = scanner.ScanRoot(root);
       for (const model::Game& game : summary.added_games)

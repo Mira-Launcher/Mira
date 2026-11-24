@@ -14,7 +14,7 @@ TEST_CASE("ParseGameSummary reads game.added's record, and nothing else") {
   GameSummary game;
   REQUIRE(events::ParseGameSummary(
       R"({"id": "blue-prince", "name": "Blue Prince", "status": "ready",
-          "platform": "windows", "confidence": 1.0, "play_seconds": 0})",
+          "platform": "windows", "play_seconds": 0})",
       &game));
   CHECK(game.id == "blue-prince");
 

@@ -52,15 +52,6 @@ bool ParseGameLaunched(const std::string& data, GameLaunchedEvent* out) {
   return true;
 }
 
-bool ParseInstallDetected(const std::string& data, InstallDetectedEvent* out) {
-  const json entry = json::parse(data, nullptr, false);
-  if (entry.is_discarded() || !entry.is_object()) return false;
-  out->id = mapping::Str(entry, "id");
-  out->install_path = mapping::Str(entry, "install_path");
-  out->exe_path = mapping::Str(entry, "exe_path");
-  return !out->id.empty() && !out->install_path.empty();
-}
-
 bool ParseUnclearMove(const std::string& data, UnclearMove* out) {
   const json entry = json::parse(data, nullptr, false);
   if (entry.is_discarded() || !entry.is_object()) return false;
@@ -81,7 +72,7 @@ bool ParseUnclearDrop(const std::string& data, UnclearDrop* out) {
   return !out->path.empty() && !out->choices.empty();
 }
 
-std::string ParseSettledDropPath(const std::string& data) {
+std::string ParseSettledPath(const std::string& data) {
   const json entry = json::parse(data, nullptr, false);
   if (entry.is_discarded() || !entry.is_object()) return {};
   return entry.value("path", std::string());
@@ -220,9 +211,11 @@ bool ParseTitleArtworkEvent(const std::string& event_type, const std::string& da
   return !out->ref.empty();
 }
 
-bool ParseOpenConfig(const std::string& data) {
+bool ParseFoundArchive(const std::string& data, FoundArchive* out) {
   const json entry = json::parse(data, nullptr, false);
-  return entry.is_object() && entry.value("open_config", false);
+  if (!entry.is_object()) return false;
+  *out = mapping::ToFoundArchive(entry);
+  return !out->path.empty();
 }
 
 bool ParseAutoInstall(const std::string& data) {

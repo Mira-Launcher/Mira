@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "../app/ErrorHelp.h"
+#include "../app/Notify.h"
 #include "../client/JsonMapping.h"
 #include "../client/api/Config.h"
 #include "../client/api/Downloads.h"
@@ -41,7 +42,6 @@
 #include "../components/Switch.h"
 #include "../components/WindowCards.h"
 #include "../downloads/LinkText.h"
-#include "../game/CardParts.h"
 #include "../system/PackageInstall.h"
 #include "../theme/Icons.h"
 #include "LibraryActions.h"
@@ -278,25 +278,17 @@ void AddGamesCard::OpenPath(const QString& path, const QString& name) {
 
 void AddGamesCard::Classify(const QString& path, std::optional<bool> installer) {
   const int request = ++request_;
-  api::ClassifyImportAsync(this, path.toStdString(),
-                           [this, path, installer, request](ImportGuessResult guess) {
-                             if (request != request_) return;
-                             if (!guess.ok) {
-                               // The page stays as it is; the line under it says why.
-                               if (page_ != nullptr) {
-                                 QLabel* error = page_->ErrorLine();
-                                 error->setText("Could not read " + QFileInfo(path).fileName() +
-                                                ": " + error_help::Describe(guess.error));
-                                 error->show();
-                               }
-                               return;
-                             }
-                             if (installer.value_or(guess.installer)) {
-                               ShowInstaller(path, guess);
-                             } else {
-                               ShowInstalled(path, guess);
-                             }
-                           });
+  api::ClassifyImportAsync(
+      this, path.toStdString(), [this, path, installer, request](ImportGuessResult guess) {
+        if (request != request_) return;
+        if (!guess.ok)
+          return Fail("Could not read " + QFileInfo(path).fileName() + ": ", guess.error);
+        if (installer.value_or(guess.installer)) {
+          AddInstaller(path, guess);
+        } else {
+          ShowInstalled(path, guess);
+        }
+      });
 }
 
 void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& guess) {
@@ -425,127 +417,35 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
   name->setFocus();
 }
 
-void AddGamesCard::ShowInstaller(const QString& path, const ImportGuessResult& guess) {
-  const InstallerInfoResult& info = guess.installer_info;
-  const QString guessed = !name_hint_.isEmpty() ? name_hint_
-                          : guess.name.empty()  ? QFileInfo(path).completeBaseName()
-                                                : QString::fromStdString(guess.name);
+// Added as not set up; its setup card asks the rest, once this one is gone.
+void AddGamesCard::AddInstaller(const QString& path, const ImportGuessResult& guess) {
+  const QString name = !name_hint_.isEmpty() ? name_hint_
+                       : guess.name.empty()  ? QFileInfo(path).completeBaseName()
+                                             : QString::fromStdString(guess.name);
+  // A folder led by an installer, or the installer itself.
+  const QFileInfo file(path);
+  const bool folder = file.isDir() && !guess.programs.empty();
+  const std::string install_path = (folder ? path : file.absolutePath()).toStdString();
+  const std::string program = folder ? guess.programs.front().path : file.fileName().toStdString();
+  const std::string platform =
+      guess.programs.empty() ? std::string() : guess.programs.front().platform;
+  api::AddManualGameAsync(this, install_path, program, name.toStdString(), platform,
+                          /*is_installer=*/true, /*app=*/false, [this](GameDetailResult result) {
+                            if (!result.ok) return Fail("Could not add it: ", result.error);
+                            emit SetupRequested(QString::fromStdString(result.game.id));
+                            Close();
+                          });
+}
 
-  SheetCard* page = NewPage();
-  page->SetBack([this] { ShowMenu(); });
-  QLabel* heading = page->SetHeading(QString());
-  page->SetClose("Close", [this] { Close(); });
-
-  auto* installer = new SettingRow("Installer", QString(), page);
-  QStringList parts{QFileInfo(path).fileName()};
-  if (info.ok) {
-    if (const QString format = InstallerFormatName(info.format); !format.isEmpty()) parts << format;
-    parts << SizeText(info.size_bytes);
+// The page stays as it is; the line under it says why. Opened by a drop, there is none.
+void AddGamesCard::Fail(const QString& what, const ApiError& why) {
+  if (page_ == nullptr) {
+    notify::FailedRequest(window(), what.chopped(2), why);
+    return Close();
   }
-  auto* file = Detail(installer, parts.join("  ·  "));
-  file->setToolTip(path);
-  installer->SetBelow(file);
-  auto* change = new QPushButton("Change…", installer);
-  change->setToolTip("Pick a different installer file");
-  connect(change, &QPushButton::clicked, this, [this, path] {
-    const QString picked =
-        QFileDialog::getOpenFileName(this, "Installer", QFileInfo(path).absolutePath(),
-                                     "Installers (*.exe *.msi *.EXE *.MSI);;All files (*)");
-    if (!picked.isEmpty()) Classify(picked, true);
-  });
-  installer->AddControl(change);
-  page->AddRow(installer);
-
-  auto* name_row = new SettingRow("Name", QString(), page);
-  auto* name = new QLineEdit(guessed, name_row);
-  name->setFixedWidth(240);
-  name_row->AddControl(name);
-  page->AddRow(name_row);
-
-  // A disc or mounted image is full or read-only: the game's prefix goes on a library root's disk.
-  QComboBox* target = nullptr;
-  if (!info.targets.empty()) {
-    auto* row = new SettingRow("Install onto", QString(), page);
-    target = new FlatCombo(row);
-    for (const InstallerInfoResult::Target& choice : info.targets) {
-      target->addItem(
-          QString("%1  ·  %2 free")
-              .arg(HomeRelative(QString::fromStdString(choice.path)), SizeText(choice.free_bytes)),
-          QString::fromStdString(choice.path));
-    }
-    row->AddControl(target);
-    page->AddRow(row);
-  }
-
-  QLabel* error = page->ErrorLine();
-  if (!info.ok) {
-    error->setText("Mira can't run this installer itself: add it, then install it from its card.");
-    error->show();
-  }
-  QHBoxLayout* buttons = page->ButtonRow();
-  auto* add_only = new Button("Add without installing", ButtonKind::Secondary, page);
-  add_only->setToolTip("Add it as needing install, and install it later");
-  buttons->addWidget(add_only);
-  // The usual way last, where the default button goes.
-  auto* shown = new Button("Show the installer", ButtonKind::Secondary, page);
-  shown->setToolTip("Open the installer's window and click through it yourself");
-  shown->setEnabled(info.ok);
-  buttons->addWidget(shown);
-  auto* quiet = new Button("Install quietly", ButtonKind::Secondary, page);
-  quiet->setToolTip("Run the installer in the background without its window");
-  quiet->setVisible(info.ok && info.silent);
-  buttons->addWidget(quiet);
-  Button* recommended = info.ok && info.silent ? quiet : shown;
-  recommended->SetKind(ButtonKind::Primary);
-  recommended->setDefault(true);
-
-  const auto refresh = [name, heading, add_only, quiet, shown, ok = info.ok] {
-    const QString text = name->text().trimmed();
-    heading->setText(text.isEmpty() ? QString("Install it?") : "Install " + text + "?");
-    add_only->setEnabled(!text.isEmpty());
-    quiet->setEnabled(!text.isEmpty());
-    shown->setEnabled(ok && !text.isEmpty());
-  };
-  refresh();
-  connect(name, &QLineEdit::textChanged, page, refresh);
-
-  // Added once: a failed install after that retries the install, not the add.
-  auto added = std::make_shared<std::string>();
-  const auto run = [=, this](std::optional<bool> interactive) {
-    for (Button* button : {add_only, quiet, shown}) button->setEnabled(false);
-    error->hide();
-    const auto failed = [=](const QString& what, const ApiError& why) {
-      refresh();
-      error->setText(what + error_help::Describe(why));
-      error->show();
-    };
-    const std::string chosen =
-        target != nullptr ? target->currentData().toString().toStdString() : std::string();
-    const auto install = [=, this](const std::string& id) {
-      if (!interactive) return Close();
-      api::InstallGameAsync(this, id, *interactive, std::string(), chosen,
-                            [this, failed](GameActionResult result) {
-                              if (result.ok) return Close();
-                              failed("Could not start the install: ", result.error);
-                            });
-    };
-    if (!added->empty()) return install(*added);
-    const std::string platform =
-        guess.programs.empty() ? std::string() : guess.programs.front().platform;
-    api::AddManualGameAsync(
-        this, QFileInfo(path).absolutePath().toStdString(),
-        QFileInfo(path).fileName().toStdString(), name->text().trimmed().toStdString(), platform,
-        /*is_installer=*/true, /*app=*/false, [added, install, failed](GameDetailResult result) {
-          if (!result.ok) return failed("Could not add it: ", result.error);
-          *added = result.game.id;
-          install(*added);
-        });
-  };
-  connect(add_only, &QPushButton::clicked, this, [run] { run(std::nullopt); });
-  connect(quiet, &QPushButton::clicked, this, [run] { run(false); });
-  connect(shown, &QPushButton::clicked, this, [run] { run(true); });
-
-  ShowPage(page);
+  QLabel* error = page_->ErrorLine();
+  error->setText(what + error_help::Describe(why));
+  error->show();
 }
 
 void AddGamesCard::ShowLinks() {

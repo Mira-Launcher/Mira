@@ -103,8 +103,7 @@ class GameEditForm : public QWidget {
   void BrowseExecutable();
   // POST /v1/games/{id}/relocate of the install folder or the prefix into a folder the user picks.
   void MoveFolder(bool prefix);
-  // PATCH {"reviewed": true}: keeps mirad's pick of executable and clears its "Not checked".
-  void ConfirmExecutable();
+  // POST /v1/games/{id}/detect: rebuilds the list of programs from the game's folder.
   void DetectExecutable();
   void ShowInstallPath();
   void ResetScroll();
@@ -123,9 +122,7 @@ class GameEditForm : public QWidget {
   bool stale_ = false;  // the game changed elsewhere while there were edits; Discard loads it again
 
   QLabel* last_error_label_ = nullptr;
-  Badge* check_tag_ = nullptr;
   QPushButton* detect_ = nullptr;
-  QPushButton* looks_right_ = nullptr;
   QLineEdit* install_path_edit_ = nullptr;
   QPushButton* open_install_ = nullptr;
   QPushButton* move_button_ = nullptr;

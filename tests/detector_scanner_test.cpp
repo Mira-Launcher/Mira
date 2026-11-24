@@ -10,6 +10,7 @@
 #include "core/Strings.h"
 #include "library/AutoSetup.h"
 #include "library/Detector.h"
+#include "library/GameSetup.h"
 #include "library/Scanner.h"
 #include "store/GameStore.h"
 #include "support/TestEnv.h"
@@ -41,7 +42,6 @@ TEST_CASE("Detector picks the exe matching the folder name over an installer") {
   REQUIRE(result.candidates.size() == 2);
   CHECK(result.candidates[0].rel_path == "Celeste.exe");
   CHECK(result.candidates[0].chosen);
-  CHECK(result.confidence > 0.5);
 }
 
 TEST_CASE("Detector prefers the shallower, name-matching exe in a nested folder") {
@@ -80,12 +80,11 @@ TEST_CASE("Detector finds a native ELF binary, not an image an archive marked ex
   CHECK(result.candidates[0].kind == model::Platform::Native);
 }
 
-TEST_CASE("Detector returns no candidates and low confidence for an empty folder") {
+TEST_CASE("Detector returns no candidates for an empty folder") {
   const fs::path dir = TempDir("empty-detect");
   const library::Detector detector(DefaultSettings());
   auto result = detector.Detect(dir);
   CHECK(result.candidates.empty());
-  CHECK(result.confidence == doctest::Approx(0.0));
 }
 
 TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting_up") {
@@ -94,32 +93,31 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
 
   library::Detector::Result native_result;
   native_result.candidates.push_back({"Celeste", model::Platform::Native, 4.5, true});
-  native_result.confidence = 0.9;
   const fs::path root = test::TempDir("autosetup-games");
   REQUIRE(env.config.Set("library_roots", nlohmann::json::array({root.string()})).has_value());
   model::Game native_game = auto_setup.CreateGame(root / "Celeste", native_result);
-  CHECK(native_game.status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(native_game, model::SetupStep::Confirm));
   CHECK(native_game.id == "celeste");
   // The library folder's name doesn't become a tag.
   CHECK(native_game.tags.empty());
 
   library::Detector::Result windows_result;
   windows_result.candidates.push_back({"hollow_knight.exe", model::Platform::Windows, 4.5, true});
-  windows_result.confidence = 0.8;
   model::Game windows_game = auto_setup.CreateGame("/games/Hollow Knight", windows_result);
-  CHECK(windows_game.status == model::GameStatus::SettingUp);
+  CHECK(model::WaitsFor(windows_game, model::SetupStep::Confirm));
   CHECK_FALSE(windows_game.data_dir.empty());
   // Found outside every library root (an install inside a prefix): no folder to name it after.
   CHECK(windows_game.tags.empty());
 
-  // Each new game is announced, asking the GUI to open its settings.
-  int added = 0;
-  for (const model::Event& event : env.events.Since(0)) {
-    if (event.type != "game.added") continue;
-    ++added;
-    CHECK(event.payload.value("open_config", false));
-  }
-  CHECK(added == 2);
+  // Answered for before it was found: nothing to ask.
+  library::ConfirmWhenFound(root / "Hades",
+                            {.name = "Hades II", .exe_path = "Celeste", .app = true});
+  test::Touch(root / "Hades" / "Celeste", "", /*executable=*/true);
+  const model::Game answered = auto_setup.CreateGame(root / "Hades", native_result);
+  CHECK(answered.status == model::GameStatus::Ready);
+  CHECK(answered.name == "Hades II");
+  CHECK(answered.reviewed);
+  CHECK(std::ranges::contains(answered.tags, "app"));
 }
 
 TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders") {
@@ -158,7 +156,7 @@ TEST_CASE("Scanner adds new games, skips known ones, and marks missing folders")
   Touch(lib / "Celeste" / "Celeste", "", /*executable=*/true);
   library::ScanSummary fourth = scanner.ScanAll();
   CHECK(fourth.restored == 1);
-  CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(*env.games.Find("celeste"), model::SetupStep::Confirm));
 }
 
 TEST_CASE(
@@ -180,7 +178,7 @@ TEST_CASE(
   if (!test::Has(locked, "way to lock a folder (it runs as root)")) return;
   CHECK(unreadable.missing == 0);
   REQUIRE(env.games.Find("celeste").has_value());
-  CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(*env.games.Find("celeste"), model::SetupStep::Confirm));
 }
 
 TEST_CASE("Scanner finds an AppImage loose in a library folder as a game of its own") {
@@ -196,7 +194,7 @@ TEST_CASE("Scanner finds an AppImage loose in a library folder as a game of its 
   const auto osu = env.games.Find("osu");
   REQUIRE(osu.has_value());
   CHECK(osu->exe_path == "osu.AppImage");
-  CHECK(osu->status == model::GameStatus::Ready);
+  CHECK(model::WaitsFor(*osu, model::SetupStep::Confirm));
   CHECK(scanner.ScanAll().added == 0);
 
   fs::remove(lib / "osu.AppImage");
@@ -258,7 +256,7 @@ TEST_CASE(
   CHECK(rel_paths(detector.Detect(prefix).candidates) == std::vector<std::string>{"Cuphead.exe"});
 }
 
-TEST_CASE("Scanner does not auto-provision when auto_setup is off") {
+TEST_CASE("A scan never provisions a game nobody has confirmed") {
   const fs::path lib = TempDir("scan-no-autosetup-library");
   fs::create_directories(lib / "Celeste");
   Touch(lib / "Celeste" / "Celeste.exe");
@@ -266,7 +264,6 @@ TEST_CASE("Scanner does not auto-provision when auto_setup is off") {
   test::TestEnv env("scan-no-autosetup-state");
   REQUIRE(env.config.Set("library_roots", nlohmann::json::array({lib.string()})).has_value());
   REQUIRE(env.config.Set("prefix_root", (lib / "prefix").string()).has_value());
-  REQUIRE(env.config.Set("auto_setup", false).has_value());
   library::Scanner scanner(env.config, env.games, env.events);
 
   library::ScanSummary summary = scanner.ScanAll();
@@ -274,10 +271,7 @@ TEST_CASE("Scanner does not auto-provision when auto_setup is off") {
 
   auto celeste = env.games.Find("celeste");
   REQUIRE(celeste.has_value());
-  // Detected and stored (the frontend can still see and configure it), but
-  // never auto-provisioned: still setting_up, no runner_ref pinned, no
-  // prefix created.
-  CHECK(celeste->status == model::GameStatus::SettingUp);
+  CHECK(model::WaitsFor(*celeste, model::SetupStep::Confirm));
   CHECK(celeste->runner_ref.empty());
   CHECK_FALSE(fs::exists(celeste->data_dir));
 }
@@ -311,7 +305,7 @@ TEST_CASE("Scanner leaves alone the folder of an installer whose game now lives 
   CHECK(env.games.All().size() == 2);
 }
 
-TEST_CASE("Scanner retries provisioning for games left setting_up or broken by a missing runner") {
+TEST_CASE("Scanner retries provisioning for games left setting_up or failed by a missing runner") {
   const fs::path lib = TempDir("scan-retry-library");
   Touch(lib / "Celeste" / "Celeste.exe");
 
@@ -320,11 +314,14 @@ TEST_CASE("Scanner retries provisioning for games left setting_up or broken by a
   REQUIRE(env.config.Set("auto_setup", false).has_value());
   library::Scanner scanner(env.config, env.games, env.events);
 
-  // First scan: auto_setup off, so the game is detected but left setting_up.
+  // First scan: the game waits to be confirmed; confirmed, it waits for its runner.
   scanner.ScanAll();
   auto celeste = env.games.Find("celeste");
   REQUIRE(celeste.has_value());
-  CHECK(celeste->status == model::GameStatus::SettingUp);
+  CHECK(model::WaitsFor(*celeste, model::SetupStep::Confirm));
+  REQUIRE(library::ConfirmSetup(env.config, env.games, *celeste, {}));
+  REQUIRE(env.games.Upsert(*celeste));
+  CHECK(env.games.Find("celeste")->status == model::GameStatus::SettingUp);
 
   // auto_setup turns on later, a later scan of the same, already-known
   // folder must retry rather than skip it forever.
@@ -334,141 +331,50 @@ TEST_CASE("Scanner retries provisioning for games left setting_up or broken by a
   scanner.ScanAll();
   celeste = env.games.Find("celeste");
   REQUIRE(celeste.has_value());
-  CHECK(celeste->status == model::GameStatus::Broken);
+  CHECK(model::WaitsFor(*celeste, model::SetupStep::Failed));
 
   REQUIRE(env.config.Set("default_runner.windows", "native:native").has_value());
   scanner.ScanAll();
   CHECK(env.games.Find("celeste")->status == model::GameStatus::Ready);
 }
 
-TEST_CASE("Detector flags a large setup.exe as an installer, not the game") {
-  const fs::path dir = TempDir("hollow-installer-detect");
-  const fs::path installer = dir / "setup_hollow_knight_1.5.12620_(64bit)_(89718).exe";
-  {
-    // Needs to clear the size floor for real; a truncated stub must not count.
-    std::ofstream out(installer, std::ios::binary);
-    out.seekp(60 * 1024 * 1024 - 1);
-    out.put('\0');
-  }
-
-  library::DetectorSettings settings = DefaultSettings();
-  settings.installer_name_patterns = {"setup*", "*setup*", "install*", "*installer*"};
-  settings.installer_min_size_mb = 50;
-  const library::Detector detector(settings);
-  auto result = detector.Detect(dir);
-
-  REQUIRE(result.candidates.size() == 1);
-  CHECK(result.candidates[0].is_installer);
-}
-
-TEST_CASE("A name match under the size floor is not flagged as an installer") {
-  const fs::path dir = TempDir("small-setup-detect");
-  Touch(dir / "setup_language_pack.exe");  // name matches, but it's tiny
-
-  library::DetectorSettings settings = DefaultSettings();
-  settings.installer_name_patterns = {"setup*"};
-  settings.installer_min_size_mb = 50;
-  const library::Detector detector(settings);
-  auto result = detector.Detect(dir);
-
-  REQUIRE(result.candidates.size() == 1);
-  CHECK_FALSE(result.candidates[0].is_installer);
-}
-
-TEST_CASE("A small installer is recognised by its builder's mark, whatever its name") {
-  const fs::path dir = TempDir("signature-installer-detect");
-  const auto installer_like = [](const fs::path& path, std::string_view mark) {
-    std::ofstream out(path, std::ios::binary);
-    out << "MZ" << std::string(300 * 1024, '\0') << "<assemblyIdentity name=\"" << mark << "\"/>";
+TEST_CASE("An installer is told by its name alone and ranks between the game and its helpers") {
+  const auto detect = [](const fs::path& dir) {
+    library::DetectorSettings settings = DefaultSettings();
+    settings.installer_name_patterns = {"setup*", "*setup*", "install*", "*installer*"};
+    settings.deny_name_patterns = {"unins*", "setup*", "*redist*", "quicksfv*"};
+    return library::Detector(settings).Detect(dir).candidates;
   };
-  installer_like(dir / "Moonleap-1.2-win.exe", "Inno Setup");
-  installer_like(dir / "setup_tiny.exe", "Nullsoft.NSIS.exehead");
-  installer_like(dir / "unins000.exe", "Inno Setup");     // its uninstaller, on the deny list
-  installer_like(dir / "VC_redist.x64.exe", ".wixburn");  // a redistributable, likewise
-  Touch(dir / "Moonleap.exe");
-
-  library::DetectorSettings settings = DefaultSettings();
-  settings.installer_name_patterns = {"setup*", "*setup*", "install*", "*installer*"};
-  settings.deny_name_patterns = {"unins*", "*redist*"};
-  settings.installer_min_size_mb = 50;
-  const auto result = library::Detector(settings).Detect(dir);
-
-  const auto flagged = [&](const std::string& name) {
-    const auto it =
-        std::ranges::find_if(result.candidates, [&](const auto& c) { return c.rel_path == name; });
-    REQUIRE(it != result.candidates.end());
-    return it->is_installer;
-  };
-  CHECK(flagged("Moonleap-1.2-win.exe"));
-  CHECK(flagged("setup_tiny.exe"));
-  CHECK_FALSE(flagged("unins000.exe"));
-  CHECK_FALSE(flagged("VC_redist.x64.exe"));
-  CHECK_FALSE(flagged("Moonleap.exe"));
-}
-
-TEST_CASE("A marked installer beside its payload is picked over the tools packed with it") {
-  const auto installer_like = [](const fs::path& path, std::string_view mark) {
-    std::ofstream out(path, std::ios::binary);
-    out << "MZ" << std::string(300 * 1024, '\0') << "<assemblyIdentity name=\"" << mark << "\"/>";
-  };
-  const auto large = [](const fs::path& path) {
-    std::ofstream out(path, std::ios::binary);
-    out.seekp(60 * 1024 * 1024 - 1);
-    out.put('\0');
-  };
-  library::DetectorSettings settings = DefaultSettings();
-  settings.installer_name_patterns = {"setup*", "*setup*", "install*", "*installer*"};
-  // An older settings.toml's list, which still names setup*.
-  settings.deny_name_patterns = {"unins*", "setup*", "*redist*"};
-  settings.installer_min_size_mb = 50;
-  const library::Detector detector(settings);
-
-  // A repack: setup.exe, its .bin payload and a checksum tool in a subfolder.
   const fs::path repack = TempDir("repack-detect");
-  installer_like(repack / "setup.exe", "Inno Setup");
-  large(repack / "fg-01.bin");
+  Touch(repack / "setup.exe");
   fs::create_directories(repack / "MD5");
   Touch(repack / "MD5" / "QuickSFV.EXE");
-  const auto packed = detector.Detect(repack);
-  REQUIRE(packed.candidates.size() == 2);
-  CHECK(packed.candidates[0].rel_path == "setup.exe");
-  CHECK(packed.candidates[0].is_installer);
-  CHECK(packed.confidence >= settings.low_confidence_threshold);
+  const auto packed = detect(repack);
+  REQUIRE(packed.size() == 2);
+  CHECK(packed[0].rel_path == "setup.exe");
+  CHECK(packed[0].is_installer);
+  CHECK_FALSE(packed[1].is_installer);
 
-  // An installed game keeps its uninstaller and a redistributable beside its data: still the game.
   const fs::path installed = TempDir("installed-detect");
   Touch(installed / "Genesis.exe");
-  installer_like(installed / "unins000.exe", "Inno Setup");
-  installer_like(installed / "VC_redist.x64.exe", ".wixburn");
-  large(installed / "data.pak");
-  const auto game = detector.Detect(installed);
-  REQUIRE_FALSE(game.candidates.empty());
-  CHECK(game.candidates[0].rel_path == "Genesis.exe");
-  CHECK_FALSE(game.candidates[0].is_installer);
+  Touch(installed / "setup.exe");
+  Touch(installed / "unins000.exe");
+  const auto game = detect(installed);
+  REQUIRE(game.size() == 3);
+  CHECK(game[0].rel_path == "Genesis.exe");
+  CHECK(game[1].is_installer);
+  CHECK_FALSE(game[2].is_installer);
 }
 
-TEST_CASE("A small installer stub is still flagged if a large sibling payload sits beside it") {
-  // Regression: InstallShield/Inno Setup split installers are commonly a
-  // few-MB launcher .exe next to a much larger separate .bin/.cab payload,
-  // found against a real Wingspan install where every setup_*.exe was under
-  // 7MB but sat beside a 1.8GB .bin file. Checking only the exe's own size
-  // missed this entirely.
-  const fs::path dir = TempDir("split-installer-detect");
-  Touch(dir / "setup_wingspan_313.exe");  // a few KB; the real files are ~1-6MB
-  {
-    std::ofstream out(dir / "setup_wingspan_313-1.bin", std::ios::binary);
-    out.seekp(60 * 1024 * 1024 - 1);
-    out.put('\0');
+TEST_CASE("Nothing in a redistributables, hidden or underscored folder is a candidate") {
+  const fs::path dir = TempDir("never-game-detect");
+  for (const char* folder : {"_CommonRedist", "Redist", ".cache", "__Installer", "bin"}) {
+    fs::create_directories(dir / folder);
+    Touch(dir / folder / "game.exe");
   }
-
-  library::DetectorSettings settings = DefaultSettings();
-  settings.installer_name_patterns = {"setup*"};
-  settings.installer_min_size_mb = 50;
-  const library::Detector detector(settings);
-  auto result = detector.Detect(dir);
-
-  REQUIRE(result.candidates.size() == 1);
-  CHECK(result.candidates[0].is_installer);
+  const auto candidates = library::Detector(DefaultSettings()).Detect(dir).candidates;
+  REQUIRE(candidates.size() == 1);
+  CHECK(candidates[0].rel_path == "bin/game.exe");
 }
 
 TEST_CASE("the real default deny list excludes known engine/launcher helper executables") {
@@ -495,10 +401,10 @@ TEST_CASE("the real default deny list excludes known engine/launcher helper exec
   CHECK(result.candidates[0].rel_path == "SomeGame.exe");
 }
 
-TEST_CASE("a restored game keeps needs_install instead of becoming launchable") {
+TEST_CASE("a restored game keeps waiting for its installer instead of becoming launchable") {
   // Regression: the Missing->restore path keyed on "has an exe_path", but an
   // installer has one too (kept for reference), so unplugging and replugging
-  // a drive silently promoted needs_install to ready, pointed straight at
+  // a drive silently promoted it to ready, pointed straight at
   // setup.exe, undoing the installer guard entirely.
   const fs::path lib = TempDir("restore-installer-library");
   fs::create_directories(lib / "game-hollow");
@@ -515,7 +421,7 @@ TEST_CASE("a restored game keeps needs_install instead of becoming launchable") 
   library::Scanner scanner(env.config, env.games, env.events);
 
   REQUIRE(scanner.ScanAll().added == 1);
-  REQUIRE(env.games.Find("game-hollow")->status == model::GameStatus::NeedsInstall);
+  REQUIRE(model::WaitsFor(*env.games.Find("game-hollow"), model::SetupStep::Install));
 
   // Out of the library, since a folder moved within it is followed.
   const fs::path away = TempDir("restore-installer-away") / "game-hollow";
@@ -525,8 +431,7 @@ TEST_CASE("a restored game keeps needs_install instead of becoming launchable") 
 
   fs::rename(away, lib / "game-hollow");  // and back
   scanner.ScanAll();
-  CHECK(env.games.Find("game-hollow")->status == model::GameStatus::NeedsInstall);
-  CHECK_FALSE(env.games.Find("game-hollow")->last_error.empty());
+  CHECK(model::WaitsFor(*env.games.Find("game-hollow"), model::SetupStep::Install));
 }
 
 TEST_CASE("a restored windows game with no prefix is not claimed ready") {
@@ -540,7 +445,9 @@ TEST_CASE("a restored windows game with no prefix is not claimed ready") {
   library::Scanner scanner(env.config, env.games, env.events);
 
   REQUIRE(scanner.ScanAll().added == 1);
-  REQUIRE(env.games.Find("celeste")->status == model::GameStatus::SettingUp);
+  model::Game celeste = *env.games.Find("celeste");
+  REQUIRE(library::ConfirmSetup(env.config, env.games, celeste, {}));
+  REQUIRE(env.games.Upsert(celeste));
 
   const fs::path away = TempDir("restore-unprovisioned-away") / "Celeste";
   fs::rename(lib / "Celeste", away);
@@ -550,4 +457,62 @@ TEST_CASE("a restored windows game with no prefix is not claimed ready") {
 
   // No runner_ref, no prefix on disk: "ready" would be a lie.
   CHECK(env.games.Find("celeste")->status == model::GameStatus::SettingUp);
+}
+
+TEST_CASE("Detector picks the game over what ships with it") {
+  struct Layout {
+    const char* folder;
+    const char* pick;
+    std::vector<const char*> files;
+  };
+  const std::vector<Layout> layouts = {
+      {"Bloons-TD-6",
+       "BloonsTD6/BloonsTD6.exe",
+       {"BloonsTD6/BloonsTD6_Data/globalgamemanagers", "BloonsTD6/UnityCrashHandler64.exe",
+        "BloonsTD6/Cleaner/Cleaner-BTD6.exe", "BloonsTD6/BloonsTD6.exe"}},
+      {"SUPERHOT",
+       "SUPERHOT.exe",
+       {"SH.exe", "SH_Data/FFMPEGEncoding/ffmpeg.exe", "SUPERHOT.exe", "SUPERHOT_Data/level0"}},
+      {"game-280042",
+       "SUPERHOT/SUPERHOT.exe",
+       {"SUPERHOT/SH.exe", "SUPERHOT/SH_Data/level0", "SUPERHOT/SUPERHOT.exe",
+        "SUPERHOT/SUPERHOT_Data/level0"}},
+      {"assassin-s-creed-2",
+       "AssassinsCreedIIGame.exe",
+       {"UPlayBrowser.exe", "UplayInstaller.exe", "AssassinsCreedIIGame.exe"}},
+      // Nothing like the game's name: the engine's files tell.
+      {"Nine Nights", "nn.exe", {"Config.exe", "nn.exe", "nn.pck", "Nine Nights Server.exe"}},
+      {"Deep Rock Galactic",
+       "FSD.exe",
+       {"FSD.exe", "FSD/Binaries/Win64/FSD-Win64-Shipping.exe", "Engine/Extras/CrashReport.exe",
+        "Engine/Binaries/Win64/EpicWebHelper.exe"}},
+      {"Stray Cats",
+       "Hk/Binaries/Win64/Hk-Win64-Shipping.exe",
+       {"Hk/Binaries/Win64/Hk-Win64-Shipping.exe", "Engine/Binaries/Win64/UnrealCEF.exe"}},
+      {"OurRedString-v15.2.3-pc",
+       "OurRedString.sh",
+       {"OurRedString.exe", "OurRedString.sh", "OurRedString.py", "renpy/common.rpy",
+        "lib/py3-windows-x86_64/pythonw.exe", "lib/py3-windows-x86_64/OurRedString.exe"}},
+      {"Dune Runner",
+       "DuneRunner.sh",
+       {"DuneRunner.exe", "DuneRunner.sh", "DuneRunner.bin.x86_64", "FNA.dll"}},
+      {"The Evil Within 2", "TEW2.exe", {"TEW2.exe", "Launcher.exe", "redist_tool.exe"}},
+      {"Server Simulator", "Server Simulator.exe", {"Server Simulator.exe", "Editor.exe"}},
+      {"Old Game", "bin/x64/game.exe", {"bin/x86/game.exe", "bin/x64/game.exe"}},
+  };
+  const test::TestEnv env("detector-layouts");
+  const library::Detector detector(library::SettingsFromConfig(env.config));
+  int at = 0;
+  for (const Layout& layout : layouts) {
+    const fs::path dir = TempDir("detector-layout-" + std::to_string(at++)) / layout.folder;
+    std::vector<library::Detector::ListedFile> listed;
+    for (const char* file : layout.files) {
+      Touch(dir / file);
+      listed.push_back({file});
+    }
+    CAPTURE(layout.folder);
+    CHECK(detector.Detect(dir).candidates.front().rel_path == layout.pick);
+    // As told from an archive's listing.
+    CHECK(detector.DetectListed(listed, layout.folder).candidates.front().rel_path == layout.pick);
+  }
 }

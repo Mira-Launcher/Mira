@@ -16,7 +16,7 @@ namespace mira_gui::api {
 
 // POST /v1/games/{id}/launch. Returns once the process exists, not once
 // it exits. 409 if the game isn't `ready` (message explains why, e.g.
-// needs_install) or 400 if the runner reference doesn't resolve.
+// not_set_up) or 400 if the runner reference doesn't resolve.
 // `option` names one of its launch options ("game" for its own program); empty for its default.
 // `saves` settles a cloud save conflict ("keep_local", "use_cloud" or "skip"); empty syncs as
 // usual, which is 409 saves_conflict when its saves changed both here and in the cloud.
@@ -32,7 +32,7 @@ void StopGameAsync(QObject* context, const std::string& id,
 void GetGameAsync(QObject* context, const std::string& id,
                   std::function<void(GameDetailResult)> callback);
 
-// PATCH /v1/games/{id}. Setting any of these fields marks the game as reviewed.
+// PATCH /v1/games/{id}.
 void PatchGameAsync(QObject* context, const std::string& id, const GamePatch& patch,
                     std::function<void(PatchGameResult)> callback);
 
@@ -41,20 +41,13 @@ void DetectGameAsync(QObject* context, const std::string& id,
                      std::function<void(PatchGameResult)> callback);
 
 // POST /v1/games/{id}/run. Runs `exe_path` inside this game's prefix,
-// provisioning one on demand, which is how a needs_install game's
-// installer actually gets run, since Scanner never auto-provisions one.
+// provisioning one on demand.
 void RunInPrefixAsync(QObject* context, const std::string& id, const std::string& exe_path,
                       const std::string& args, std::function<void(RunInPrefixResult)> callback);
 
-// POST /v1/games/{id}/finish-install: flips a needs_install game to
-// ready once exe_path points at whatever the installer produced. 409 if
-// exe_path is still empty.
-// With `install_path` and `exe_path`, first switches the game to that
-// program installed in its prefix (game.install_detected).
-void FinishInstallAsync(QObject* context, const std::string& id,
-                        std::function<void(FinishInstallResult)> callback,
-                        const std::string& install_path = std::string(),
-                        const std::string& exe_path = std::string());
+// POST /v1/games/{id}/confirm: the user's answers for a game that isn't set up.
+void ConfirmGameAsync(QObject* context, const std::string& id, const SetupChoices& choices,
+                      std::function<void(GameDetailResult)> callback);
 
 // GET /v1/games/{id}/config: this game's resolved settings, tagged by
 // layer (see GameConfigEntry).

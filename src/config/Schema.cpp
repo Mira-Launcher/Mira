@@ -313,13 +313,6 @@ Schema::Schema() {
          .doc = "Set up new games automatically when they are found. When off, new games wait "
                 "until you configure them."});
 
-  s.Add({.key = "open_config_on_add",
-         .label = "Open settings for new games",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Open a new game's settings when it is added, so you can check what Mira "
-                "detected."});
-
   s.Add({.key = "library.remove_missing",
          .label = "Remove missing games",
          .type = Type::Bool,
@@ -483,8 +476,8 @@ Schema::Schema() {
          .doc = "The Steam game this is, by the number in its store.steampowered.com/app/ "
                 "address. Its art, ProtonDB rating, reviews, saves, Proton fixes and anti-cheat "
                 "status all follow it. 0 lets Mira work it out from the store, its files, the umu "
-                "database or its name.",
-         .constraint = Range(0, 1e12),
+                "database or its name; -1 says it isn't on Steam.",
+         .constraint = Range(-1, 1e12),
          .keywords = "steam app id appid protondb reviews match wrong identify",
          .applies = {.except_sources = {"steam"}}});
 
@@ -1452,14 +1445,6 @@ Schema::Schema() {
   // --- Installers ------------------------------------------------------------
   s.Section("Installers", "Silent installs");
 
-  s.Add({.key = "scan.auto_run_installers",
-         .label = "Run installers automatically",
-         .type = Type::Bool,
-         .default_value = false,
-         .doc = "Run an installer (Inno Setup, NSIS or MSI) silently as soon as Mira finds it. "
-                "When off, installers wait until you run them yourself.",
-         .old_defaults = {true}});
-
   s.Add({.key = "install.retry_failed",
          .label = "Retry failed installs",
          .type = Type::Bool,
@@ -1692,12 +1677,15 @@ Schema::Schema() {
   s.Section("Detection", "Scoring");
   s.ResetTogether();
 
-  s.Add({.key = "detect.rules",
-         .label = "Detection scoring rules",
-         .type = Type::StringArray,
-         .default_value = json::array({"deny_patterns", "name_similarity", "depth", "shallowest"}),
-         .doc = "The rules that score candidate executables to find the game's main executable, "
-                "applied in order. Remove a rule to turn it off."});
+  s.Add(
+      {.key = "detect.rules",
+       .label = "Detection scoring rules",
+       .type = Type::StringArray,
+       .default_value = json::array({"deny_patterns", "name_similarity", "engine", "helpers",
+                                     "depth", "size", "build", "shallowest", "program_info"}),
+       .doc = "The rules that score candidate executables to find the game's main executable. "
+              "Remove a rule to turn it off.",
+       .old_defaults = {json::array({"deny_patterns", "name_similarity", "depth", "shallowest"})}});
 
   s.Add({.key = "detect.name_match_bonus",
          .label = "Name match bonus",
@@ -1713,14 +1701,6 @@ Schema::Schema() {
        .default_value = 0.5,
        .doc = "Score subtracted for each folder level, so executables near the top are preferred.",
        .constraint = Range(0.0, 100.0)});
-
-  s.Add({.key = "detect.low_confidence_threshold",
-         .label = "Low confidence threshold",
-         .type = Type::Double,
-         .default_value = 0.5,
-         .doc = "Games detected with less confidence than this are flagged for review. They are "
-                "still set up and can still be launched.",
-         .constraint = Range(0.0, 1.0)});
 
   s.Add({.key = "detect.deny_name_patterns",
          .label = "Non-game name patterns",
@@ -1743,20 +1723,8 @@ Schema::Schema() {
          .label = "Installer name patterns",
          .type = Type::StringArray,
          .default_value = json(known_exe_patterns::kInstaller),
-         .doc = "Glob patterns for installer names. A match is treated as an installer, not the "
-                "game, and is marked as needing install. It must also meet the minimum size below, "
-                "either by itself or through a larger file in the same folder."});
-
-  s.Add({.key = "detect.installer_min_size_mb",
-         .label = "Minimum installer size",
-         .type = Type::Int,
-         .default_value = 50,
-         .doc =
-             "Installers built with Inno Setup, NSIS, WiX or InstallShield are recognised at any "
-             "size. For other files, the minimum size, of the file itself or of a file beside it, "
-             "for an installer-like name to count as an installer.",
-         .constraint = Range(0, 1'000'000),
-         .unit = "MB"});
+         .doc = "Glob patterns for installer names. A match is offered as an installer "
+                "when the game is set up, where you can say otherwise."});
 
   // --- Scanning --------------------------------------------------------------
   s.Section("Scanning", "Scanning");
@@ -1777,15 +1745,6 @@ Schema::Schema() {
          .default_value = 4,
          .doc = "How many folder levels deep to search a game folder for executables.",
          .constraint = Range(1, 16)});
-
-  s.Add({.key = "scan.auto_extract_archives",
-         .label = "Extract archives automatically",
-         .type = Type::Bool,
-         .default_value = true,
-         .doc = "Extract archives (.zip, .rar, .tar, .7z and split archives) dropped into a "
-                "library folder, into a folder of the same name, then delete the archive. Needs "
-                "7-Zip (7z or 7zz) installed.",
-         .old_defaults = {false}});
 
   s.Add({.key = "scan.ignore_globs",
          .label = "Ignored paths",

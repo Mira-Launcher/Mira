@@ -4,6 +4,7 @@
 #include "core/Strings.h"
 #include "library/AutoInstall.h"
 #include "library/FolderTags.h"
+#include "library/GameSetup.h"
 #include "library/PrefixNaming.h"
 
 namespace mira::library {
@@ -26,39 +27,41 @@ void TagFromPlace(const config::Config& config, model::Game& game, const fs::pat
 AutoSetup::AutoSetup(config::Config& config, store::GameStore& games, api::EventBus& events)
     : config_(config), games_(games), events_(events) {}
 
+// Answered for before it was found (an archive's card): nothing left to ask.
+void AutoSetup::ConfirmIfAnswered(const fs::path& found, model::Game& game) const {
+  const auto choices = TakeConfirmed(found);
+  if (!choices) return;
+  // Its program only showed once unpacked (a native one without an extension): that's still asked.
+  if (!choices->exe_path) return ApplyChoices(game, *choices);
+  if (auto set = ConfirmSetup(config_, games_, game, *choices); !set)
+    log::Warn("{} waits to be set up: {}", found.string(), set.error().message);
+}
+
 model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::Result& detected) {
   model::Game game;
   game.name = strings::CleanGameName(install_path.filename().string());
   game.id = games_.NextId(game.name, install_path.string());
   game.install_path = install_path.string();
-  game.confidence = detected.confidence;
   game.candidates = detected.candidates;
   game.created_at = model::NowSeconds();
   game.updated_at = game.created_at;
-  game.data_dir = PrefixDir(config_, games_, game).string();
-
   TagFromPlace(config_, game, install_path.parent_path());
 
   if (detected.candidates.empty()) {
-    game.status = model::GameStatus::Broken;
+    game.status = model::GameStatus::NotSetUp;
+    game.setup = model::SetupStep::Failed;
     game.platform = model::Platform::Unknown;
-    game.last_error = "No executable found automatically. Set one manually.";
+    game.last_error = "No program found in this folder. Choose the one that starts it.";
   } else {
     const model::Candidate& top = detected.candidates.front();
     game.platform = top.kind;
     game.exe_path = top.rel_path;
-    if (top.is_installer) {
-      // Running an installer isn't running the game: flag it rather than
-      // silently provisioning/launching a setup wizard as if it were.
-      game.status = model::GameStatus::NeedsInstall;
-      game.last_error = "This looks like an installer (" + top.rel_path +
-                        "), not the game itself. Install it to play.";
-    } else if (top.kind == model::Platform::Native) {
-      game.status = model::GameStatus::Ready;  // native needs no provisioning
-    } else {
-      game.status = model::GameStatus::SettingUp;  // waits for the runner layer to provision it
-    }
+    game.status = model::GameStatus::NotSetUp;
+    game.setup = top.is_installer ? model::SetupStep::Install : model::SetupStep::Confirm;
   }
+  // After its step: an installer's prefix never goes in its folder.
+  game.data_dir = PrefixDir(config_, games_, game).string();
+  ConfirmIfAnswered(install_path, game);
 
   if (auto result = games_.Upsert(game); !result) {
     log::Error("failed to save new game \"{}\": {}", game.id, result.error().message);
@@ -66,7 +69,6 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
   }
 
   nlohmann::json payload = model::ToJson(game);
-  payload["open_config"] = config_.GetBool("open_config_on_add");
   payload["auto_install"] = AutoInstalls(config_, game);
   events_.Publish("game.added", std::move(payload));
 
@@ -80,8 +82,8 @@ model::Game AutoSetup::CreateAppImageGame(const fs::path& root, const fs::path& 
   game.install_path = root.string();
   game.exe_path = appimage.filename().string();
   game.platform = model::Platform::Native;
-  game.status = model::GameStatus::Ready;  // an AppImage carries everything it needs
-  game.confidence = 1.0;
+  game.status = model::GameStatus::NotSetUp;
+  game.setup = model::SetupStep::Confirm;
   game.candidates = {{.rel_path = game.exe_path,
                       .kind = model::Platform::Native,
                       .score = 1.0,
@@ -90,13 +92,13 @@ model::Game AutoSetup::CreateAppImageGame(const fs::path& root, const fs::path& 
   game.created_at = model::NowSeconds();
   game.updated_at = game.created_at;
   TagFromPlace(config_, game, root);
+  ConfirmIfAnswered(appimage, game);
 
   if (auto result = games_.Upsert(game); !result) {
     log::Error("failed to save new game \"{}\": {}", game.id, result.error().message);
     return game;
   }
   nlohmann::json payload = model::ToJson(game);
-  payload["open_config"] = config_.GetBool("open_config_on_add");
   payload["auto_install"] = false;
   events_.Publish("game.added", std::move(payload));
   return game;

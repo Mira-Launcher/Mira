@@ -322,7 +322,7 @@ void GameDetailsCard::ShowMetadata(const GameMetadataResult& result) {
       text += " · " + QString::fromStdString(metadata.anticheat_names);
     chips.push_back({text, QColor(),
                      status == "Supported" || status == "Running" ? Tone::Success
-                     : status == "Broken" || status == "Denied"   ? Tone::Danger
+                     : status == "Denied"                         ? Tone::Danger
                                                                   : Tone::Warning});
   }
   if (metadata.metacritic_score > 0)

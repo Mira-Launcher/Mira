@@ -142,17 +142,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   });
   auto* browse = new QPushButton("Browse…", this);
   connect(browse, &QPushButton::clicked, this, &GameEditForm::BrowseExecutable);
-  // Shown while mirad wants its pick confirmed; saving any change confirms it too.
-  check_tag_ = new Badge("Not checked", Tone::Warning, this);
-  check_tag_->setToolTip("Mira wasn't sure which program starts this game");
-  check_tag_->hide();
-  looks_right_ = new QPushButton("Looks right", this);
-  looks_right_->setToolTip("Keep this executable and stop asking");
-  looks_right_->hide();
-  connect(looks_right_, &QPushButton::clicked, this, &GameEditForm::ConfirmExecutable);
   exe_row_ = new SettingRow("Executable", QString(), this);
-  exe_row_->AddAfterLabel(check_tag_);
-  exe_row_->AddControl(looks_right_);
   detect_ = new QPushButton("Detect again", this);
   detect_->setToolTip("Look through the game's folder again for the program that starts it");
   connect(detect_, &QPushButton::clicked, this, &GameEditForm::DetectExecutable);
@@ -511,9 +501,8 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
 
   install_path_ = game.install_path;
   // Still waiting on its installer (or one whose game wasn't found): the game is in drive C.
-  browse_start_ = game.status == "needs_install" && !game.data_dir.empty()
-                      ? game.data_dir + "/drive_c"
-                      : game.install_path;
+  browse_start_ = game.setup == "install" && !game.data_dir.empty() ? game.data_dir + "/drive_c"
+                                                                    : game.install_path;
   source_ = game.source;
   windows_ = game.platform == "windows";
   if (web_ != (game.platform == "web")) {
@@ -529,8 +518,6 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
                            game.source != "steam");
   open_install_->setVisible(!game.install_path.empty());
 
-  check_tag_->setVisible(game.needs_check);
-  looks_right_->setVisible(game.needs_check);
   detect_->setVisible(!game.install_path.empty());
 
   last_error_label_->setText(QString("Error: %1").arg(QString::fromStdString(game.last_error)));
@@ -832,21 +819,6 @@ void GameEditForm::MoveFolder(bool prefix) {
         button->setEnabled(true);
         UpdateModified();
       });
-}
-
-void GameEditForm::ConfirmExecutable() {
-  mira_gui::GamePatch patch;
-  patch.reviewed = true;
-  looks_right_->setEnabled(false);
-  api::PatchGameAsync(this, id_, patch, [this](PatchGameResult result) {
-    looks_right_->setEnabled(true);
-    if (!result.ok) {
-      notify::FailedRequest(this, "Could not confirm the executable", result.error);
-      return;
-    }
-    check_tag_->hide();
-    looks_right_->hide();
-  });
 }
 
 void GameEditForm::DetectExecutable() {

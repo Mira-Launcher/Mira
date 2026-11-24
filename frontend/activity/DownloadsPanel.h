@@ -28,6 +28,7 @@ class DownloadsPanel : public Popover {
   // "Show" on a finished install: the game it became.
   void ShowGameRequested(const QString& id);
   // "Log" on any row: its live log, by channel, with the row's name.
+  void ArchiveSetupRequested(const QString& path);
   void LogRequested(const QString& channel, const QString& title);
   // A link download's row: pause, resume or retry.
   void LinkAction(const QString& id, const QString& action);
