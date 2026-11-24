@@ -17,3 +17,14 @@ case $(gh release view "$tag" --json isDraft -q .isDraft 2>/dev/null || echo mis
   *) gh release edit "$tag" --target "$GITHUB_SHA" ;;
 esac
 gh release upload "$tag" out/* --clobber
+
+# An older version's draft that nobody wrote notes for was never going to be released: this one
+# replaces it. A draft with notes is someone's work in progress and stays.
+gh release list --limit 100 --json tagName,isDraft -q '.[] | select(.isDraft) | .tagName' |
+  while read -r old; do
+    [ "$old" = "$tag" ] && continue
+    [ "$(printf '%s\n%s\n' "$old" "$tag" | sort -V | head -n1)" = "$old" ] || continue
+    [ -z "$(gh release view "$old" --json body -q .body)" ] || continue
+    echo "Removing $old, an older draft with no notes"
+    gh release delete "$old" --yes
+  done

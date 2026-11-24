@@ -425,16 +425,20 @@ def add_games(home, games):
     home/store-games/<id>, which notes when it ends."""
     now = int(time.time())
     with closing(sqlite3.connect(home / ".config" / "mira" / "mira.db")) as db, db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(games)")}
         for game in games:
             folder = home / "store-games" / game["id"]
             write_script(folder / "run.sh", 'date +%s.%N > "$0.end"\n')
-            db.execute("INSERT INTO games(id, install_path, name, status, confidence, reviewed, platform, source, exe_path,"
-                       " args, working_dir, runner_ref, source_ref, data_dir, installer_dir, last_error, created_at,"
-                       " updated_at, play_seconds, last_session_at, runner_config, overrides, env, candidates)"
-                       " VALUES(?, ?, ?, 'ready', 1, 1, 'native', ?, 'run.sh', '', '', ?, ?, '', '', '', ?, ?, 0, 0,"
-                       " '{}', '{}', '{}', '[]')",
-                       (game["id"], str(folder), game["name"], game["source"], game.get("runner_ref", ""),
-                        game.get("ref", ""), now, now))
+            row = {"id": game["id"], "install_path": str(folder), "name": game["name"], "status": "ready",
+                   "confidence": 1, "reviewed": 1, "platform": "native", "source": game["source"],
+                   "exe_path": "run.sh", "args": "", "working_dir": "", "runner_ref": game.get("runner_ref", ""),
+                   "source_ref": game.get("ref", ""), "data_dir": "", "installer_dir": "", "last_error": "",
+                   "created_at": now, "updated_at": now, "play_seconds": 0, "last_session_at": 0,
+                   "runner_config": "{}", "overrides": "{}", "env": "{}", "candidates": "[]"}
+            # Only the columns this build's database has, so a base from before or after a migration works.
+            row = {key: value for key, value in row.items() if key in columns}
+            db.execute(f"INSERT INTO games({', '.join(row)}) VALUES({', '.join('?' * len(row))})",
+                       tuple(row.values()))
 
 
 def add_settings(home, text):
