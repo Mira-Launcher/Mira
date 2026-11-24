@@ -206,7 +206,7 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 | `mira runners updates` | `GET /v1/runners/updates` | Installed builds with a newer release. |
 | `mira runners update <kind:name>` | `POST /v1/runners/update` | Installs the newer release and moves games and runner settings onto it. The old build stays. |
 | `mira runners remove <kind:name>` | `DELETE /v1/runners/{kind}:{name}` | Removes a build. Only builds inside the search paths can be removed. |
-| `mira runners tools [install umu\|winetricks]` | `GET /v1/runners/tools` | Shows or installs umu-launcher and winetricks. |
+| `mira runners tools [install umu\|winetricks\|rclone]` | `GET /v1/runners/tools` | Shows umu-launcher and winetricks, or installs one of the three. |
 | `mira runners schema <kind>` | `GET /v1/runners/{kind}/schema` | What `runner_config` accepts for that kind. |
 
 ## Settings
