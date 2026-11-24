@@ -74,6 +74,36 @@ TEST_CASE("InstallToolBinary installs a bare binary directly, renamed to binary_
   CHECK(runner::DetectTool(config, tool).version == "v1.0.0");
 }
 
+TEST_CASE("InstallToolBinary with require_digest needs a matching digest and leaves no checksum") {
+  const fs::path dir = TempDir("downloader-require-digest");
+  const fs::path source = dir / "gogdl_linux_x86_64";
+  std::ofstream(source) << "#!/bin/sh\necho hi\n";
+  runner::ReleaseAsset asset;
+  asset.tag = "v1.0.0";
+  asset.asset_name = "gogdl_linux_x86_64";
+  asset.download_url = "file://" + source.string();
+  config::Config config(dir / "settings.toml");
+  config.Load();
+  test::Isolate(config);
+  const fs::path tool_dir = config.File().parent_path() / "tools" / "gog";
+
+  const Result<fs::path> no_digest =
+      runner::InstallToolBinary(config, "gog", asset, "gogdl", /*require_digest=*/true);
+  REQUIRE_FALSE(no_digest);
+  CHECK(no_digest.error().code == "checksum_missing");
+
+  asset.digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+  REQUIRE_FALSE(runner::InstallToolBinary(config, "gog", asset, "gogdl", true));
+  CHECK_FALSE(fs::exists(tool_dir / "gogdl"));
+
+  asset.digest = "sha256:299001868fb8c02fd431c336c6d058f5558c5dff5b5af5e6fe04b870a6a9cbba";
+  const Result<fs::path> installed = runner::InstallToolBinary(config, "gog", asset, "gogdl", true);
+  REQUIRE(installed);
+  CHECK(fs::exists(*installed));
+  for (const auto& entry : fs::recursive_directory_iterator(tool_dir))
+    CHECK(entry.path().extension() != ".sha256sum");
+}
+
 TEST_CASE("InstallToolBinary finds a binary nested inside a zip, alongside sibling files") {
   // butler-linux-amd64.zip's shape:
   // everything nested under "linux-amd64/", the binary alongside shared

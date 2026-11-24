@@ -621,7 +621,8 @@ std::optional<InstalledTool> InstalledToolOf(const config::Config& config,
 }
 
 Result<fs::path> InstallToolBinary(const config::Config& config, const std::string& tool_name,
-                                   const ReleaseAsset& asset, const std::string& binary_name) {
+                                   const ReleaseAsset& asset, const std::string& binary_name,
+                                   bool require_digest) {
   // Two setups of one tool would share .downloading and remove each other's files.
   static std::mutex in_flight_mutex;
   static std::set<std::string> in_flight;
@@ -651,9 +652,11 @@ Result<fs::path> InstallToolBinary(const config::Config& config, const std::stri
   fs::create_directories(download_dir, ec);
   if (ec) return Err("install_dir_failed", ec.message());
   const fs::path downloaded = download_dir / asset.asset_name;
-  if (auto result = DownloadVerified(asset, downloaded); !result) {
+  const Result<void> fetched =
+      require_digest ? DownloadWithDigest(asset, downloaded) : DownloadVerified(asset, downloaded);
+  if (!fetched) {
     fs::remove_all(download_dir, ec);
-    return std::unexpected(result.error());
+    return std::unexpected(fetched.error());
   }
 
   const fs::path target = tool_dir / binary_name;

@@ -413,6 +413,25 @@ TEST_CASE("RunAndWait kills a timed-out command and what it spawned, output clos
   }
 }
 
+TEST_CASE("RunAndWait feeds input to stdin, drops unset_prefixes, and caps input at 4096 bytes") {
+  test::EnvVar leaked("MIRA_TEST_LEAKED", "1");
+  mira::Command command;
+  command.argv = {"sh", "-c", "cat; env"};
+  command.input = "hello\n";
+  command.unset_prefixes = {"MIRA_TEST_"};
+  command.env["MIRA_TEST_KEPT"] = "2";
+  const auto result = mira::runner::RunAndWait(command);
+  REQUIRE(result);
+  CHECK(result->output.starts_with("hello\n"));
+  CHECK(result->output.find("MIRA_TEST_LEAKED=") == std::string::npos);
+  CHECK(result->output.find("MIRA_TEST_KEPT=2") != std::string::npos);
+
+  command.input = std::string(4097, 'x');
+  const auto too_long = mira::runner::RunAndWait(command);
+  REQUIRE_FALSE(too_long);
+  CHECK(too_long.error().code == "exec_input_too_long");
+}
+
 TEST_CASE(
     "SpawnDetached gives the child /dev/null, not mirad's own pipes, which may have no reader "
     "left") {

@@ -129,6 +129,9 @@ std::vector<std::string> MergedEnv(const Command& command) {
   const auto inherited = [&](std::string entry) {
     const std::string_view key = std::string_view(entry).substr(0, entry.find('='));
     if (std::ranges::contains(kNotPassedOn, key) || command.env.contains(std::string(key))) return;
+    if (std::ranges::any_of(command.unset_prefixes,
+                            [&](const std::string& prefix) { return key.starts_with(prefix); }))
+      return;
     merged.push_back(std::move(entry));
   };
   for (char** e = environ; *e != nullptr; ++e) inherited(*e);
@@ -298,11 +301,36 @@ Result<pid_t> SpawnDetachedWithStatus(const Command& command, int& status_read_f
 
 Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output) {
   if (command.argv.empty()) return Err("exec_empty_argv", "no command to run");
+  if (command.input.size() > 4096)
+    return Err("exec_input_too_long", "the command's input is too long");
+
+  // Filled before fork so the child only dup2s it.
+  int input_fds[2] = {-1, -1};
+  if (!command.input.empty()) {
+    if (pipe2(input_fds, O_CLOEXEC) != 0) return Err("exec_pipe_failed", std::strerror(errno));
+    size_t written = 0;
+    while (written < command.input.size()) {
+      const ssize_t n =
+          write(input_fds[1], command.input.data() + written, command.input.size() - written);
+      if (n < 0 && errno == EINTR) continue;
+      if (n <= 0) {
+        const std::string message = std::strerror(errno);
+        close(input_fds[0]);
+        close(input_fds[1]);
+        return Err("exec_pipe_failed", message);
+      }
+      written += static_cast<size_t>(n);
+    }
+    close(input_fds[1]);
+  }
 
   const PreparedCommand prepared = Prepare(command);
   int pipe_fds[2];
   const Result<pid_t> forked = ForkWithPipe(pipe_fds);
-  if (!forked) return std::unexpected(forked.error());
+  if (!forked) {
+    if (input_fds[0] >= 0) close(input_fds[0]);
+    return std::unexpected(forked.error());
+  }
   const pid_t pid = *forked;
 
   if (pid == 0) {
@@ -314,6 +342,7 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
     setpgid(0, 0);
     dup2(pipe_fds[1], STDOUT_FILENO);
     dup2(pipe_fds[1], STDERR_FILENO);
+    if (input_fds[0] >= 0) dup2(input_fds[0], STDIN_FILENO);
     if (!prepared.cwd.empty() && chdir(prepared.cwd.c_str()) != 0) _exit(127);
     execvpe(prepared.argv[0], prepared.argv.data(), prepared.envp.data());
     _exit(127);  // only reached if exec failed
@@ -321,6 +350,7 @@ Result<ExecResult> RunAndWait(const Command& command, const OutputFn& on_output)
 
   // Parent.
   close(pipe_fds[1]);
+  if (input_fds[0] >= 0) close(input_fds[0]);
   setpgid(pid, pid);
   // Readable once the child exits, so a child whose output closed first is reaped at once.
   const int exited_fd = static_cast<int>(syscall(SYS_pidfd_open, pid, 0));
