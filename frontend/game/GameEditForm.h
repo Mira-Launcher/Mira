@@ -13,6 +13,7 @@
 namespace mira_gui {
 
 class Badge;
+class ColumnGrid;
 class ExpanderRow;
 class LaunchOptionsEdit;
 class OverridesEditor;
@@ -31,9 +32,9 @@ class QVBoxLayout;
 namespace mira_gui {
 
 // One game's editable record (GET/PATCH /v1/games/{id}) and its own settings, shown in
-// LibraryWindow's game card as one column of cards for the kind of game it is: Details, then
-// Steam, an Emulator, or Launch and Runner plus its store's card, then Files, then Overrides for
-// the rest of the settings it can use.
+// LibraryWindow's game card as cards in two columns (CardColumns): how it runs (Steam, an
+// Emulator, or a Runner and its store's card, then a card per settings group) and the game
+// itself (Details, Launch, Saves, Scripts, Files).
 class GameEditForm : public QWidget {
   Q_OBJECT
 
@@ -48,8 +49,16 @@ class GameEditForm : public QWidget {
   void SetTagOrder(std::vector<std::string> order);
   // Extra space under the last card, so a change bar floating over it never covers a row.
   void SetBottomRoom(int height);
-  // The cards' column, centered in the form, as wide as Settings' (SettingsColumnWidth).
+  // A column of cards' width; two fit side by side when there's room, else one.
   void SetColumnWidth(int width);
+
+  // The cards under each heading of the card's jump list, in order, hidden ones included.
+  struct JumpGroup {
+    QString title;
+    std::vector<Card*> cards;
+  };
+  std::vector<JumpGroup> Jumps() const;
+  QScrollArea* Scroll() const { return scroll_; }
 
   // Scrolls to `key`'s row, opening its expander.
   void RevealSetting(const std::string& key);
@@ -76,13 +85,14 @@ class GameEditForm : public QWidget {
   void Changed();
   // A tag chip was clicked: show the library's games with this tag.
   void TagFilterRequested(QString tag);
-
- protected:
-  bool eventFilter(QObject* watched, QEvent* event) override;
+  // Cards came, showed or hid, or the count of what the game sets in one changed.
+  void CardsChanged();
 
  private:
-  // The cards' margins: the column centered, and the bottom room under it.
+  // The cards' margins, with the bottom room under them.
   void FitColumn();
+  // A card titled `title`, in its place in the game's card columns.
+  Card* AddCard(const QString& title);
   // The batch PATCH /v1/games that turns the saved tags into `now`.
   mira_gui::GamesPatch TagsPatch(const std::optional<std::vector<std::string>>& now) const;
   void Load();
@@ -184,8 +194,11 @@ class GameEditForm : public QWidget {
   bool arranged_ = false;
 
   QScrollArea* scroll_ = nullptr;
-  QVBoxLayout* cards_layout_ = nullptr;
-  int column_width_ = 0;  // 0 until set: the cards fill the form
+  QVBoxLayout* cards_layout_ = nullptr;  // the grid, inside the margins
+  ColumnGrid* grid_ = nullptr;
+  std::vector<QString> runs_cards_;  // CardColumns' columns, once Arrange knows the kind
+  std::vector<QString> game_cards_;
+  std::vector<Card*> cards_;  // in the order made
   int bottom_room_ = 0;
   mira_gui::OverridesEditor* overrides_ = nullptr;
 };

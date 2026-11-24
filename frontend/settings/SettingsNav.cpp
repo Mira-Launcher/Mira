@@ -256,12 +256,7 @@ SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph 
   auto* button = new NavRow(title, nav_);
   button->setCheckable(true);
   button->setCursor(Qt::PointingHandCursor);
-  auto* count = new QLabel(button);
-  count->setAttribute(Qt::WA_TransparentForMouseEvents);
-  auto* count_layout = new QHBoxLayout(button);
-  count_layout->setContentsMargins(0, 0, 10, 0);
-  count_layout->addStretch(1);
-  count_layout->addWidget(count);
+  QLabel* count = button->Note();
   nav_layout_->insertWidget(nav_layout_->count() - 1, button);
 
   Category category;

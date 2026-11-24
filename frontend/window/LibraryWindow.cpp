@@ -1749,6 +1749,8 @@ void LibraryWindow::OpenGameDialog(const std::string& id) {
   SizeGameEditCard(game_card_);
   connect(game_card_, &mira_gui::GameCard::CloseRequested, this, &LibraryWindow::CloseGameEdit);
   connect(game_card_, &mira_gui::GameCard::PlayClicked, this, [this, id] { ToggleRunning(id); });
+  connect(game_card_, &mira_gui::GameCard::DetailsRequested, this,
+          [this, id] { OpenGameDetailPage(id); });
   connect(game_card_, &mira_gui::GameCard::TagFilterRequested, this, [this](const QString& tag) {
     if (!LeaveOverlays()) return;  // a dirty card was kept open
     if (source_page_ != nullptr) CloseSource();
@@ -2142,18 +2144,36 @@ bool LibraryWindow::SidebarCardOpen() const {
   return sidebar_card_overlay_ != nullptr && sidebar_card_overlay_->isVisible();
 }
 
-// Settings' column plus the card's sides, centered on the whole window with the sidebar dimmed
-// under it like the rest, and a tenth of the window clear above and below. Follows the window's
-// resizes.
+// The panel and two columns of cards, centered on the whole window with the sidebar dimmed under
+// it like the rest. A narrower panel and columns on smaller windows, one column when even those
+// don't fit, and no cover when the card is too short for it. Follows the window's resizes.
 void LibraryWindow::SizeGameEditCard(QWidget* card) {
   if (card == nullptr) return;
   constexpr int kMargin = 24;
-  constexpr int kSides = 2 * mira_gui::kCardInset;  // the form's least margins (GameEditForm)
-  // Settings' column, centered in a card an eighth of it wider each side for Saves and art.
+  constexpr int kWidePanel = 340;
+  constexpr int kNarrowPanel = 268;
+  constexpr int kNarrowColumn = 468;  // at the default text size; grows with it like kCardColumn
+  constexpr int kCoverHeight = 860;   // shorter cards leave the cover out
+  // The divider, the card's border, the cards' insets and room for the scroll bar.
+  constexpr int kSides = 1 + 2 + 2 * mira_gui::kCardInset + 12;
   const int room = width() - 2 * kMargin;
-  const int column = mira_gui::SettingsColumnWidth(room - kSides);
-  card->setFixedSize(std::min(room, qRound((column + kSides) * 1.25)), qRound(height() * 0.8));
-  if (auto* game = qobject_cast<mira_gui::GameCard*>(card)) game->SetColumnWidth(column);
+  const int wide_column = mira_gui::CardColumnWidth();
+  const int narrow_column = wide_column * kNarrowColumn / mira_gui::kCardColumn;
+  const auto needs = [](int panel, int column, int columns) {
+    return panel + kSides + mira_gui::ColumnsWidth(columns, column);
+  };
+  int panel = kWidePanel;
+  int column = wide_column;
+  int columns = 2;
+  if (needs(panel, column, 2) > room) {
+    panel = kNarrowPanel;
+    column = narrow_column;
+    if (needs(panel, column, 2) > room) columns = 1;
+  }
+  const int card_height = qRound(height() * 0.88);
+  card->setFixedSize(std::min(room, needs(panel, column, columns)), card_height);
+  if (auto* game = qobject_cast<mira_gui::GameCard*>(card))
+    game->SetLayout(panel, column, card_height >= kCoverHeight);
 }
 
 bool LibraryWindow::LeaveOverlays() {

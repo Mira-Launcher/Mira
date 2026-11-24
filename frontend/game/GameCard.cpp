@@ -1,7 +1,6 @@
 #include "GameCard.h"
 
 #include <QDateTime>
-#include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -17,7 +16,9 @@
 #include "../client/api/Artwork.h"
 #include "../client/api/Games.h"
 #include "../components/Button.h"
+#include "../components/Card.h"
 #include "../components/ChangeBar.h"
+#include "../components/Labels.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
 #include "../library/GamePresentation.h"
@@ -28,6 +29,7 @@
 #include "AchievementsPage.h"
 #include "ArtPickerPanel.h"
 #include "GameEditForm.h"
+#include "GamePanel.h"
 #include "SavesPage.h"
 #include "SavesText.h"
 
@@ -35,16 +37,6 @@ namespace mira_gui {
 
 namespace {
 constexpr std::size_t kPrefetchThumbs = 24;
-// The summary chips' icons: light on their dark glass in every theme (base.qss).
-constexpr const char* kChipIcon = "#c4c9d2";
-constexpr const char* kChipWarning = "#f5c46b";
-
-// The saves chip's stack, or a warning sign while a backup failed or the cloud's saves conflict.
-QIcon SavesIcon(bool attention) {
-  return icons::For(attention ? icons::Glyph::Warning : icons::Glyph::Layers,
-                    QColor(attention ? kChipWarning : kChipIcon));
-}
-
 // "48 of 52 achievements", or which store has none for the game.
 QString AchievementsSummary(const AchievementsResult& result) {
   if (result.total > 0)
@@ -56,13 +48,13 @@ QString AchievementsSummary(const AchievementsResult& result) {
 
 GameCard::GameCard(const std::string& id, GameLibraryModel* library, ArtworkStore* artwork,
                    QWidget* parent)
-    : HeroBackdrop(artwork, parent), id_(id), library_(library), artwork_(artwork) {
+    : CardBackdrop(artwork, parent), id_(id), library_(library), artwork_(artwork) {
   Build(nullptr);
 }
 
 GameCard::GameCard(const GameSummary& title, GameLibraryModel* library, ArtworkStore* artwork,
                    QWidget* parent)
-    : HeroBackdrop(artwork, parent),
+    : CardBackdrop(artwork, parent),
       id_(title.id),
       title_info_(title),
       library_(library),
@@ -71,11 +63,9 @@ GameCard::GameCard(const GameSummary& title, GameLibraryModel* library, ArtworkS
 }
 
 void GameCard::Build(const GameSummary* title) {
-  const theme::Tokens& tokens = theme::Current();
   const GameSummary* game = title != nullptr ? title : library_->Find(id_);
 
-  // The hero fills the card's top and fades into it; everything below sits
-  // over it.
+  // The art fills the whole card, behind the panel and the cards.
   if (game != nullptr) ShowGame(*game);
 
   // The first covers' previews, so Change art opens on pictures rather than placeholders.
@@ -90,23 +80,34 @@ void GameCard::Build(const GameSummary* title) {
     if (!ids.empty()) api::FetchArtThumbsAsync(this, id_, "cover", ids, [](GameActionResult) {});
   });
 
-  auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(0, 0, 0, 0);
+  auto* layout = new QHBoxLayout(this);
+  layout->setContentsMargins(1, 1, 1, 1);  // inside the card's border
   layout->setSpacing(0);
+  panel_ = new GamePanel(artwork_, this);
+  layout->addWidget(panel_);
+  layout->addWidget(MakeDivider(this, Qt::Vertical));
+  auto* right = new QWidget(this);
+  auto* right_layout = new QVBoxLayout(right);
+  right_layout->setContentsMargins(0, 0, 0, 0);
+  stack_ = new QStackedWidget(right);
+  right_layout->addWidget(stack_);
+  layout->addWidget(right, 1);
 
-  // Back at the top left, as in Settings; the art's one button at the right.
-  // The back button, cover and name, and Change art and Play, on the card's one inset each side.
-  auto* top = new QHBoxLayout();
-  top->setContentsMargins(kCardInset, 16, kCardInset, 0);
-  // A Glass button's text color in base.qss: the buttons are dark glass in every theme.
-  const QColor on_glass(0xe6, 0xe8, 0xec);
-  auto* back = new Button(QString(), ButtonKind::Glass, this);
-  back->setIcon(icons::For(icons::Glyph::ArrowLeft, on_glass));
-  back->setToolTip("Back");
-  connect(back, &QPushButton::clicked, this, &GameCard::Back);
-  art_button_ = new Button("Change art", ButtonKind::Glass, this);
-  art_button_->setIcon(icons::For(icons::Glyph::Image, on_glass));
-  art_button_->setCheckable(true);
+  // Close at the top right, over the cards' corner, as dark glass in every theme.
+  close_ = new Button(QString(), ButtonKind::Glass, this);
+  close_->setIcon(icons::For(icons::Glyph::Close, QColor(0xe6, 0xe8, 0xec)));
+  close_->setToolTip("Close");
+  connect(close_, &QPushButton::clicked, this, &GameCard::RequestClose);
+
+  title_ = panel_->Title();
+  status_ = panel_->Status();
+  cover_ = panel_->Cover();
+  play_ = panel_->Play();
+  tools_ = panel_->Tools();
+  art_button_ = panel_->ArtButton();
+  achievements_button_ = panel_->AchievementsButton();
+  title_->setText("Game settings");
+  if (game != nullptr) cover_->ShowGame(*game);
   // setChecked is OpenArtPicker/CloseArtPicker's, not the click's.
   connect(art_button_, &QPushButton::clicked, this, [this] {
     art_button_->setChecked(!art_button_->isChecked());
@@ -116,69 +117,11 @@ void GameCard::Build(const GameSummary* title) {
       OpenArtPicker();
     }
   });
-  top->addWidget(back);
-  top->addStretch(1);
-  top->addWidget(art_button_);
-  // A title's card is only the picker: Back closes it.
-  art_button_->setVisible(title == nullptr);
-  layout->addLayout(top);
-
-  // Name and status over the art. The shadow, in the surface's color, keeps
-  // it off the art's detail.
-  auto* header = new QHBoxLayout();
-  header->setContentsMargins(kCardInset, 4, kCardInset, 16);
-  header->setSpacing(16);
-  auto* identity = new QVBoxLayout();
-  identity->setSpacing(4);
-  title_ = new QLabel("Game settings", this);
-  title_->setObjectName("game_edit_title");
-  title_->setWordWrap(true);
-  auto* shadow = new QGraphicsDropShadowEffect(title_);
-  shadow->setColor(tokens.surface);
-  shadow->setBlurRadius(18);
-  shadow->setOffset(0, 1);
-  title_->setGraphicsEffect(shadow);
-  identity->addWidget(title_);
-  status_ = new QLabel(this);
-  status_->setTextFormat(Qt::RichText);
-  identity->addWidget(status_);
-  achievements_button_ = new QPushButton(this);
-  achievements_button_->setObjectName("achievements_summary");
-  achievements_button_->setCursor(Qt::PointingHandCursor);
-  // A click mustn't leave it lit as focused; Tab still reaches it.
-  achievements_button_->setFocusPolicy(Qt::TabFocus);
-  // Light on dark glass in every theme, as base.qss draws the chips.
-  achievements_button_->setIcon(icons::For(icons::Glyph::Trophy, QColor(kChipIcon)));
+  connect(panel_->DetailsButton(), &QPushButton::clicked, this, &GameCard::DetailsRequested);
   connect(achievements_button_, &QPushButton::clicked, this, &GameCard::OpenAchievements);
-  achievements_button_->hide();
-  saves_button_ = new QPushButton(this);
-  saves_button_->setObjectName("saves_summary");
-  saves_button_->setCursor(Qt::PointingHandCursor);
-  saves_button_->setFocusPolicy(Qt::TabFocus);
-  saves_button_->setIcon(SavesIcon(/*attention=*/false));
-  connect(saves_button_, &QPushButton::clicked, this, &GameCard::OpenSaves);
-  saves_button_->hide();
-  // Only a game in the library has summary lines; a title's card is the art picker. The row keeps
-  // its height while they load, so the name above doesn't move.
-  if (title == nullptr) {
-    auto* facts_box = new QWidget(this);
-    auto* facts = new QHBoxLayout(facts_box);
-    facts->setContentsMargins(0, 0, 0, 0);
-    facts->setSpacing(8);
-    facts->addWidget(achievements_button_);
-    facts->addWidget(saves_button_);
-    facts->addStretch(1);
-    achievements_button_->ensurePolished();
-    facts_box->setMinimumHeight(achievements_button_->sizeHint().height());
-    identity->addWidget(facts_box);
-  }
+  connect(panel_, &GamePanel::SavesClicked, this, &GameCard::OpenSaves);
+  connect(panel_, &GamePanel::BackClicked, this, &GameCard::Back);
   UpdateIdentity();
-  // The cover, which the hero otherwise hides, and where a picked one previews.
-  cover_ = new CoverChip(artwork_, this);
-  if (game != nullptr) cover_->ShowGame(*game);
-  identity->insertStretch(0, 1);
-  play_ = new Button(QString(), ButtonKind::Primary, this);
-  play_->setObjectName("game_play");
   connect(play_, &QPushButton::clicked, this, &GameCard::PlayClicked);
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, &GameCard::UpdatePlay);
   // Follows the game starting and stopping, and changes made elsewhere (the CLI, a batch edit).
@@ -214,26 +157,8 @@ void GameCard::Build(const GameSummary* title) {
                 std::ranges::contains(events::ParseChangedKeys(data), "achievements.enabled"))
               LoadAchievements(/*refresh=*/true);
           });
-  header->addWidget(cover_, 0, Qt::AlignBottom);
-  header->addLayout(identity, /*stretch=*/1);
-  tools_ = new QHBoxLayout();
-  tools_->setSpacing(8);
-  header->addLayout(tools_);
-  header->addWidget(play_, 0, Qt::AlignBottom);
-  layout->addLayout(header);
 
-  auto* panel = new HeroPanel(this);
-  auto* panel_layout = new QVBoxLayout(panel);
-  panel_layout->setContentsMargins(0, 0, 0, 0);
-  auto* panel_row = new QHBoxLayout();
-  panel_row->setContentsMargins(1, 0, 1, 1);  // inside the card's border
-  panel_row->addWidget(panel);
-  layout->addLayout(panel_row, /*stretch=*/1);
-
-  stack_ = new QStackedWidget(panel);
-  FadeTop(stack_);
-  panel_layout->addWidget(stack_);
-  bar_ = new ChangeBar(this);
+  bar_ = new ChangeBar(right);
   // While the art picker is open the bar is its Cancel and Use.
   connect(bar_, &ChangeBar::DiscardClicked, this, [this] {
     if (ArtPickerOpen()) return picker_->ResetPick();
@@ -245,12 +170,14 @@ void GameCard::Build(const GameSummary* title) {
     Save();
   });
   if (title != nullptr) {
-    play_->hide();
+    panel_->SetTitleOnly();
     OpenArtPicker();
     return;
   }
   form_ = new GameEditForm(id_, stack_);
   stack_->addWidget(form_);
+  connect(form_, &GameEditForm::CardsChanged, this,
+          [this] { panel_->SetJumps(form_->Jumps(), form_->Scroll()); });
   UpdatePlay();
   QStringList tags;
   for (const GameSummary& known : library_->Games()) {
@@ -326,8 +253,17 @@ void GameCard::RequestClose() {
   }
 }
 
-void GameCard::SetColumnWidth(int width) {
-  if (form_ != nullptr) form_->SetColumnWidth(width);
+void GameCard::SetLayout(int panel_width, int column_width, bool cover) {
+  panel_->setFixedWidth(panel_width);
+  panel_->SetCoverShown(cover);
+  if (form_ != nullptr) form_->SetColumnWidth(column_width);
+}
+
+void GameCard::resizeEvent(QResizeEvent* event) {
+  CardBackdrop::resizeEvent(event);
+  close_->adjustSize();
+  close_->move(width() - close_->width() - 16, 14);
+  close_->raise();
 }
 
 void GameCard::UpdateCover(const std::string& id) {
@@ -396,6 +332,7 @@ void GameCard::OpenArtPicker() {
   art_button_->setChecked(true);
   bar_->SetText(QString());
   stack_->setCurrentWidget(picker_);
+  panel_->ShowPage("Change art", picker_->Controls());
   picker_->Open("cover");
 }
 
@@ -405,6 +342,7 @@ void GameCard::CloseArtPicker(bool applied) {
   if (!applied) picker_->ResetPick();  // every tab's pick, and its preview
   art_button_->setChecked(false);
   stack_->setCurrentIndex(0);
+  panel_->ShowJumps();
   UpdateBar();
 }
 
@@ -453,7 +391,7 @@ void GameCard::UpdatePlay() {
     button->setToolTip("Open " + tool.label + " for this " + Noun());
     connect(button, &QPushButton::clicked, this,
             [this, option = tool.option] { actions::Launch(this, id_, option, {}); });
-    tools_->addWidget(button, 0, Qt::AlignBottom);
+    tools_->addWidget(button, 1);
   }
 }
 
@@ -462,7 +400,7 @@ void GameCard::UpdateIdentity() {
     title_->setText(QString::fromStdString(title_info_->name));
     const SourceInfo* info = FindSourceInfo(QString::fromStdString(title_info_->source));
     status_->setText(
-        QString("<span style='color:%1; font-weight:600;'>Not installed</span>&nbsp;&nbsp;%2")
+        QString("<span style='color:%1; font-weight:600;'>Not installed</span> · %2")
             .arg(theme::Current().text_muted.name(),
                  (info != nullptr ? info->name : QString::fromStdString(title_info_->source))
                      .toHtmlEscaped()));
@@ -470,6 +408,7 @@ void GameCard::UpdateIdentity() {
   }
   const GameSummary* game = library_->Find(id_);
   status_->setVisible(game != nullptr);
+  panel_->Played()->setVisible(false);
   if (game == nullptr) return;
   title_->setText(QString::fromStdString(game->name));
   const bool running = game->running;
@@ -479,12 +418,14 @@ void GameCard::UpdateIdentity() {
   QStringList facts;
   if (!source.isEmpty()) facts << source;
   if (!game->platform.empty()) facts << PlatformLabel(game->platform);
-  if (game->play_seconds > 0 && !IsApp(*game))
-    facts << FormatPlaytime(game->play_seconds) + " played";
-  status_->setText(QString("<span style='color:%1; font-weight:600;'>%2</span>&nbsp;&nbsp;%3")
+  const bool played = game->play_seconds > 0 && !IsApp(*game);
+  panel_->Played()->setText(played ? FormatPlaytime(game->play_seconds) + " played" : QString());
+  panel_->Played()->setVisible(played);
+  facts.prepend(QString());  // the status itself, colored below
+  status_->setText(QString("<span style='color:%1; font-weight:600;'>%2</span>%3")
                        .arg(status_color.name(),
                             running ? RunningLabel(*game) : StatusLabel(game->status),
-                            facts.join(" · ").toHtmlEscaped()));
+                            facts.size() > 1 ? facts.join(" · ").toHtmlEscaped() : QString()));
 }
 
 void GameCard::LoadAchievements(bool refresh) {
@@ -521,16 +462,17 @@ void GameCard::OpenAchievements() {
   if (achievements_page_ == nullptr) {
     achievements_page_ = new AchievementsPage(id_, stack_);
     stack_->addWidget(achievements_page_);
-    connect(achievements_page_, &AchievementsPage::BackClicked, this, &GameCard::CloseAchievements);
     achievements_page_->Show(*achievements_);
   }
   if (ArtPickerOpen()) CloseArtPicker();
   stack_->setCurrentWidget(achievements_page_);
+  panel_->ShowPage("Achievements", achievements_page_->Controls());
 }
 
 void GameCard::CloseAchievements() {
   if (!AchievementsOpen()) return;
   stack_->setCurrentWidget(form_);
+  panel_->ShowJumps();
 }
 
 bool GameCard::AchievementsOpen() const {
@@ -545,20 +487,14 @@ void GameCard::LoadSaves() {
     result.doing = library_->SavesDoing(id_);
     if (!result.ok) {
       saves_.reset();
-      saves_button_->hide();
+      panel_->SetSavesShown(false);
       CloseSaves();
       return;
     }
     saves_ = result;
-    saves_button_->setText(saves_text::Summary(result, QDateTime::currentDateTime()));
-    const bool attention = saves_text::NeedsAttention(result);
-    if (saves_button_->property("attention").toBool() != attention) {
-      saves_button_->setProperty("attention", attention);
-      saves_button_->setIcon(SavesIcon(attention));
-      saves_button_->style()->unpolish(saves_button_);
-      saves_button_->style()->polish(saves_button_);
-    }
-    saves_button_->show();
+    panel_->SetSaves(saves_text::Summary(result, QDateTime::currentDateTime()),
+                     saves_text::NeedsAttention(result));
+    panel_->SetSavesShown(true);
     if (saves_page_ != nullptr) saves_page_->Show(result);
     if (std::exchange(open_saves_when_loaded_, false)) OpenSaves();
   });
@@ -573,7 +509,6 @@ void GameCard::OpenSaves() {
   if (saves_page_ == nullptr) {
     saves_page_ = new SavesPage(id_, stack_);
     stack_->addWidget(saves_page_);
-    connect(saves_page_, &SavesPage::BackClicked, this, &GameCard::CloseSaves);
     connect(saves_page_, &SavesPage::SettingClicked, this, [this](const std::string& key) {
       CloseSaves();
       form_->RevealSetting(key);
@@ -582,11 +517,13 @@ void GameCard::OpenSaves() {
   }
   if (ArtPickerOpen()) CloseArtPicker();
   stack_->setCurrentWidget(saves_page_);
+  panel_->ShowPage("Saves", saves_page_->Controls());
 }
 
 void GameCard::CloseSaves() {
   if (!SavesOpen()) return;
   stack_->setCurrentWidget(form_);
+  panel_->ShowJumps();
 }
 
 bool GameCard::SavesOpen() const {

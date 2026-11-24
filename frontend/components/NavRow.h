@@ -2,6 +2,8 @@
 
 #include <QPushButton>
 
+class QLabel;
+
 namespace mira_gui {
 
 // A row of a navigation column (the sidebar, Settings' categories): flat, its text at the left,
@@ -12,6 +14,12 @@ class NavRow : public QPushButton {
 
  public:
   explicit NavRow(const QString& text = {}, QWidget* parent = nullptr);
+
+  // A label at the row's right end, e.g. a count, made on first use.
+  QLabel* Note();
+
+ private:
+  QLabel* note_ = nullptr;
 };
 
 }  // namespace mira_gui

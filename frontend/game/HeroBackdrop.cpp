@@ -4,6 +4,7 @@
 #include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
+#include <QRadialGradient>
 #include <QResizeEvent>
 #include <QTimer>
 #include <algorithm>
@@ -106,24 +107,26 @@ void HeroBackdrop::resizeEvent(QResizeEvent* event) {
   resize_settled_->start();
 }
 
+QPainterPath HeroBackdrop::Outline() const {
+  const int radius = theme::Current().radius_panel;
+  QPainterPath outline;
+  outline.addRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+  return outline;
+}
+
 void HeroBackdrop::paintEvent(QPaintEvent*) {
   const theme::Tokens& tokens = theme::Current();
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
-  QPainterPath card;
-  card.addRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), tokens.radius_panel,
-                      tokens.radius_panel);
+  const QPainterPath card = Outline();
   const QPixmap source = Source();
-  if (source.cacheKey() != tone_key_) {
-    tone_ = source.isNull() ? QColor() : DominantColor(source);
-    tone_key_ = source.cacheKey();
-  }
+  UpdateTone(source);
   const QColor surface_tinted = Tinted(tokens.surface);
   painter.fillPath(card, surface_tinted);
 
   if (!source.isNull()) {
     // Across the card's width at the art's own shape, so all of it shows however tall the card.
-    const bool hero = !hero_.isNull() || !hero_preview_.isNull();
+    const bool hero = ShowsHero();
     const qreal aspect = hero ? qreal(source.height()) / source.width() : kHeroAspect;
     const QRect band(0, 0, width(),
                      std::clamp(qRound(width() * aspect), std::min(kMinBand, height()), height()));
@@ -162,6 +165,81 @@ void HeroBackdrop::paintEvent(QPaintEvent*) {
     surface.setAlphaF(1);
     fade.setColorAt(1, surface);
     painter.fillRect(band, fade);
+    painter.restore();
+  }
+
+  painter.setPen(QPen(tokens.border, 1));
+  painter.drawPath(card);
+}
+
+void HeroBackdrop::UpdateTone(const QPixmap& source) {
+  if (source.cacheKey() == tone_key_) return;
+  tone_ = source.isNull() ? QColor() : DominantColor(source);
+  tone_key_ = source.cacheKey();
+}
+
+void CardBackdrop::paintEvent(QPaintEvent*) {
+  const theme::Tokens& tokens = theme::Current();
+  QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing);
+  const QPainterPath card = Outline();
+  const QPixmap source = Source();
+  UpdateTone(source);
+  // The window's color with some of the art's: dark on a dark theme, light on a light one.
+  const QColor base = Tinted(tokens.window);
+  painter.fillPath(card, base);
+
+  if (!source.isNull()) {
+    const qreal dpr = devicePixelRatioF();
+    const qint64 key = source.cacheKey() ^ (qint64(width()) << 32) ^ (qint64(height()) << 16) ^
+                       (qint64(qRound(dpr * 100)) << 48) ^ (Resizing() ? 1 : 0);
+    if (wash_key_ != key) {
+      wash_ = BlurredCover(source, size() * dpr);  // down to a few pixels and back up
+      wash_.setDevicePixelRatio(dpr);
+      wash_key_ = key;
+    }
+    if (ShowsHero() && sharp_key_ != key) {
+      // Behind the panel and a little past it, at the hero's own shape cut to that box.
+      const QSize box = QSize(qRound(width() * 0.57), qRound(height() * 0.48)) * dpr;
+      const QPixmap scaled =
+          source.scaled(box, Qt::KeepAspectRatioByExpanding,
+                        Resizing() ? Qt::FastTransformation : Qt::SmoothTransformation);
+      QImage masked(box, QImage::Format_ARGB32_Premultiplied);
+      masked.fill(Qt::transparent);
+      QPainter mask(&masked);
+      // Its subject is usually left of centre and above the middle.
+      mask.drawPixmap(
+          QPointF(-(scaled.width() - box.width()) * 0.38, -(scaled.height() - box.height()) * 0.3),
+          scaled);
+      mask.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+      QRadialGradient fade(QPointF(0, 0), 1);
+      fade.setColorAt(0.4, Qt::black);
+      fade.setColorAt(1, Qt::transparent);
+      QBrush brush(fade);
+      brush.setTransform(QTransform::fromScale(box.width(), box.height()));
+      mask.fillRect(masked.rect(), brush);
+      mask.end();
+      sharp_ = QPixmap::fromImage(std::move(masked));
+      sharp_.setDevicePixelRatio(dpr);
+      sharp_key_ = key;
+    }
+    painter.save();
+    painter.setClipPath(card);
+    painter.drawPixmap(0, 0, wash_);
+    // The wash dimmed toward the base, so it reads as color rather than a picture.
+    QColor dim = base;
+    dim.setAlphaF(0.55);
+    painter.fillRect(rect(), dim);
+    if (ShowsHero()) painter.drawPixmap(0, 0, sharp_);
+    QLinearGradient scrim(0, 0, 0, height());
+    QColor shade = base;
+    shade.setAlphaF(0.15);
+    scrim.setColorAt(0, shade);
+    shade.setAlphaF(0.45);
+    scrim.setColorAt(0.45, shade);
+    shade.setAlphaF(0.6);
+    scrim.setColorAt(1, shade);
+    painter.fillRect(rect(), scrim);
     painter.restore();
   }
 

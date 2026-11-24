@@ -166,23 +166,15 @@ AchievementsPage::AchievementsPage(std::string id, QWidget* parent)
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
 
-  auto* header = new QHBoxLayout();
-  header->setContentsMargins(kPageHeaderMargins);
-  header->setSpacing(12);
-  auto* back = new IconButton(icons::Glyph::ArrowLeft, "Back", this);
-  connect(back, &QToolButton::clicked, this, &AchievementsPage::BackClicked);
-  auto* title = new QLabel("Achievements", this);
-  SetTextStyle(title, text::kHeading);
-  count_ = new QLabel(this);
-  SetTextStyle(count_, text::kSubtle);
-  rail_ = new ProgressRail(this);
-  rail_->setFixedWidth(120);
-  header->addWidget(back);
-  header->addWidget(title);
-  header->addWidget(count_);
-  header->addWidget(rail_, 0, Qt::AlignVCenter);
-  header->addStretch(1);
-  layout->addLayout(header);
+  controls_ = new QWidget(this);
+  auto* controls = new QVBoxLayout(controls_);
+  controls->setContentsMargins(0, 0, 0, 0);
+  controls->setSpacing(8);
+  count_ = new QLabel(controls_);
+  rail_ = new ProgressRail(controls_);
+  controls->addWidget(count_);
+  controls->addWidget(rail_);
+  controls_->hide();  // until the host places it
 
   scroll_ = new QScrollArea(this);
   scroll_->setWidgetResizable(true);
@@ -202,7 +194,7 @@ AchievementsPage::AchievementsPage(std::string id, QWidget* parent)
 }
 
 void AchievementsPage::Show(const AchievementsResult& set) {
-  count_->setText(QString("%1 of %2").arg(set.unlocked).arg(set.total));
+  count_->setText(QString("%1 of %2 unlocked").arg(set.unlocked).arg(set.total));
   rail_->SetProgress(set.total > 0 ? static_cast<double>(set.unlocked) / set.total : 0.0);
 
   // Icons whose item went or changed its pictures are dropped.

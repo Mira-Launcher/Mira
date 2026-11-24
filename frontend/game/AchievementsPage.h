@@ -54,8 +54,9 @@ class AchievementTile : public QFrame {
   QLabel* rarity_ = nullptr;
 };
 
-// The game card's Achievements page: the count, then every achievement as a tile, in the store's
-// order. Icons load as the page shows them and go with it.
+// The game card's Achievements page: every achievement as a tile, in the store's order, with the
+// count and its progress rail in Controls for the card's panel. Icons load as the page shows them
+// and go with it.
 class AchievementsPage : public QWidget {
   Q_OBJECT
 
@@ -64,9 +65,8 @@ class AchievementsPage : public QWidget {
 
   // Shows `set`, keeping the icons already loaded for items whose pictures didn't change.
   void Show(const AchievementsResult& set);
-
- signals:
-  void BackClicked();
+  // The count and its rail, for the host to show beside the page.
+  QWidget* Controls() const { return controls_; }
 
  protected:
   void resizeEvent(QResizeEvent* event) override;
@@ -84,6 +84,7 @@ class AchievementsPage : public QWidget {
   static constexpr int kIconRequests = 4;
   std::deque<QPointer<AchievementTile>> icon_queue_;
   int icon_requests_ = 0;
+  QWidget* controls_ = nullptr;
   QLabel* count_ = nullptr;
   ProgressRail* rail_ = nullptr;
   QScrollArea* scroll_ = nullptr;

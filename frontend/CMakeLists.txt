@@ -162,7 +162,12 @@ add_executable(mira_gui_tests
   client/JsonMapping.cpp
   client/Transport.cpp
   downloads/LinkText.cpp
+  game/CardColumns.cpp
+  game/GamePanel.cpp
+  game/HeroBackdrop.cpp
   game/SavesText.cpp
+  library/ArtworkStore.cpp
+  library/CoverArt.cpp
   library/GameLibraryModel.cpp
   library/LibrarySort.cpp
   library/OwnedTitles.cpp

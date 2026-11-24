@@ -25,9 +25,12 @@ void OverridesEditor::PlaceRow(const std::string& key, Card* card, int at) {
   placed_[key] = Placement{card, at};
 }
 
-void OverridesEditor::SetOverridesCard(Card* card) {
-  overrides_card_ = card;
-  card->hide();  // until a category has a row this game can use
+void OverridesEditor::PlaceGroup(const std::string& group_label, Card* card) {
+  group_cards_[group_label] = card;
+}
+
+void OverridesEditor::SetCardMaker(std::function<Card*(const std::string& group_label)> maker) {
+  card_maker_ = std::move(maker);
 }
 
 void OverridesEditor::Load() {
@@ -63,25 +66,22 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
     // A setting shown inside another's row goes where that one does.
     auto placed = placed_.find(entry.key);
     if (placed == placed_.end() && !entry.shown_in.empty()) placed = placed_.find(entry.shown_in);
-    QWidget* parent = placed != placed_.end() ? static_cast<QWidget*>(placed->second.card)
-                                              : static_cast<QWidget*>(overrides_card_);
-    const std::string& doc = entry.game_doc.empty() ? entry.doc : entry.game_doc;
-    SettingRow* row = field.Build(parent, QString::fromStdString(doc));
-    row->hide();  // until this game's values say it can use it
-    if (placed != placed_.end()) {
-      Card* card = placed->second.card;
-      card->AddRow(row);
-      if (placed->second.at >= 0) card->MoveRow(row, placed->second.at);
-      field.card = card;
-    } else if (overrides_card_ != nullptr) {
-      ExpanderRow*& expander = expanders_[entry.category];
-      if (expander == nullptr) {
-        expander = new ExpanderRow(QString::fromStdString(entry.category), overrides_card_);
-        expander->hide();
-        overrides_card_->AddRow(expander);
+    Card* card = placed != placed_.end() ? placed->second.card : nullptr;
+    if (card == nullptr) {
+      Card*& group = group_cards_[entry.group_label];
+      if (group == nullptr && card_maker_) {
+        group = card_maker_(entry.group_label);
+        HideWhenEmpty(group);
       }
-      expander->AddRow(row);
-      field.expander = expander;
+      card = group;
+    }
+    const std::string& doc = entry.game_doc.empty() ? entry.doc : entry.game_doc;
+    SettingRow* row = field.Build(card, QString::fromStdString(doc));
+    row->hide();  // until this game's values say it can use it
+    if (card != nullptr) {
+      card->AddRow(row);
+      if (placed != placed_.end() && placed->second.at >= 0) card->MoveRow(row, placed->second.at);
+      field.card = card;
     }
     const size_t index = fields_.size() - 1;
     if (field.list != nullptr) {
@@ -118,7 +118,6 @@ void OverridesEditor::BuildRows(const ConfigSchemaResult& schema) {
     if (host != nullptr && host->line != nullptr && field.chips != nullptr) {
       host->Embed(field);
       field.embedded = true;
-      field.expander = host->expander;
       field.card = host->card;
     }
     // Once, from the later of the two.
@@ -235,25 +234,30 @@ void OverridesEditor::HideWhenEmpty(Card* card) {
 }
 
 void OverridesEditor::UpdateSummaries() {
-  bool any = false;
-  for (const auto& [category, expander] : expanders_) {
+  struct Count {
     int shown = 0;
+    int settings = 0;  // shown rows that Settings has a value for
     int own = 0;
-    for (const Field& field : fields_) {
-      if (field.expander != expander || !field.applies || field.hidden) continue;
-      ++shown;
-      own += Own(field);
-    }
-    expander->setVisible(shown > 0);
-    expander->SetSummary(own > 0 ? QString("%1 changed").arg(own) : QString("As in Settings"));
-    any = any || shown > 0;
+  };
+  std::map<Card*, Count> counts;
+  for (const Field& field : fields_) {
+    if (field.card == nullptr) continue;
+    Count& count = counts[field.card];
+    if (field.embedded || !field.applies || field.hidden) continue;
+    ++count.shown;
+    // A game-only setting (which game it is) has no Settings value to be "as in".
+    if (field.entry.game_only) continue;
+    ++count.settings;
+    count.own += Own(field);
   }
-  if (overrides_card_ != nullptr) overrides_card_->setVisible(any);
-  for (Card* card : hide_when_empty_) {
-    card->setVisible(std::ranges::any_of(fields_, [card](const Field& field) {
-      return field.card == card && !field.embedded && field.applies && !field.hidden;
-    }));
+  for (const auto& [card, count] : counts) {
+    if (count.settings > 0)
+      card->SetSummary(count.own > 0 ? QString("%1 set for this game").arg(count.own)
+                                     : QString("As in Settings"));
+    card->setProperty("own_count", count.own);
   }
+  for (Card* card : hide_when_empty_) card->setVisible(counts[card].shown > 0);
+  emit CardsChanged();
 }
 
 std::string OverridesEditor::Text(const std::string& key) const {
@@ -277,7 +281,6 @@ void OverridesEditor::RevealKey(const std::string& key) {
     reveal_key_ = key;
     return;
   }
-  if (field->expander != nullptr) field->expander->SetExpanded(true);
   const Field* host = field->embedded ? Find(field->entry.shown_in) : nullptr;
   emit RevealRequested((host != nullptr ? host : field)->row);
 }

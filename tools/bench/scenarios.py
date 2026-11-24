@@ -939,6 +939,9 @@ def gui_game_card(ctx, meta):
         state = ctx.client.wait_job(ctx.client.request("POST", "/v1/games/bench-steam/saves/backup"))
         check(state.get("state") == "finished", f"a backup ended {state}")
 
+    version = subprocess.run([str(ctx.mirad.binary), "--version"], capture_output=True, text=True).stdout.split()
+    keyboard = bool(version) and tuple(int(part) for part in version[-1].split(".")[:2]) >= (0, 20)
+
     def cycle(pid):
         display = Display(pid)
         # Searched for, so its tile is the first; a click selects it and gives the grid focus. Places are
@@ -948,12 +951,18 @@ def gui_game_card(ctx, meta):
         display.xdotool("type", "--delay", "20", "Bench Steam")
         time.sleep(1.5)
         cards, card_cpus, closed = [], [], []
-        # The facts line under the game's name: achievements, then saves beside them. The saves page's
-        # light cards change about 4% of the small snapshot, the achievements' icons far more. Each has
-        # two places: the card centered on the window, then the older card's, which a base may have.
-        lines = [("achievements", [(600, 258), (570, 302)], 0.05)]
-        if has_saves:
-            lines.append(("saves", [(850, 258), (760, 302)], 0.02))
+        # The saves line, with the achievements line under it. The saves page's light cards change about 4%
+        # of the small snapshot, the achievements' icons far more. A card from 0.20 on opens with Play
+        # focused, and Tab reaches Game details, Change art, then the lines, wherever the font puts them;
+        # an older card, which a base may have, is clicked where it put them.
+        if keyboard:
+            lines = [("achievements", ["Tab"] * (4 if has_saves else 3), 0.05)]
+            if has_saves:
+                lines.append(("saves", ["Tab"] * 3, 0.02))
+        else:
+            lines = [("achievements", [(600, 258), (570, 302)], 0.05)]
+            if has_saves:
+                lines.append(("saves", [(850, 258), (760, 302)], 0.02))
         pages = {name: ([], []) for name, _, _ in lines}
         for name, places, least in lines:
             for round_ in range(1, 3):
@@ -966,16 +975,24 @@ def gui_game_card(ctx, meta):
                 cards.append(wall)
                 card_cpus.append(cpu)
                 shown = display.snapshot()
-                for x, y in places:
-                    timed = respond(pid, lambda: display.xdotool("mousemove", str(x), str(y), "click", "1"),
-                                    may_idle=True)
+                if keyboard:
+                    display.xdotool("key", *places)
+                    time.sleep(0.3)
+                    timed = respond(pid, lambda: display.key("space"), may_idle=True)
                     after = display.snapshot()
-                    # A click beside the card closes it, which changes the screen too.
-                    if timed is not None and changed(shown, after) > least and changed(library, after) > 0.05:
-                        places = [(x, y)]  # the rounds after click only where it worked
-                        break
+                    check(timed is not None and changed(shown, after) > least,
+                          f"the {name} line didn't open its page (round {round_})")
                 else:
-                    raise Failed(f"the {name} line didn't open its page (round {round_})")
+                    for x, y in places:
+                        timed = respond(pid, lambda: display.xdotool("mousemove", str(x), str(y), "click", "1"),
+                                        may_idle=True)
+                        after = display.snapshot()
+                        # A click beside the card closes it, which changes the screen too.
+                        if timed is not None and changed(shown, after) > least and changed(library, after) > 0.05:
+                            places = [(x, y)]  # the rounds after click only where it worked
+                            break
+                    else:
+                        raise Failed(f"the {name} line didn't open its page (round {round_})")
                 wall, cpu = timed
                 pages[name][0].append(wall)
                 pages[name][1].append(cpu)

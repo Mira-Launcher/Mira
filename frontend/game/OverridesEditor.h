@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -14,15 +15,16 @@ class QWidget;
 
 namespace mira_gui {
 
-class ExpanderRow;
 class Card;
 
 // A game's own values for the settings it can use, resolved through default -> Settings -> this
 // game and edited with the settings screen's own editors. A row the game sets for itself shows a
 // dot, and its undo puts it back on Settings' value (an unsaved edit is undone first).
 //
-// The host places the rows that belong with its own cards (a store's settings, the environment
-// variables); every other row goes into the Overrides card, one expander per category.
+// The host places the rows that belong with its own cards, one by one (a store's settings) or a
+// schema group at a time (the environment variables in Launch); every other group gets a card of
+// its own from the host's card maker. A card shows only while it has a row this game can use, and
+// says in its header how many of them the game sets for itself.
 //
 // Its own object because it talks to a different endpoint than the form around it: the form saves
 // fields via PATCH .../games/{id}, this saves keys via PATCH .../games/{id}/config.
@@ -35,8 +37,10 @@ class OverridesEditor : public QObject {
   // Puts `key`'s row into `card` at row `at` (-1 the end) instead of the Overrides card. Call
   // before Load.
   void PlaceRow(const std::string& key, Card* card, int at = -1);
-  // The card the other rows go into. Call before Load.
-  void SetOverridesCard(Card* card);
+  // Puts the rows of the schema group titled `group_label` into `card`. Call before Load.
+  void PlaceGroup(const std::string& group_label, Card* card);
+  // Makes the card for a group nothing placed, titled `group_label`. Call before Load.
+  void SetCardMaker(std::function<Card*(const std::string& group_label)> maker);
   // Shows `card`, which holds only placed rows, only while one of them is shown.
   void HideWhenEmpty(Card* card);
 
@@ -55,12 +59,14 @@ class OverridesEditor : public QObject {
   std::string Text(const std::string& key) const;
   // Hides `key`'s row whatever the game can use, e.g. environment variables Steam won't pass on.
   void SetRowHidden(const std::string& key, bool hidden);
-  // Opens `key`'s expander and asks for its row to be scrolled to, once the values have arrived.
+  // Asks for `key`'s row to be scrolled to, once the values have arrived.
   void RevealKey(const std::string& key);
 
  signals:
   void Changed();
   void RevealRequested(QWidget* row);
+  // Which cards show, or how many rows each sets for the game, changed.
+  void CardsChanged();
 
  private:
   struct Field : SettingEditor {
@@ -72,8 +78,7 @@ class OverridesEditor : public QObject {
     bool unlocked = false;             // Edit… pressed on a list the game took from Settings
     QPushButton* edit_list = nullptr;  // Edit… on a list the game takes from Settings
     QLabel* from_settings = nullptr;   // says so beside the label
-    ExpanderRow* expander = nullptr;   // in the Overrides card, else placed by the host
-    Card* card = nullptr;              // where the host placed it
+    Card* card = nullptr;              // the card it's in
     bool embedded = false;             // shown inside its shown_in's row, which undoes both
   };
 
@@ -97,9 +102,9 @@ class OverridesEditor : public QObject {
   std::string game_id_;
   QWidget* parent_ = nullptr;
   std::map<std::string, Placement> placed_;
-  Card* overrides_card_ = nullptr;
+  std::map<std::string, Card*> group_cards_;  // by group label, placed or made
+  std::function<Card*(const std::string&)> card_maker_;
   std::vector<Card*> hide_when_empty_;
-  std::map<std::string, ExpanderRow*> expanders_;  // by category
   std::map<std::string, std::string> settings_values_;
   std::string reveal_key_;  // a row RevealKey asked for before the values arrived
   bool values_loaded_ = false;

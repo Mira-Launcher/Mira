@@ -26,11 +26,4 @@ int CardColumnWidth();
 // How wide `columns` columns of cards `column_width` px wide are, with the gaps between them.
 int ColumnsWidth(int columns, int column_width);
 
-// The settings column's width, and on windows at least kWideRoom wide.
-constexpr int kColumn = 720;
-constexpr int kWideColumn = 760;
-constexpr int kWideRoom = 1400;
-// The width of the one column settings and a game's card show their cards in, for `room` px.
-int SettingsColumnWidth(int room);
-
 }  // namespace mira_gui

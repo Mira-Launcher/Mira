@@ -32,6 +32,7 @@
 #include "../client/api/Runners.h"
 #include "../components/Badge.h"
 #include "../components/Card.h"
+#include "../components/ColumnGrid.h"
 #include "../components/FlatCombo.h"
 #include "../components/Labels.h"
 #include "../components/Metrics.h"
@@ -42,6 +43,7 @@
 #include "../components/Text.h"
 #include "../settings/SettingEditor.h"
 #include "../sources/Sources.h"
+#include "CardColumns.h"
 #include "HeroBackdrop.h"
 #include "LaunchOptionsEdit.h"
 #include "OverridesEditor.h"
@@ -114,9 +116,10 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   SetUpScrolling(scroll_);
   auto* cards_page = new QWidget();
   cards_layout_ = new QVBoxLayout(cards_page);
-  cards_layout_->setSpacing(16);
+  grid_ = new ColumnGrid(nullptr, /*max_columns=*/2);
+  cards_layout_->addLayout(grid_);
+  cards_layout_->addStretch(1);
   scroll_->setWidget(cards_page);
-  scroll_->viewport()->installEventFilter(this);
   FitColumn();
   layout->addWidget(scroll_);
 
@@ -124,7 +127,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   last_error_label_->setWordWrap(true);
   SetTextStyle(last_error_label_, text::kError);
   last_error_label_->hide();
-  cards_layout_->addWidget(last_error_label_);
+  grid_->AddHeader(last_error_label_);
 
   // The rows are made here and put into cards by Arrange, once the game says which it has.
   exe_combo_ = EditableCombo(this, "Choose the program to run");
@@ -146,7 +149,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   detect_ = new QPushButton("Detect again", this);
   detect_->setToolTip("Look through the game's folder again for the program that starts it");
   connect(detect_, &QPushButton::clicked, this, &GameEditForm::DetectExecutable);
-  exe_row_->AddControl(FieldWithButtons(exe_combo_, {browse, detect_}));
+  exe_row_->AddControlBelow(FieldWithButtons(exe_combo_, {browse, detect_}));
 
   args_edit_ = LineEdit(this, "None");
   args_row_ = new SettingRow("Arguments", QString(), this);
@@ -253,7 +256,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   move_button_ = new QPushButton("Move…", this);
   connect(move_button_, &QPushButton::clicked, this, [this] { MoveFolder(/*prefix=*/false); });
   install_row_ = new SettingRow("Install folder", QString(), this);
-  install_row_->AddControl(FieldWithButtons(install_path_edit_, {open_install_, move_button_}));
+  install_row_->AddControlBelow(
+      FieldWithButtons(install_path_edit_, {open_install_, move_button_}));
 
   data_dir_edit_ = LineEdit(this, "Automatic");
   open_data_dir_ = new QPushButton("Open", this);
@@ -269,7 +273,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
                                  "The folder holding this game's Wine or Proton prefix and its "
                                  "data.",
                                  this);
-  data_dir_row_->AddControl(FieldWithButtons(data_dir_edit_, {open_data_dir_, move_prefix_}));
+  data_dir_row_->AddControlBelow(FieldWithButtons(data_dir_edit_, {open_data_dir_, move_prefix_}));
 
   for (SettingRow* row : {exe_row_, args_row_, working_dir_row_, launch_options_row_,
                           play_starts_row_, only_choice_row_, runner_row_, emulator_row_, name_row_,
@@ -284,9 +288,10 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
     emit Changed();
   });
   connect(overrides_, &OverridesEditor::RevealRequested, this, [this](QWidget* row) {
-    // After the expander's layout has opened.
+    // After the rows that just showed have their place.
     QTimer::singleShot(0, row, [this, row] { scroll_->ensureWidgetVisible(row, 0, 48); });
   });
+  connect(overrides_, &OverridesEditor::CardsChanged, this, &GameEditForm::CardsChanged);
 
   for (QLineEdit* edit : {name_edit_, args_edit_, working_dir_edit_, data_dir_edit_}) {
     connect(edit, &QLineEdit::textChanged, this, &GameEditForm::UpdateModified);
@@ -374,20 +379,41 @@ void GameEditForm::SetBottomRoom(int height) {
 }
 
 void GameEditForm::SetColumnWidth(int width) {
-  column_width_ = width;
-  FitColumn();
-}
-
-bool GameEditForm::eventFilter(QObject* watched, QEvent* event) {
-  if (watched == scroll_->viewport() && event->type() == QEvent::Resize) FitColumn();
-  return QWidget::eventFilter(watched, event);
+  grid_->SetColumnWidth(width);
 }
 
 void GameEditForm::FitColumn() {
-  const int room = scroll_->viewport()->width();
-  const int side =
-      column_width_ > 0 ? std::max(kCardInset, (room - column_width_) / 2) : kCardInset;
-  cards_layout_->setContentsMargins(side, 18, side, 28 + bottom_room_);
+  cards_layout_->setContentsMargins(kCardInset, kCardInset, kCardInset, 28 + bottom_room_);
+}
+
+Card* GameEditForm::AddCard(const QString& title) {
+  auto* card = new Card(title, scroll_->widget());
+  grid_->addWidget(card);
+  if (const auto it = std::ranges::find(runs_cards_, title); it != runs_cards_.end())
+    grid_->Place(card, 2, 0);
+  else  // the game's own cards, and any group CardColumns doesn't list
+    grid_->Place(card, 2, 1);
+  cards_.push_back(card);
+  return card;
+}
+
+std::vector<GameEditForm::JumpGroup> GameEditForm::Jumps() const {
+  JumpGroup runs{"How it runs", {}};
+  JumpGroup game{"The game", {}};
+  const auto collect = [this](const std::vector<QString>& titles, JumpGroup& group) {
+    for (const QString& title : titles)
+      for (Card* card : cards_)
+        if (card->Title() == title) group.cards.push_back(card);
+  };
+  collect(runs_cards_, runs);
+  collect(game_cards_, game);
+  // A group CardColumns doesn't list.
+  for (Card* card : cards_) {
+    if (!std::ranges::contains(runs_cards_, card->Title()) &&
+        !std::ranges::contains(game_cards_, card->Title()))
+      game.cards.push_back(card);
+  }
+  return {runs, game};
 }
 
 void GameEditForm::RevealSetting(const std::string& key) {
@@ -396,28 +422,26 @@ void GameEditForm::RevealSetting(const std::string& key) {
 
 void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
   arranged_ = true;
-  QWidget* page = scroll_->widget();
-  const auto add_card = [this, page](const QString& title, std::initializer_list<QWidget*> rows) {
-    auto* card = new Card(title, page);
+  const std::vector<std::string> store_keys = StoreKeys(game.source);
+  const SourceInfo* store_info = FindSourceInfo(QString::fromStdString(game.source));
+  const QString store = store_keys.empty() || game.source == "steam" ? QString()
+                        : store_info != nullptr ? store_info->name
+                                                : QString::fromStdString(game.source);
+  const CardColumns columns = CardColumnsFor(game, store);
+  runs_cards_ = columns.runs;
+  game_cards_ = columns.game;
+  const auto add_card = [this](const QString& title, std::initializer_list<QWidget*> rows) {
+    Card* card = AddCard(title);
     for (QWidget* row : rows) {
       card->AddRow(row);
       row->show();
     }
-    cards_layout_->addWidget(card);
     return card;
   };
   const bool emulated = game.runner_ref.starts_with("emulator:");
-  const std::vector<std::string> store_keys = StoreKeys(game.source);
   const auto place_store_keys = [this, &store_keys](Card* card) {
     for (size_t i = 0; i < store_keys.size(); ++i)
       overrides_->PlaceRow(store_keys[i], card, static_cast<int>(i));
-  };
-  // The scripts, each with its ready-made steps inside its row, for any game that can use them.
-  const auto add_scripts = [this, &add_card] {
-    Card* scripts = add_card("Scripts", {});
-    for (const char* key : {"launch.pre_script", "launch.post_script"})
-      overrides_->PlaceRow(key, scripts);
-    overrides_->HideWhenEmpty(scripts);
   };
 
   Card* details = add_card("Details", {name_row_, tags_row_});
@@ -431,36 +455,44 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
     // Steam starts the game from its own record, so there is no executable or runner to pick.
     Card* steam = add_card("Steam", {launch_options_row_, play_starts_row_, only_choice_row_});
     place_store_keys(steam);
-    overrides_->PlaceRow("launch.env", steam);
-    add_scripts();
-    add_card("Files", {install_row_, data_dir_row_});
+    overrides_->PlaceGroup("Environment", steam);
   } else if (emulated) {
     Card* emulator = add_card("Emulator", {emulator_row_, args_row_});
-    overrides_->PlaceRow("launch.env", emulator);
-    add_scripts();
+    overrides_->PlaceGroup("Environment", emulator);
     install_row_->Label()->setText("Game file");
-    add_card("Files", {install_row_});
   } else {
-    add_card("Launch", {exe_row_, args_row_, working_dir_row_, launch_options_row_,
-                        play_starts_row_, only_choice_row_});
+    Card* launch = add_card("Launch", {exe_row_, args_row_, working_dir_row_, launch_options_row_,
+                                       play_starts_row_, only_choice_row_});
+    overrides_->PlaceGroup("Environment", launch);
     Card* runner = add_card("Runner", {runner_row_, fix_row_, runner_options_});
     runner_options_->hide();  // until the runner kind has options
     ShowFixStatus();
-    overrides_->PlaceRow("launch.env", runner);
-    if (!store_keys.empty()) {
-      const SourceInfo* store = FindSourceInfo(QString::fromStdString(game.source));
-      Card* card =
-          add_card(store != nullptr ? store->name : QString::fromStdString(game.source), {});
+    overrides_->PlaceGroup("Proton", runner);
+    overrides_->PlaceGroup("Default runners", runner);  // how an HTML game's browser opens
+    if (!store.isEmpty()) {
+      Card* card = add_card(store, {});
       place_store_keys(card);
       overrides_->HideWhenEmpty(card);
     }
-    add_scripts();
-    add_card("Files", {install_row_, data_dir_row_});
   }
-  auto* overrides = new Card("Overrides", page);
-  cards_layout_->addWidget(overrides);
-  overrides_->SetOverridesCard(overrides);
-  cards_layout_->addStretch(1);
+  Card* saves = add_card("Saves", {});
+  overrides_->PlaceGroup("Backups", saves);
+  overrides_->PlaceGroup("Cloud saves", saves);
+  overrides_->PlaceGroup("Where saves are", saves);
+  overrides_->HideWhenEmpty(saves);
+  // The scripts, each with its ready-made steps inside its row, for any game that can use them.
+  Card* scripts = add_card("Scripts", {});
+  overrides_->PlaceGroup("Scripts", scripts);
+  overrides_->HideWhenEmpty(scripts);
+  if (emulated)
+    add_card("Files", {install_row_});
+  else
+    add_card("Files", {install_row_, data_dir_row_});
+  // Every other group of settings the game can use is a card of its own.
+  overrides_->SetCardMaker([this](const std::string& group_label) {
+    return AddCard(QString::fromStdString(group_label));
+  });
+  emit CardsChanged();
 }
 
 void GameEditForm::ResetScroll() {
@@ -557,9 +589,7 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   // for turning back into a Windows game); an HTML game's data folder holds its browser and saves,
   // which Mira manages.
   const bool own_files = game.source != "desktop-entry" && game.platform != "web";
-  data_dir_row_->setVisible(data_dir_row_->parentWidget() != this && own_files &&
-                            game.platform != "native" &&
-                            (game.source != "steam" || !game.data_dir.empty()));
+  data_dir_row_->setVisible(data_dir_row_->parentWidget() != this && ShowsPrefixRow(game));
   move_prefix_->setVisible(own_files && !game.data_dir.empty() && game.source != "steam");
   // An emulator's game names its emulator, and picking another moves it there.
   if (game.runner_ref.starts_with("emulator:")) {
