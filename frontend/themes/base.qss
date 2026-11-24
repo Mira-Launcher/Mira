@@ -296,6 +296,13 @@ mira_gui--NavRow:disabled {
   color: @text_muted;
 }
 
+/* The game panel's jump list: a quiet mark for the card in view, so Play stays the bright thing. */
+QWidget#game_panel mira_gui--NavRow:checked {
+  background: @surface_alt;
+  color: @text;
+  font-weight: 600;
+}
+
 /* components/Button's kinds; a plain QPushButton is the Secondary look above. */
 mira_gui--Button[kind="primary"] {
   background: @accent;
@@ -659,6 +666,11 @@ mira_gui--AchievementTile {
   border-radius: @radius_card;
 }
 
+/* A card over a game's art lets it show through (Card::SetOverArt, the theme's art_card_alpha). */
+mira_gui--Card[over_art="true"] {
+  background: @surface_over_art;
+}
+
 /* components/SettingRow's ExpanderRow: its rows, opened, on a sunken surface. */
 QWidget#expander_body {
   background: @surface_sunken;
@@ -913,36 +925,28 @@ QLabel#game_edit_title, QLabel#page_title {
   font-weight: 700;
 }
 
-/* The game card's achievement count and saves line, which open their pages: dark glass like
- * a Glass button, since bright hero art shows through the scrim there. The radius stays under half
- * the chip's height. */
-QPushButton#achievements_summary,
-QPushButton#saves_summary {
-  background: rgba(20, 22, 27, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  padding: 3px 10px;
-  color: #e6e8ec;
+/* The game panel's saves and achievements lines, which open their pages: flat rows that light up
+ * on hover like a nav row. The saves line's text is in labels inside it. */
+QPushButton#panel_line {
+  background: transparent;
+  border: none;
+  border-radius: @radius_control;
+  padding: 4px 8px;
+  color: @text;
   text-align: left;
 }
 
-QPushButton#achievements_summary:hover,
-QPushButton#saves_summary:hover {
-  background: rgba(20, 22, 27, 0.8);
-  border-color: rgba(255, 255, 255, 0.4);
-  color: #ffffff;
+QPushButton#panel_line:hover,
+QPushButton#panel_line:focus {
+  background: @surface_alt;
 }
 
-QPushButton#achievements_summary:pressed,
-QPushButton#saves_summary:pressed,
-QPushButton#achievements_summary:disabled,
-QPushButton#saves_summary:disabled {
-  color: #aab0ba;
+QPushButton#panel_line QLabel {
+  color: @text;
 }
 
-QPushButton#saves_summary[attention="true"] {
-  color: #f5c46b;
-  border-color: rgba(245, 196, 107, 0.55);
+QPushButton#panel_line[attention="true"] QLabel {
+  color: @warning;
 }
 
 /* --- Page header and tabs (components/PageHeader) -------------------------------- */

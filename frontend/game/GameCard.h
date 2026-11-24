@@ -21,13 +21,15 @@ class ArtPickerPanel;
 class SavesPage;
 class ChangeBar;
 class GameEditForm;
+class GamePanel;
 class GameLibraryModel;
 
-// A game's settings card: its hero art across the top, Back and Change art,
-// the name, status, cover and Play, then the edit form (or the art picker in
-// its place) with a change bar. Built fresh for each open, so it starts
-// synced to what's saved rather than to a discarded earlier edit.
-class GameCard : public HeroBackdrop {
+// A game's settings card over its art: the panel on the left (cover, name, Play, the saves and
+// achievements lines, then the jump list or an open page's controls), the settings' cards in
+// columns on the right (or the art picker, Saves or Achievements in their place) with a change bar.
+// Built fresh for each open, so it starts synced to what's saved rather than to a discarded earlier
+// edit.
+class GameCard : public CardBackdrop {
   Q_OBJECT
 
  public:
@@ -50,8 +52,8 @@ class GameCard : public HeroBackdrop {
   void RequestClose();
   // A new cover for `id`, which may be another game's.
   void UpdateCover(const std::string& id);
-  // The settings' column inside the card; its other pages (Saves, art) use the card's width.
-  void SetColumnWidth(int width);
+  // The panel's width, the cards' column width, and whether the panel shows the cover.
+  void SetLayout(int panel_width, int column_width, bool cover);
 
  signals:
   void CloseRequested();
@@ -59,10 +61,13 @@ class GameCard : public HeroBackdrop {
   void PlayClicked();
   // A tag chip was clicked: show the library's games with that tag.
   void TagFilterRequested(QString tag);
+  // Game details was clicked: open the game's details page in the card's place.
+  void DetailsRequested();
 
  private:
   // Both constructors' common part; `title` is null for a game.
   void Build(const GameSummary* title);
+  void resizeEvent(QResizeEvent* event) override;
   // Swaps the form for the art picker, and back.
   void OpenArtPicker();
   void CloseArtPicker(bool applied = false);
@@ -99,19 +104,19 @@ class GameCard : public HeroBackdrop {
   // The form, and the art picker once first opened.
   QStackedWidget* stack_ = nullptr;
   ArtPickerPanel* picker_ = nullptr;
-  // "48 of 52 achievements" under the status, which opens their page.
+  // "48 of 52 achievements" under the saves line, which opens their page.
   QPushButton* achievements_button_ = nullptr;
   AchievementsPage* achievements_page_ = nullptr;
   std::optional<AchievementsResult> achievements_;
-  // "7 backups · last after today's session" beside it, which opens the Saves page.
-  QPushButton* saves_button_ = nullptr;
   SavesPage* saves_page_ = nullptr;
   std::optional<SavesResult> saves_;
   int saves_request_ = 0;  // the newest LoadSaves: an older answer arriving after it is dropped
   bool open_saves_when_loaded_ = false;
   QPushButton* art_button_ = nullptr;
   Button* play_ = nullptr;
-  QHBoxLayout* tools_ = nullptr;  // a button for each tool launch option, before Play
+  QHBoxLayout* tools_ = nullptr;  // a button for each tool launch option, under Play
+  GamePanel* panel_ = nullptr;
+  Button* close_ = nullptr;
   std::vector<std::string> tool_ids_;
   // The form's unsaved changes, or the picker's pick while it's open.
   ChangeBar* bar_ = nullptr;

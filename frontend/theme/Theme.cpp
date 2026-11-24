@@ -22,6 +22,7 @@
 #include <QStyleHints>
 #include <QTimer>
 #include <QWidget>
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
@@ -133,6 +134,7 @@ Tokens ParseTokens(const std::string& text, Tokens tokens = {}) {
 
   number("scrim_alpha", tokens.scrim_alpha);
   number("modal_scrim_alpha", tokens.modal_scrim_alpha);
+  number("art_card_alpha", tokens.art_card_alpha);
   number("radius_panel", tokens.radius_panel);
   number("radius_control", tokens.radius_control);
   number("radius_tile", tokens.radius_tile);
@@ -372,6 +374,9 @@ QHash<QString, QString> QssValues(const Tokens& tokens) {
   values.insert("hidden_note", ColorToQss(Mix(tokens.text, tokens.accent, 0.35)));
   // A card's opened row and its list items: a step from the card toward the window.
   values.insert("surface_sunken", ColorToQss(Mix(tokens.surface, tokens.window, 0.45)));
+  QColor art_card = tokens.surface;
+  art_card.setAlpha(std::clamp(tokens.art_card_alpha, 0, 255));
+  values.insert("surface_over_art", ColorToQss(art_card));
   values.insert("radius_card", QString("%1px").arg(tokens.radius_panel + 4));
   // A row ending a card, inside its 1px border.
   values.insert("radius_card_inner", QString("%1px").arg(tokens.radius_panel + 3));

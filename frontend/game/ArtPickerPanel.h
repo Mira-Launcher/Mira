@@ -51,6 +51,9 @@ class ArtPickerPanel : public QWidget {
   // Loads `slot`'s candidates and starts on the one in use.
   void Open(const std::string& slot);
   const std::string& slot() const { return slot_; }
+  // The slots, the style chips, which SteamGridDB game the art is from and the image buttons, one
+  // under another, for the host to show beside the grid.
+  QWidget* Controls() const { return controls_; }
 
   // True when the pick isn't the candidate already in use.
   bool HasChange() const;
@@ -181,6 +184,7 @@ class ArtPickerPanel : public QWidget {
   void ApplySlot(const std::string& slot, std::int64_t candidate_id, std::string upload,
                  const QPixmap& image);
 
+  QWidget* controls_ = nullptr;
   TabRow* slots_ = nullptr;  // one tab per slot, each with its count once known
   FlowLayout* chips_layout_ = nullptr;
   QButtonGroup* chips_ = nullptr;

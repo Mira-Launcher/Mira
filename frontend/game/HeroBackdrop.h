@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMargins>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QWidget>
 #include <string>
@@ -44,10 +45,19 @@ class HeroBackdrop : public QWidget {
  protected:
   void paintEvent(QPaintEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
+  // The card's rounded outline, inside its 1 px border.
+  QPainterPath Outline() const;
+  // The art to draw: a picked preview, the hero, else the cover (small) or the tile's art.
+  QPixmap Source() const;
+  // Whether Source() is a hero, which is drawn as it is, rather than a cover, which is blurred.
+  bool ShowsHero() const { return !hero_.isNull() || !hero_preview_.isNull(); }
+  // While the card is being resized, art is scaled quickly; smoothly once it stops.
+  bool Resizing() const { return resizing_; }
+  // The art's dominant color, which Tinted mixes in.
+  void UpdateTone(const QPixmap& source);
 
  private:
   void LoadHero();
-  QPixmap Source() const;
 
   QTimer* resize_settled_ = nullptr;
   bool resizing_ = false;
@@ -63,6 +73,26 @@ class HeroBackdrop : public QWidget {
   qint64 rendered_key_ = 0;
   QColor tone_;  // DominantColor of Source(), at tone_key_
   qint64 tone_key_ = 0;
+};
+
+// The game card's backdrop: a blurred wash of the hero (or the cover) over the whole card, the
+// sharp hero fading out from the top-left corner behind the panel, and a scrim of the window's
+// color, tinted with the art's, over both so text stays readable. Each layer is made once per size
+// and art, as the card opens or after a resize, never on a timer.
+class CardBackdrop : public HeroBackdrop {
+  Q_OBJECT
+
+ public:
+  using HeroBackdrop::HeroBackdrop;
+
+ protected:
+  void paintEvent(QPaintEvent* event) override;
+
+ private:
+  QPixmap wash_;
+  qint64 wash_key_ = 0;
+  QPixmap sharp_;  // the hero, masked to fade out from its top-left corner
+  qint64 sharp_key_ = 0;
 };
 
 // A hero card's lower part, out to the card's edges (inside its border): clear at its top and the

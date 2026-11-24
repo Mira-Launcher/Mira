@@ -36,6 +36,7 @@ status_not_set_up = "#f0883e"
 
 tile_placeholder = "#272b33"
 scrim_alpha = 225
+art_card_alpha = 189
 
 radius_panel = 8
 radius_control = 6

@@ -38,4 +38,14 @@ class ElidedLabel : public QLabel {
   void paintEvent(QPaintEvent* event) override;
 };
 
+// Text on one line while there's room, wrapping onto more only when squeezed. A plain wrapping
+// QLabel asks for a narrow width and wraps short text even with room to spare.
+class WrapWhenNarrowLabel : public QLabel {
+  Q_OBJECT
+
+ public:
+  explicit WrapWhenNarrowLabel(const QString& text = {}, QWidget* parent = nullptr);
+  QSize sizeHint() const override;
+};
+
 }  // namespace mira_gui

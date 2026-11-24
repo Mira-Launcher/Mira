@@ -16,8 +16,9 @@ namespace mira_gui {
 class Card;
 
 // The game card's Saves page: its backups, newest first, with Restore and Delete; where its saves
-// are; for a GOG or Epic game, how they stand with the store's cloud; and its saves settings.
-// Restoring backs up what's there first, so it offers Undo rather than asking.
+// are; and its saves settings. Controls, for the card's panel, holds Back up now and, for a GOG or
+// Epic game, how they stand with the store's cloud. Restoring backs up what's there first, so it
+// offers Undo rather than asking.
 class SavesPage : public QWidget {
   Q_OBJECT
 
@@ -28,9 +29,10 @@ class SavesPage : public QWidget {
   // What mirad is doing with the game's saves now (game.saves_activity), which holds off the
   // page's own actions until it's done.
   void SetDoing(const std::string& doing);
+  // Back up now and the cloud's state, for the host to show beside the page.
+  QWidget* Controls() const { return controls_; }
 
  signals:
-  void BackClicked();
   // Open the game's Advanced settings at `key`.
   void SettingClicked(std::string key);
 
@@ -69,7 +71,9 @@ class SavesPage : public QWidget {
   };
   std::optional<Restored> restored_;
 
+  QWidget* controls_ = nullptr;
   QPushButton* back_up_ = nullptr;
+  QWidget* cloud_state_ = nullptr;  // in controls_: the cloud's state, when it was synced, Sync now
   QScrollArea* scroll_ = nullptr;
   QGridLayout* grid_ = nullptr;
   int columns_ = 0;

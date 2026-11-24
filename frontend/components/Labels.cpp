@@ -52,4 +52,16 @@ void ElidedLabel::paintEvent(QPaintEvent*) {
   painter.drawText(rect(), alignment(), shown);
 }
 
+WrapWhenNarrowLabel::WrapWhenNarrowLabel(const QString& text, QWidget* parent)
+    : QLabel(text, parent) {
+  setWordWrap(true);
+}
+
+QSize WrapWhenNarrowLabel::sizeHint() const {
+  const QMargins margins = contentsMargins();
+  const int width =
+      fontMetrics().horizontalAdvance(text()) + 2 * margin() + margins.left() + margins.right() + 1;
+  return {width, heightForWidth(width)};
+}
+
 }  // namespace mira_gui

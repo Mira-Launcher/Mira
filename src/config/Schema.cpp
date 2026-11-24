@@ -1049,61 +1049,125 @@ Schema::Schema() {
              "default download's checksum is checked."});
 
   // --- Launching -------------------------------------------------------------
-  s.Section("Launching", "General");
+  s.Section("Launching", "Display");
   s.ResetTogether();
 
-  s.Add({.key = "launch.stop_timeout_s",
-         .label = "Stop timeout",
-         .type = Type::Int,
-         .default_value = 10,
-         .doc = "How long a game has to quit after you stop it before Mira force-kills it. This "
-                "applies to the whole chain of launcher processes, not only the game.",
-         .constraint = Range(0, 600),
-         .unit = "s"});
-
-  s.Add({.key = "launch.log_max_mb",
-         .label = "Maximum log size",
-         .type = Type::Int,
-         .default_value = 64,
+  s.Add({.key = "display.resolution",
+         .label = "Resolution",
+         .type = Type::String,
+         .default_value = "",
          .scope = Scope::PerGame,
-         .doc = "The largest a game's log file may be. When a new session starts, the previous "
-                "log is deleted if it is over this size, so each game uses at most about twice "
-                "this much disk.",
-         .constraint = Range(1, 1024),
-         .unit = "MB"});
+         .doc = "Switches the primary monitor to one of its modes while the game runs, and back "
+                "after. Set by hand, it is WIDTHxHEIGHT or WIDTHxHEIGHT@HZ, for example "
+                "\"1920x1080@120\". Needs Plasma on Wayland.",
+         .keywords = "display monitor refresh rate mode"});
 
-  s.Add({.key = "launch.proton_log",
-         .label = "Write a Proton log",
+  s.Add({.key = "display.hdr",
+         .label = "HDR",
          .type = Type::Bool,
          .default_value = false,
          .scope = Scope::PerGame,
-         .doc = "Have Proton write a detailed log of each run (PROTON_LOG), for working out why a "
-                "game won't start. The game menu opens the newest one. Logs get large.",
+         .doc = "Turns HDR on for the primary monitor while the game runs and off again after, "
+                "and has Proton pass the game's HDR through. Needs Plasma on Wayland and an HDR "
+                "monitor, and the game's own HDR option turned on.",
+         .keywords = "high dynamic range display monitor"});
+
+  s.Add({.key = "launch.fps_limit",
+         .label = "Frame rate limit",
+         .type = Type::Int,
+         .default_value = 0,
+         .scope = Scope::PerGame,
+         .doc = "Caps the game's frames per second, for DirectX games run through DXVK or "
+                "vkd3d-proton. 0 is no limit.",
+         .constraint = Range(0, 1000),
+         .keywords = "fps cap frame limiter framerate",
          .applies = {.platforms = {"windows"}}});
 
-  s.Add({.key = "command_wrappers",
-         .label = "Command wrappers",
-         .type = Type::StringArray,
-         .default_value = json::array(),
+  s.Add({.key = "launch.gpu",
+         .label = "GPU",
+         .type = Type::String,
+         .default_value = "",
          .scope = Scope::PerGame,
-         .doc =
-             "Programs that wrap the game's launch command, for example \"gamemoderun\" or "
-             "\"gamescope -W 1920 -H 1080\". The first entry is the outermost wrapper. Each entry "
-             "is split on spaces, so quotes do not work. If a wrapper is not installed, the "
-             "launch fails with an error that names it.",
-         .game_doc = "Programs that wrap this game's launch command. This list replaces the "
-                     "global one for this game. The first entry is the outermost wrapper."});
+         .doc = "Which graphics card the game runs on, for a PC with two (most gaming laptops). "
+                "Dedicated is faster; integrated uses less battery. Does nothing on a PC with one.",
+         .constraint = Choices({{"", "System's choice"},
+                                {"dedicated", "Dedicated GPU"},
+                                {"integrated", "Integrated GPU"}}),
+         .keywords = "graphics card prime nvidia optimus hybrid laptop discrete"});
 
-  s.Add({.key = "launch.env",
-         .label = "Environment variables",
-         .type = Type::StringArray,
-         .default_value = json::array(),
+  s.Add({.key = "launch.ray_tracing",
+         .label = "Ray tracing",
+         .type = Type::String,
+         .default_value = "",
          .scope = Scope::PerGame,
-         .doc = "Environment variables (KEY=VALUE) set for every game, for example "
-                "\"MANGOHUD=1\" or \"DXVK_ASYNC=1\". A game given a list of its own uses that one "
-                "instead. They do not apply to Steam games launched through the Steam client.",
-         .game_doc = "Environment variables (KEY=VALUE) for this game, for example \"MANGOHUD=1\". "
-                     "Once changed here, this list replaces the one in Settings for this game."});
+         .doc = "Auto turns DirectX 12 ray tracing off when the game runs on an integrated GPU, "
+                "too slow for it, and leaves it to the game otherwise. A game that needs ray "
+                "tracing won't start with it off.",
+         .constraint = Choices({{"", "Auto"}, {"on", "On"}, {"off", "Off"}}),
+         .keywords = "rt dxr raytracing vkd3d integrated",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add(
+      {.key = "launch.follow_system_theme",
+       .label = "Follow the system theme",
+       .type = Type::Bool,
+       .default_value = true,
+       .scope = Scope::PerGame,
+       .doc =
+           "Before a Windows game or app starts, set Windows' light or dark mode in its prefix to "
+           "match your desktop, so programs such as Microsoft 365 that follow the system theme "
+           "match it too.",
+       .applies = {.platforms = {"windows"}}});
+
+  s.Group("Proton");
+  s.ResetTogether();
+
+  s.Add({.key = "launch.proton_wayland",
+         .label = "Native Wayland",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "On a Wayland desktop, Proton draws the game through its own Wayland driver "
+                "instead of XWayland. Turn off for a game whose launcher, overlay or mouse "
+                "capture misbehaves with it. HDR always uses it.",
+         .keywords = "wayland xwayland x11 proton display",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.nvapi",
+         .label = "NVIDIA DLSS and Reflex",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Let the game use NVIDIA's DLSS, Reflex and other NVAPI features, which Proton "
+                "turns on by default. Turn off for a game that crashes or looks wrong with them. "
+                "Only matters with an NVIDIA GPU.",
+         .keywords = "nvidia nvapi dlss reflex gpu",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.upscaler_upgrade",
+         .label = "Newest DLSS and FSR",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "Proton swaps the game's DLSS and frame generation for the newest on an NVIDIA "
+                "GPU, and FSR 3.1 for FSR 4 on a Radeon RX 9000. Skipped for games with "
+                "anti-cheat. Needs GE-Proton or another Proton with these upgrades.",
+         .keywords = "dlss fsr fsr4 upscaling nvidia amd radeon upgrade",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Add({.key = "launch.hide_nvidia",
+         .label = "Hide the NVIDIA GPU",
+         .type = Type::Bool,
+         .default_value = false,
+         .scope = Scope::PerGame,
+         .doc = "Report an NVIDIA GPU to the game as an AMD one, for a game that refuses to run or "
+                "picks broken settings on NVIDIA under Proton. Turns DLSS off. Only matters with "
+                "an NVIDIA GPU.",
+         .keywords = "nvidia gpu spoof amd vendor",
+         .applies = {.platforms = {"windows"}}});
+
+  s.Group("Performance and overlay");
+  s.ResetTogether();
 
   s.Add({.key = "launch.gamemode",
          .label = "Use GameMode",
@@ -1153,116 +1217,64 @@ Schema::Schema() {
                                 {"extended", "Extended"},
                                 {"detailed", "Detailed"}})});
 
-  s.Add(
-      {.key = "launch.follow_system_theme",
-       .label = "Follow the system theme",
-       .type = Type::Bool,
-       .default_value = true,
-       .scope = Scope::PerGame,
-       .doc =
-           "Before a Windows game or app starts, set Windows' light or dark mode in its prefix to "
-           "match your desktop, so programs such as Microsoft 365 that follow the system theme "
-           "match it too.",
-       .applies = {.platforms = {"windows"}}});
+  s.Group("Environment");
+  s.ResetTogether();
 
-  s.Add({.key = "display.hdr",
-         .label = "HDR",
+  s.Add({.key = "command_wrappers",
+         .label = "Command wrappers",
+         .type = Type::StringArray,
+         .default_value = json::array(),
+         .scope = Scope::PerGame,
+         .doc =
+             "Programs that wrap the game's launch command, for example \"gamemoderun\" or "
+             "\"gamescope -W 1920 -H 1080\". The first entry is the outermost wrapper. Each entry "
+             "is split on spaces, so quotes do not work. If a wrapper is not installed, the "
+             "launch fails with an error that names it.",
+         .game_doc = "Programs that wrap this game's launch command. This list replaces the "
+                     "global one for this game. The first entry is the outermost wrapper."});
+
+  s.Add({.key = "launch.env",
+         .label = "Environment variables",
+         .type = Type::StringArray,
+         .default_value = json::array(),
+         .scope = Scope::PerGame,
+         .doc = "Environment variables (KEY=VALUE) set for every game, for example "
+                "\"MANGOHUD=1\" or \"DXVK_ASYNC=1\". A game given a list of its own uses that one "
+                "instead. They do not apply to Steam games launched through the Steam client.",
+         .game_doc = "Environment variables (KEY=VALUE) for this game, for example \"MANGOHUD=1\". "
+                     "Once changed here, this list replaces the one in Settings for this game."});
+
+  s.Group("Logs");
+  s.ResetTogether();
+
+  s.Add({.key = "launch.proton_log",
+         .label = "Write a Proton log",
          .type = Type::Bool,
          .default_value = false,
          .scope = Scope::PerGame,
-         .doc = "Turns HDR on for the primary monitor while the game runs and off again after, "
-                "and has Proton pass the game's HDR through. Needs Plasma on Wayland and an HDR "
-                "monitor, and the game's own HDR option turned on.",
-         .keywords = "high dynamic range display monitor"});
-
-  s.Add({.key = "display.resolution",
-         .label = "Resolution",
-         .type = Type::String,
-         .default_value = "",
-         .scope = Scope::PerGame,
-         .doc = "Switches the primary monitor to one of its modes while the game runs, and back "
-                "after. Set by hand, it is WIDTHxHEIGHT or WIDTHxHEIGHT@HZ, for example "
-                "\"1920x1080@120\". Needs Plasma on Wayland.",
-         .keywords = "display monitor refresh rate mode"});
-
-  s.Add({.key = "launch.proton_wayland",
-         .label = "Native Wayland",
-         .type = Type::Bool,
-         .default_value = true,
-         .scope = Scope::PerGame,
-         .doc = "On a Wayland desktop, Proton draws the game through its own Wayland driver "
-                "instead of XWayland. Turn off for a game whose launcher, overlay or mouse "
-                "capture misbehaves with it. HDR always uses it.",
-         .keywords = "wayland xwayland x11 proton display",
+         .doc = "Have Proton write a detailed log of each run (PROTON_LOG), for working out why a "
+                "game won't start. The game menu opens the newest one. Logs get large.",
          .applies = {.platforms = {"windows"}}});
 
-  s.Add({.key = "launch.gpu",
-         .label = "GPU",
-         .type = Type::String,
-         .default_value = "",
-         .scope = Scope::PerGame,
-         .doc = "Which graphics card the game runs on, for a PC with two (most gaming laptops). "
-                "Dedicated is faster; integrated uses less battery. Does nothing on a PC with one.",
-         .constraint = Choices({{"", "System's choice"},
-                                {"dedicated", "Dedicated GPU"},
-                                {"integrated", "Integrated GPU"}}),
-         .keywords = "graphics card prime nvidia optimus hybrid laptop discrete"});
-
-  s.Add({.key = "launch.nvapi",
-         .label = "NVIDIA DLSS and Reflex",
-         .type = Type::Bool,
-         .default_value = true,
-         .scope = Scope::PerGame,
-         .doc = "Let the game use NVIDIA's DLSS, Reflex and other NVAPI features, which Proton "
-                "turns on by default. Turn off for a game that crashes or looks wrong with them. "
-                "Only matters with an NVIDIA GPU.",
-         .keywords = "nvidia nvapi dlss reflex gpu",
-         .applies = {.platforms = {"windows"}}});
-
-  s.Add({.key = "launch.hide_nvidia",
-         .label = "Hide the NVIDIA GPU",
-         .type = Type::Bool,
-         .default_value = false,
-         .scope = Scope::PerGame,
-         .doc = "Report an NVIDIA GPU to the game as an AMD one, for a game that refuses to run or "
-                "picks broken settings on NVIDIA under Proton. Turns DLSS off. Only matters with "
-                "an NVIDIA GPU.",
-         .keywords = "nvidia gpu spoof amd vendor",
-         .applies = {.platforms = {"windows"}}});
-
-  s.Add({.key = "launch.ray_tracing",
-         .label = "Ray tracing",
-         .type = Type::String,
-         .default_value = "",
-         .scope = Scope::PerGame,
-         .doc = "Auto turns DirectX 12 ray tracing off when the game runs on an integrated GPU, "
-                "too slow for it, and leaves it to the game otherwise. A game that needs ray "
-                "tracing won't start with it off.",
-         .constraint = Choices({{"", "Auto"}, {"on", "On"}, {"off", "Off"}}),
-         .keywords = "rt dxr raytracing vkd3d integrated",
-         .applies = {.platforms = {"windows"}}});
-
-  s.Add({.key = "launch.upscaler_upgrade",
-         .label = "Newest DLSS and FSR",
-         .type = Type::Bool,
-         .default_value = true,
-         .scope = Scope::PerGame,
-         .doc = "Proton swaps the game's DLSS and frame generation for the newest on an NVIDIA "
-                "GPU, and FSR 3.1 for FSR 4 on a Radeon RX 9000. Skipped for games with "
-                "anti-cheat. Needs GE-Proton or another Proton with these upgrades.",
-         .keywords = "dlss fsr fsr4 upscaling nvidia amd radeon upgrade",
-         .applies = {.platforms = {"windows"}}});
-
-  s.Add({.key = "launch.fps_limit",
-         .label = "Frame rate limit",
+  s.Add({.key = "launch.log_max_mb",
+         .label = "Maximum log size",
          .type = Type::Int,
-         .default_value = 0,
+         .default_value = 64,
          .scope = Scope::PerGame,
-         .doc = "Caps the game's frames per second, for DirectX games run through DXVK or "
-                "vkd3d-proton. 0 is no limit.",
-         .constraint = Range(0, 1000),
-         .keywords = "fps cap frame limiter framerate",
-         .applies = {.platforms = {"windows"}}});
+         .doc = "The largest a game's log file may be. When a new session starts, the previous "
+                "log is deleted if it is over this size, so each game uses at most about twice "
+                "this much disk.",
+         .constraint = Range(1, 1024),
+         .unit = "MB"});
+
+  s.Add({.key = "launch.stop_timeout_s",
+         .label = "Stop timeout",
+         .type = Type::Int,
+         .default_value = 10,
+         .doc = "How long a game has to quit after you stop it before Mira force-kills it. This "
+                "applies to the whole chain of launcher processes, not only the game.",
+         .constraint = Range(0, 600),
+         .unit = "s"});
 
   s.Group("Scripts");
   s.ResetTogether();

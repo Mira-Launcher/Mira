@@ -64,7 +64,6 @@ enum ThumbState { kIdle, kLoading, kReady, kFailed };
 
 // Gap around each preview inside its grid cell.
 constexpr int kInset = 6;
-constexpr int kTabPadding = 12;  // a tab's text from its underline's end (base.qss)
 // mirad takes at most this many ids per batch.
 constexpr std::size_t kMaxBatch = 64;
 // The grid's items that aren't candidates: the user's own image, and no art at all.
@@ -262,20 +261,14 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   layout->setSpacing(0);
 
   auto* bar = new QWidget(this);
-  bar->setObjectName("picker_bar");
-  bar->setAttribute(Qt::WA_StyledBackground);
-  // Two rows, so the chips never squeeze their labels: the slots and the image buttons, then the
-  // chips and which SteamGridDB game the art is from.
+  controls_ = bar;
   auto* rows = new QVBoxLayout(bar);
-  rows->setContentsMargins(kCardInset - kTabPadding, 10, kCardInset, 10);
-  rows->setSpacing(8);
+  rows->setContentsMargins(0, 0, 0, 0);
+  rows->setSpacing(10);
   auto* bar_layout = new QHBoxLayout();
   bar_layout->setSpacing(8);
-  rows->addLayout(bar_layout);
-  auto* filter_layout = new QHBoxLayout();
-  filter_layout->setContentsMargins(kTabPadding, 0, 0, 0);
+  auto* filter_layout = new QVBoxLayout();
   filter_layout->setSpacing(8);
-  rows->addLayout(filter_layout);
   slots_ = new TabRow(bar);
   slots_->setObjectName("picker_tabs");
   slots_->AddTab("cover", "Covers");
@@ -287,12 +280,13 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   // A pick stays, and stays previewed, while another tab is open.
   connect(slots_, &TabRow::CurrentChanged, this,
           [this](const QString& slot) { Open(slot.toStdString()); });
-  bar_layout->addWidget(slots_);
-  bar_layout->addStretch(1);
+  rows->addWidget(slots_);
+  rows->addLayout(filter_layout);
+  rows->addLayout(bar_layout);
   // Wraps when there are more styles than fit.
   auto* chips = new QWidget(bar);
   chips_layout_ = new FlowLayout(chips, 6);
-  filter_layout->addWidget(chips, 1);
+  filter_layout->addWidget(chips);
   chips_ = new QButtonGroup(this);
   chips_->setExclusive(true);
   // Narrows any style down to what SteamGridDB marks adult.
@@ -317,11 +311,9 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   SetTextStyle(match_label, text::kDetail);
   match_layout->addWidget(match_label);
   match_ = new QComboBox(match_row_);
-  match_->setMinimumWidth(180);
   connect(match_, &QComboBox::activated, this, &ArtPickerPanel::ChooseMatch);
-  match_layout->addWidget(match_);
+  match_layout->addWidget(match_, 1);
   match_search_ = new SearchField("Game name, then Enter", match_row_);
-  match_search_->setMinimumWidth(180);
   match_search_->hide();
   connect(match_search_, &QLineEdit::returnPressed, this, [this] {
     const QString query = match_search_->text().trimmed();
@@ -333,9 +325,9 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
     match_search_->hide();
     match_->show();
   });
-  match_layout->addWidget(match_search_);
+  match_layout->addWidget(match_search_, 1);
   match_row_->hide();
-  filter_layout->addWidget(match_row_, 0, Qt::AlignTop);
+  filter_layout->addWidget(match_row_);
   auto* choose = new QPushButton("Choose image…", bar);
   choose->setToolTip("Use a PNG, JPEG or WebP of your own. You can also drop one here.");
   connect(choose, &QPushButton::clicked, this, &ArtPickerPanel::ChooseFile);
@@ -346,9 +338,8 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   url_field_ = new QLineEdit(bar);
   url_field_->setPlaceholderText("Image URL, then Enter");
   AddClearButton(url_field_);
-  url_field_->setMinimumWidth(240);
   url_field_->hide();
-  bar_layout->addWidget(url_field_);
+  bar_layout->addWidget(url_field_, 1);
   connect(url_button_, &QPushButton::clicked, this, [this] {
     url_button_->hide();
     url_field_->show();
@@ -370,7 +361,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   });
   network_ = new QNetworkAccessManager(this);
   setAcceptDrops(true);
-  layout->addWidget(bar);
+  bar->hide();  // until the host places it
 
   stack_ = new QStackedWidget(this);
   layout->addWidget(stack_, /*stretch=*/1);

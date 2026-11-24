@@ -82,20 +82,19 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
 
-  auto* header = new QHBoxLayout();
-  header->setContentsMargins(kPageHeaderMargins);
-  header->setSpacing(12);
-  auto* back = new IconButton(icons::Glyph::ArrowLeft, "Back", this);
-  connect(back, &QToolButton::clicked, this, &SavesPage::BackClicked);
-  auto* title = new QLabel("Saves", this);
-  SetTextStyle(title, text::kHeading);
-  back_up_ = new QPushButton("Back up now", this);
+  controls_ = new QWidget(this);
+  auto* controls = new QVBoxLayout(controls_);
+  controls->setContentsMargins(0, 0, 0, 0);
+  controls->setSpacing(10);
+  back_up_ = new QPushButton("Back up now", controls_);
   connect(back_up_, &QPushButton::clicked, this, &SavesPage::BackUp);
-  header->addWidget(back);
-  header->addWidget(title);
-  header->addStretch(1);
-  header->addWidget(back_up_);
-  layout->addLayout(header);
+  controls->addWidget(back_up_);
+  cloud_state_ = new QWidget(controls_);
+  new QHBoxLayout(cloud_state_);
+  cloud_state_->layout()->setContentsMargins(0, 0, 0, 0);
+  cloud_state_->hide();
+  controls->addWidget(cloud_state_);
+  controls_->hide();  // until the host places it
 
   scroll_ = new QScrollArea(this);
   scroll_->setWidgetResizable(true);
@@ -115,7 +114,7 @@ SavesPage::SavesPage(std::string id, QWidget* parent) : QWidget(parent), id_(std
 
   backups_ = new Card("Backups", content);
   where_ = new Card("Where they are", content);
-  cloud_ = new Card("Cloud saves", content);
+  cloud_ = new Card("Which saves to keep", content);  // only on a conflict with the cloud
   settings_ = new Card("Settings", content);
   cloud_->hide();
   // Rebuilt on a theme change: the newest backup's tint and the state dots are drawn colors.
@@ -329,13 +328,18 @@ void SavesPage::FillWhere() {
 
 void SavesPage::FillCloud() {
   cloud_->ClearRows();
-  cloud_->setVisible(saves_.cloud.has_value());
+  for (QWidget* old : cloud_state_->findChildren<QWidget*>(Qt::FindDirectChildrenOnly)) {
+    old->hide();
+    old->deleteLater();
+  }
+  cloud_state_->setVisible(saves_.cloud.has_value());
+  const bool conflict_now = saves_.cloud && doing_.empty() && saves_.cloud->state == "conflict";
+  cloud_->setVisible(conflict_now);
   if (!saves_.cloud) return;
   const CloudSaves& cloud = *saves_.cloud;
   const QDateTime now = QDateTime::currentDateTime();
-  QHBoxLayout* line = nullptr;
+  QHBoxLayout* line = static_cast<QHBoxLayout*>(cloud_state_->layout());
 
-  QWidget* state_row = Row(cloud_, &line);
   // While mirad works on the saves (after play, a backup then the sync), the state it last found
   // is about to change, so the work is what the line says.
   const bool working = !doing_.empty();
@@ -344,10 +348,10 @@ void SavesPage::FillCloud() {
                     : conflict                ? Tone::Warning
                     : cloud.state == "synced" ? Tone::Success
                                               : Tone::Muted;
-  auto* state = new StatusLine(state_row);
+  auto* state = new StatusLine(cloud_state_);
   state->Label()->setWordWrap(true);
   state->Set(tone, working ? SavesDoingLabel(doing_) : saves_text::CloudState(cloud));
-  QWidget* text = new QWidget(state_row);
+  QWidget* text = new QWidget(cloud_state_);
   auto* lines = new QVBoxLayout(text);
   lines->setContentsMargins(0, 0, 0, 0);
   lines->setSpacing(2);
@@ -360,12 +364,11 @@ void SavesPage::FillCloud() {
   line->addWidget(text, 1);
   const bool can_sync = cloud.state != "unsupported" && cloud.state != "off";
   if (!conflict && can_sync) {
-    QPushButton* sync = TextButton(state_row, "Sync now");
+    QPushButton* sync = TextButton(cloud_state_, "Sync now");
     sync->setEnabled(!Busy());
     connect(sync, &QPushButton::clicked, this, [this] { Sync("sync"); });
     line->addWidget(sync, 0, Qt::AlignTop);
   }
-  cloud_->AddRow(state_row);
   if (!conflict) return;
 
   // Each side with what it holds, as the launch's question shows them.
@@ -440,8 +443,8 @@ void SavesPage::SetBusy(bool busy) {
   back_up_->setText(!doing_.empty() ? SavesDoingLabel(doing_)
                     : busy          ? QString("Working…")
                                     : QString("Back up now"));
-  for (Card* card : {backups_, where_, cloud_})
-    for (QAbstractButton* button : card->findChildren<QAbstractButton*>())
+  for (QWidget* part : std::initializer_list<QWidget*>{backups_, where_, cloud_, cloud_state_})
+    for (QAbstractButton* button : part->findChildren<QAbstractButton*>())
       if (!button->property("idle_only").isValid() || button->property("idle_only").toBool())
         button->setEnabled(!Busy());
 }

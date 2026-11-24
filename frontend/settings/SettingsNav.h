@@ -8,19 +8,18 @@
 
 #include "../theme/Icons.h"
 
-class QButtonGroup;
 class QLabel;
 class QLineEdit;
 class QPushButton;
 class QScrollArea;
 class QStackedWidget;
-class QVariantAnimation;
 class QVBoxLayout;
 
 namespace mira_gui {
 
 class ExpanderRow;
 class Card;
+class SectionNav;
 class SettingsPage;
 
 // Row indices grouped by category, in first-seen order. Never sorted: the
@@ -111,18 +110,14 @@ class SettingsNavWidget : public QWidget {
 
   void UnregisterRow(QWidget* row_widget);
   void ApplyFilter();
-  // Scrolls to a page's title.
-  void Select(int index);
   void RefreshIcons();
   // The sticky title, the nav's current row and the room under the last page,
   // after a scroll or a change in the pages' size.
   void SyncToScroll();
-  int CurrentIndex() const;
 
   QLineEdit* search_ = nullptr;
   QWidget* nav_ = nullptr;
   QVBoxLayout* nav_layout_ = nullptr;
-  QButtonGroup* buttons_ = nullptr;
   QScrollArea* scroll_ = nullptr;  // every page, one after another
   QWidget* canvas_ = nullptr;
   QVBoxLayout* sections_ = nullptr;
@@ -130,8 +125,7 @@ class SettingsNavWidget : public QWidget {
   QWidget* sticky_ = nullptr;
   QLabel* sticky_group_ = nullptr;
   QLabel* sticky_title_ = nullptr;
-  QVariantAnimation* jump_ = nullptr;
-  int jumping_to_ = -1;                      // the nav row a jump is heading for
+  SectionNav* sections_nav_ = nullptr;       // the nav rows jumping to the pages and following them
   int bottom_room_ = 0;                      // for a change bar
   QStackedWidget* content_stack_ = nullptr;  // scroll_ vs. empty_state_
   QLabel* empty_state_ = nullptr;            // shown when a query matches nothing at all

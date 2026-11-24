@@ -1,7 +1,6 @@
 #include "SettingsNav.h"
 
 #include <QAction>
-#include <QButtonGroup>
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -13,7 +12,6 @@
 #include <QStackedWidget>
 #include <QTimer>
 #include <QVBoxLayout>
-#include <QVariantAnimation>
 #include <algorithm>
 
 #include "../components/Card.h"
@@ -21,6 +19,7 @@
 #include "../components/NavRow.h"
 #include "../components/Scrolling.h"
 #include "../components/SearchField.h"
+#include "../components/SectionNav.h"
 #include "../components/SettingRow.h"
 #include "../components/SettingsPage.h"
 #include "../components/Text.h"
@@ -97,8 +96,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   search_->setObjectName("settings_search");
   connect(search_, &QLineEdit::textChanged, this, [this] {
     ApplyFilter();
-    jump_->stop();
-    jumping_to_ = -1;
+    sections_nav_->Stop();
     scroll_->verticalScrollBar()->setValue(0);
   });
   left_layout_->addWidget(search_);
@@ -115,10 +113,6 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   column->addWidget(scroll, /*stretch=*/1);
   nav_layout_->setContentsMargins(0, 0, kRight, 0);
   outer->addWidget(left_);
-
-  buttons_ = new QButtonGroup(this);
-  buttons_->setExclusive(true);
-  connect(buttons_, &QButtonGroup::idClicked, this, &SettingsNavWidget::Select);
 
   scroll_ = new QScrollArea(this);
   scroll_->setObjectName("settings_page");
@@ -137,6 +131,7 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   scroll_->viewport()->installEventFilter(this);
   connect(scroll_->verticalScrollBar(), &QScrollBar::valueChanged, this,
           &SettingsNavWidget::SyncToScroll);
+  sections_nav_ = new SectionNav(scroll_, kTitleClearance, this);
 
   sticky_ = new QWidget(scroll_->viewport());
   sticky_->setObjectName("settings_sticky");
@@ -152,16 +147,6 @@ SettingsNavWidget::SettingsNavWidget(QWidget* parent) : QWidget(parent) {
   sticky_layout->addWidget(sticky_group_);
   sticky_layout->addWidget(sticky_title_);
   sticky_->hide();
-
-  jump_ = new QVariantAnimation(this);
-  jump_->setDuration(260);
-  jump_->setEasingCurve(QEasingCurve::OutCubic);
-  connect(jump_, &QVariantAnimation::valueChanged, this,
-          [this](const QVariant& value) { scroll_->verticalScrollBar()->setValue(value.toInt()); });
-  connect(jump_, &QVariantAnimation::finished, this, [this] {
-    jumping_to_ = -1;
-    SyncToScroll();
-  });
 
   empty_state_ = new QLabel("No settings match your search", this);
   empty_state_->setAlignment(Qt::AlignCenter);
@@ -189,18 +174,6 @@ void SettingsNavWidget::RearrangePages() {
 void SettingsNavWidget::SetBottomRoom(int height) {
   bottom_room_ = height;
   SyncToScroll();
-}
-
-// The last page whose top has reached where a jump puts it.
-int SettingsNavWidget::CurrentIndex() const {
-  const int line = scroll_->verticalScrollBar()->value() + kTitleClearance;
-  int current = -1;
-  for (size_t i = 0; i < categories_.size(); ++i) {
-    const Category& category = categories_[i];
-    if (category.page->isHidden()) continue;
-    if (current < 0 || category.page->y() <= line) current = static_cast<int>(i);
-  }
-  return current;
 }
 
 void SettingsNavWidget::SyncToScroll() {
@@ -238,10 +211,9 @@ void SettingsNavWidget::SyncToScroll() {
     sticky_title_->setText(in->page->Title());
     sticky_group_->setText(in->group_heading != nullptr ? in->group_heading->text() : QString());
     sticky_group_->setVisible(!sticky_group_->text().isEmpty());
-    // Over the page's own column, at its width.
-    const int left =
-        in->page->mapTo(scroll_->viewport(), QPoint(0, 0)).x() + in->page->ColumnLeft();
-    sticky_->resize(SettingsColumnWidth(in->page->width()), sticky_->sizeHint().height());
+    // Over the page's cards, as wide as they span.
+    const int left = in->page->mapTo(scroll_->viewport(), QPoint(0, 0)).x() + in->page->GridLeft();
+    sticky_->resize(in->page->GridWidth(), sticky_->sizeHint().height());
     int y = 0;
     if (next != nullptr)
       y = std::min(0, next->page->y() - kTitleClearance - value - sticky_->height());
@@ -252,9 +224,7 @@ void SettingsNavWidget::SyncToScroll() {
     sticky_->raise();
   }
 
-  const int current = jumping_to_ >= 0 ? jumping_to_ : CurrentIndex();
-  if (current >= 0 && !categories_[current].button->isChecked())
-    categories_[current].button->setChecked(true);
+  sections_nav_->Sync();
 }
 
 void SettingsNavWidget::SetNavWidth(int width) {
@@ -286,12 +256,7 @@ SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph 
   auto* button = new NavRow(title, nav_);
   button->setCheckable(true);
   button->setCursor(Qt::PointingHandCursor);
-  auto* count = new QLabel(button);
-  count->setAttribute(Qt::WA_TransparentForMouseEvents);
-  auto* count_layout = new QHBoxLayout(button);
-  count_layout->setContentsMargins(0, 0, 10, 0);
-  count_layout->addStretch(1);
-  count_layout->addWidget(count);
+  QLabel* count = button->Note();
   nav_layout_->insertWidget(nav_layout_->count() - 1, button);
 
   Category category;
@@ -301,11 +266,8 @@ SettingsPage* SettingsNavWidget::AddCategory(const QString& title, icons::Glyph 
   category.page = page;
   category.glyph = glyph;
   categories_.push_back(category);
-  const int index = static_cast<int>(categories_.size()) - 1;
-  buttons_->addButton(button, index);
+  sections_nav_->AddSection(button, page);
   connect(button, &QPushButton::toggled, this, [this] { RefreshIcons(); });
-
-  if (index == 0) button->setChecked(true);
   RefreshIcons();
   return page;
 }
@@ -320,25 +282,10 @@ void SettingsNavWidget::RefreshIcons() {
 }
 
 void SettingsNavWidget::ScrollToTop() {
-  jump_->stop();
+  sections_nav_->Stop();
   canvas_->layout()->activate();
   scroll_->verticalScrollBar()->setValue(0);
   SyncToScroll();
-}
-
-void SettingsNavWidget::Select(int index) {
-  if (index < 0 || index >= static_cast<int>(categories_.size())) return;
-  const Category& category = categories_[index];
-  if (category.page->isHidden()) return;
-  canvas_->layout()->activate();
-  QScrollBar* bar = scroll_->verticalScrollBar();
-  const int target = std::clamp(category.page->y() - kTitleClearance, 0, bar->maximum());
-  jumping_to_ = index;
-  category.button->setChecked(true);
-  jump_->stop();
-  jump_->setStartValue(bar->value());
-  jump_->setEndValue(target);
-  jump_->start();
 }
 
 void SettingsNavWidget::RegisterRow(QWidget* row_widget, const QString& searchable_text) {
@@ -481,7 +428,7 @@ void SettingsNavWidget::RevealPage(SettingsPage* page) {
   const auto it = std::ranges::find(categories_, page, &Category::page);
   if (it == categories_.end()) return;
   const int index = static_cast<int>(it - categories_.begin());
-  QTimer::singleShot(0, this, [this, index] { Select(index); });
+  QTimer::singleShot(0, this, [this, index] { sections_nav_->Select(index); });
 }
 
 void SettingsNavWidget::SetHeaderWidget(QWidget* widget) {
