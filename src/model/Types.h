@@ -68,7 +68,6 @@ struct Game {
   GameStatus status = GameStatus::SettingUp;
   // Set while NotSetUp, and kept while Missing; GameStore clears it otherwise.
   SetupStep setup = SetupStep::None;
-  double confidence = 0.0;
   bool reviewed = false;
   Platform platform = Platform::Unknown;
   // Who found this game: "scan", "steam", or "lutris". Lets a frontend warn

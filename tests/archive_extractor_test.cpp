@@ -100,8 +100,8 @@ TEST_CASE("An archive's listing gives its files, and what could start it") {
   REQUIRE(listing.has_value());
   CHECK(listing->password == std::string());
   REQUIRE(listing->entries.size() == 3);
-  std::vector<fs::path> files;
-  for (const library::ArchiveEntry& entry : listing->entries) files.push_back(entry.path);
+  std::vector<library::Detector::ListedFile> files;
+  for (const library::ArchiveEntry& entry : listing->entries) files.push_back({entry.path});
   test::TestEnv env("archive-list-state");
   const auto found =
       library::Detector(library::SettingsFromConfig(env.config)).DetectListed(files, "Hades");

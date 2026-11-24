@@ -82,7 +82,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `not_set_up
 ```json
 {
   "id": "celeste", "install_path": "/home/x/Games/Celeste", "name": "Celeste",
-  "status": "ready", "confidence": 0.9, "reviewed": false, "platform": "native",
+  "status": "ready", "reviewed": false, "platform": "native",
   "source": "scan", "exe_path": "Celeste", "args": "", "working_dir": "", "runner_ref": "",
   "data_dir": "", "runner_config": {}, "overrides": {}, "last_error": "",
   "created_at": 0, "updated_at": 0, "last_played_at": null, "play_seconds": 0,
@@ -98,7 +98,7 @@ Lists games, optionally filtered by `status` (`setting_up`, `ready`, `not_set_up
 
 - `store_url` is the game's page on the store it's from, when there is one: Steam's from its appid, itch's and GOG's from the store's last listing (`GET /v1/library`). Left out otherwise.
 
-- `confidence` is how sure the detector was of its pick of executable; it stays 0 for games an importer added, which have no `candidates`. `reviewed` turns true once someone changes or confirms the game.
+- `reviewed` turns true once someone changes or confirms the game.
 - `setup` says what a `not_set_up` game waits on: `confirm` (the user's answers), `install` (its installer, at `exe_path`) or `failed` (see `last_error`). Empty for any other status. Every game a scan, the watcher or an import adds waits for `confirm` or `install`; a store's games don't.
 - `candidates` lists every executable the detector considered.
 - `runner_config` belongs to the runner named by `runner_ref`.
@@ -263,7 +263,7 @@ Deletes the game's `installer_dir` and clears it, returning the game. Only insid
 
 ### `POST /v1/games/{id}/detect`
 
-Looks through the game's install folder again and replaces `candidates` and `confidence` with what's there now, so programs since removed drop out and new ones appear. The program stays when it's still found, else the best candidate is picked; either way `reviewed` goes back to false. 409 `not_installed` when the game has no install folder. Answers the game, as `game.updated`.
+Looks through the game's install folder again and replaces `candidates` with what's there now, so programs since removed drop out and new ones appear. The program stays when it's still found, else the best candidate is picked; either way `reviewed` goes back to false. 409 `not_installed` when the game has no install folder. Answers the game, as `game.updated`.
 
 ### `POST /v1/games/{id}/confirm`
 Body `{"name"?, "exe_path"?, "installer"?, "app"?, "steam_appid"?}`, the user's answers for a `not_set_up` game; what's left out keeps what Mira picked. `exe_path` is relative to the game's folder or absolute; inside its prefix, the folder it's in becomes the game's. With `installer` true the game then waits on `install`, else it becomes `ready`, or `setting_up` while its prefix is made. `steam_appid` is the title it is on Steam, 0 for none. Returns the game and publishes `game.updated`. Errors: `409 already_set_up`, `409 install_running`, `409 game_running`, `409 no_executable`.

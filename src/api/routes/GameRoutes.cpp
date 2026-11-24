@@ -254,7 +254,6 @@ void RegisterGameRoutes(Router& http, Services& s) {
             .Detect(before->install_path, before->name);
     auto result = s.games.Update(id, [&](model::Game& game) {
       game.candidates = detected.candidates;
-      game.confidence = detected.confidence;
       const bool kept =
           std::ranges::contains(game.candidates, game.exe_path, &model::Candidate::rel_path);
       if (!kept && !game.candidates.empty()) game.exe_path = game.candidates.front().rel_path;

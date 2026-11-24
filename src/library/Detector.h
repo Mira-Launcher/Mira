@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -15,7 +16,9 @@ namespace mira::library {
 // only place that has to know these come from config at all.
 struct DetectorSettings {
   int max_depth = 4;
-  std::vector<std::string> rules = {"deny_patterns", "name_similarity", "depth", "shallowest"};
+  std::vector<std::string> rules = {"deny_patterns", "name_similarity", "engine",
+                                    "helpers",       "depth",           "size",
+                                    "build",         "shallowest",      "program_info"};
   double name_match_bonus = 3.0;
   double depth_penalty = 0.5;
   std::vector<std::string> deny_name_patterns;
@@ -55,9 +58,12 @@ DetectorSettings SettingsFromConfig(const config::Config& config);
 // than needing a code change.
 class Detector {
  public:
+  struct ListedFile {
+    std::filesystem::path path;
+    std::int64_t bytes = -1;  // not known
+  };
   struct Result {
     std::vector<model::Candidate> candidates;  // sorted best first
-    double confidence = 0.0;                   // 0..1; see Detector.cpp for how this is derived
   };
 
   explicit Detector(DetectorSettings settings) : settings_(std::move(settings)) {}
@@ -68,8 +74,7 @@ class Detector {
 
   // The programs an archive would leave in its folder, from what it lists (paths in it), by name
   // alone: a Windows program by its extension, a native one as an .sh, AppImage or .x86_64.
-  Result DetectListed(const std::vector<std::filesystem::path>& files,
-                      const std::string& name) const;
+  Result DetectListed(const std::vector<ListedFile>& files, const std::string& name) const;
 
  private:
   DetectorSettings settings_;

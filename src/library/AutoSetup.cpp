@@ -42,7 +42,6 @@ model::Game AutoSetup::CreateGame(const fs::path& install_path, const Detector::
   game.name = strings::CleanGameName(install_path.filename().string());
   game.id = games_.NextId(game.name, install_path.string());
   game.install_path = install_path.string();
-  game.confidence = detected.confidence;
   game.candidates = detected.candidates;
   game.created_at = model::NowSeconds();
   game.updated_at = game.created_at;
@@ -85,7 +84,6 @@ model::Game AutoSetup::CreateAppImageGame(const fs::path& root, const fs::path& 
   game.platform = model::Platform::Native;
   game.status = model::GameStatus::NotSetUp;
   game.setup = model::SetupStep::Confirm;
-  game.confidence = 1.0;
   game.candidates = {{.rel_path = game.exe_path,
                       .kind = model::Platform::Native,
                       .score = 1.0,

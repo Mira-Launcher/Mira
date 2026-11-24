@@ -107,7 +107,6 @@ json ToJson(const Game& game) {
       {"name", game.name},
       {"status", ToString(game.status)},
       {"setup", ToString(game.setup)},
-      {"confidence", game.confidence},
       {"reviewed", game.reviewed},
       {"platform", ToString(game.platform)},
       {"source", game.source},
@@ -159,7 +158,6 @@ Game GameFromJson(const json& document) {
   // An older library's "needs_install" is a step now.
   game.setup = SetupStepFromString(
       document.value("status", "") == "needs_install" ? "install" : document.value("setup", ""));
-  game.confidence = document.value("confidence", 0.0);
   game.reviewed = document.value("reviewed", false);
   game.platform = PlatformFromString(document.value("platform", "unknown"));
   // "scan", not empty: an old games.toml written before this field existed

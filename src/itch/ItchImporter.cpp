@@ -100,7 +100,6 @@ Result<library::ImportSummary> ItchImporter::Import() {
       if (!detected.candidates.empty()) {
         game.exe_path = detected.candidates.front().rel_path;
         game.candidates = detected.candidates;
-        game.confidence = detected.confidence;
       }
     }
     // An HTML upload names no platform, and its page is what runs.

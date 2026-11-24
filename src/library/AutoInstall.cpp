@@ -19,6 +19,7 @@
 #include "desktop/DesktopEntries.h"
 #include "gog/GameInfo.h"
 #include "library/Detector.h"
+#include "library/GameSetup.h"
 #include "library/InstallSize.h"
 #include "library/PeVersion.h"
 #include "library/PrefixNaming.h"
@@ -409,9 +410,10 @@ Result<model::Game> RunInstaller(config::Config& config, const model::Game& game
 
   done.exe_path = exe->rel_path;
   done.candidates = detected.candidates;
-  done.confidence = detected.confidence;
-  done.status = model::GameStatus::NotSetUp;  // the user confirms what was found
-  done.setup = model::SetupStep::Confirm;
+  // The user confirms what was found; a store's game was never a guess.
+  const bool confirm = game.source == "scan" || game.source == "manual";
+  done.setup = confirm ? model::SetupStep::Confirm : model::SetupStep::None;
+  done.status = confirm ? model::GameStatus::NotSetUp : RunnableStatus(done);
   done.last_error.clear();
   return done;
 }
@@ -970,7 +972,6 @@ static Result<model::Game> InstallImpl(config::Config& config, store::GameStore&
       AdoptInstallFolder(stored, done->install_path, done->exe_path, done->data_dir);
       stored.exe_path = done->exe_path;
       stored.candidates = done->candidates;
-      stored.confidence = done->confidence;
       runner::TakeRunner(stored, *done);
       stored.data_dir = done->data_dir;
       stored.status = done->status;

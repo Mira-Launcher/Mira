@@ -42,7 +42,6 @@ TEST_CASE("Detector picks the exe matching the folder name over an installer") {
   REQUIRE(result.candidates.size() == 2);
   CHECK(result.candidates[0].rel_path == "Celeste.exe");
   CHECK(result.candidates[0].chosen);
-  CHECK(result.confidence > 0.5);
 }
 
 TEST_CASE("Detector prefers the shallower, name-matching exe in a nested folder") {
@@ -81,12 +80,11 @@ TEST_CASE("Detector finds a native ELF binary, not an image an archive marked ex
   CHECK(result.candidates[0].kind == model::Platform::Native);
 }
 
-TEST_CASE("Detector returns no candidates and low confidence for an empty folder") {
+TEST_CASE("Detector returns no candidates for an empty folder") {
   const fs::path dir = TempDir("empty-detect");
   const library::Detector detector(DefaultSettings());
   auto result = detector.Detect(dir);
   CHECK(result.candidates.empty());
-  CHECK(result.confidence == doctest::Approx(0.0));
 }
 
 TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting_up") {
@@ -95,7 +93,6 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
 
   library::Detector::Result native_result;
   native_result.candidates.push_back({"Celeste", model::Platform::Native, 4.5, true});
-  native_result.confidence = 0.9;
   const fs::path root = test::TempDir("autosetup-games");
   REQUIRE(env.config.Set("library_roots", nlohmann::json::array({root.string()})).has_value());
   model::Game native_game = auto_setup.CreateGame(root / "Celeste", native_result);
@@ -106,7 +103,6 @@ TEST_CASE("AutoSetup stores a native game as ready and a windows game as setting
 
   library::Detector::Result windows_result;
   windows_result.candidates.push_back({"hollow_knight.exe", model::Platform::Windows, 4.5, true});
-  windows_result.confidence = 0.8;
   model::Game windows_game = auto_setup.CreateGame("/games/Hollow Knight", windows_result);
   CHECK(model::WaitsFor(windows_game, model::SetupStep::Confirm));
   CHECK_FALSE(windows_game.data_dir.empty());
@@ -461,4 +457,62 @@ TEST_CASE("a restored windows game with no prefix is not claimed ready") {
 
   // No runner_ref, no prefix on disk: "ready" would be a lie.
   CHECK(env.games.Find("celeste")->status == model::GameStatus::SettingUp);
+}
+
+TEST_CASE("Detector picks the game over what ships with it") {
+  struct Layout {
+    const char* folder;
+    const char* pick;
+    std::vector<const char*> files;
+  };
+  const std::vector<Layout> layouts = {
+      {"Bloons-TD-6",
+       "BloonsTD6/BloonsTD6.exe",
+       {"BloonsTD6/BloonsTD6_Data/globalgamemanagers", "BloonsTD6/UnityCrashHandler64.exe",
+        "BloonsTD6/Cleaner/Cleaner-BTD6.exe", "BloonsTD6/BloonsTD6.exe"}},
+      {"SUPERHOT",
+       "SUPERHOT.exe",
+       {"SH.exe", "SH_Data/FFMPEGEncoding/ffmpeg.exe", "SUPERHOT.exe", "SUPERHOT_Data/level0"}},
+      {"game-280042",
+       "SUPERHOT/SUPERHOT.exe",
+       {"SUPERHOT/SH.exe", "SUPERHOT/SH_Data/level0", "SUPERHOT/SUPERHOT.exe",
+        "SUPERHOT/SUPERHOT_Data/level0"}},
+      {"assassin-s-creed-2",
+       "AssassinsCreedIIGame.exe",
+       {"UPlayBrowser.exe", "UplayInstaller.exe", "AssassinsCreedIIGame.exe"}},
+      // Nothing like the game's name: the engine's files tell.
+      {"Nine Nights", "nn.exe", {"Config.exe", "nn.exe", "nn.pck", "Nine Nights Server.exe"}},
+      {"Deep Rock Galactic",
+       "FSD.exe",
+       {"FSD.exe", "FSD/Binaries/Win64/FSD-Win64-Shipping.exe", "Engine/Extras/CrashReport.exe",
+        "Engine/Binaries/Win64/EpicWebHelper.exe"}},
+      {"Stray Cats",
+       "Hk/Binaries/Win64/Hk-Win64-Shipping.exe",
+       {"Hk/Binaries/Win64/Hk-Win64-Shipping.exe", "Engine/Binaries/Win64/UnrealCEF.exe"}},
+      {"OurRedString-v15.2.3-pc",
+       "OurRedString.sh",
+       {"OurRedString.exe", "OurRedString.sh", "OurRedString.py", "renpy/common.rpy",
+        "lib/py3-windows-x86_64/pythonw.exe", "lib/py3-windows-x86_64/OurRedString.exe"}},
+      {"Dune Runner",
+       "DuneRunner.sh",
+       {"DuneRunner.exe", "DuneRunner.sh", "DuneRunner.bin.x86_64", "FNA.dll"}},
+      {"The Evil Within 2", "TEW2.exe", {"TEW2.exe", "Launcher.exe", "redist_tool.exe"}},
+      {"Server Simulator", "Server Simulator.exe", {"Server Simulator.exe", "Editor.exe"}},
+      {"Old Game", "bin/x64/game.exe", {"bin/x86/game.exe", "bin/x64/game.exe"}},
+  };
+  const test::TestEnv env("detector-layouts");
+  const library::Detector detector(library::SettingsFromConfig(env.config));
+  int at = 0;
+  for (const Layout& layout : layouts) {
+    const fs::path dir = TempDir("detector-layout-" + std::to_string(at++)) / layout.folder;
+    std::vector<library::Detector::ListedFile> listed;
+    for (const char* file : layout.files) {
+      Touch(dir / file);
+      listed.push_back({file});
+    }
+    CAPTURE(layout.folder);
+    CHECK(detector.Detect(dir).candidates.front().rel_path == layout.pick);
+    // As told from an archive's listing.
+    CHECK(detector.DetectListed(listed, layout.folder).candidates.front().rel_path == layout.pick);
+  }
 }

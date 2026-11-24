@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 12> kMigrations = {
+constexpr std::array<std::string_view, 13> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -183,7 +183,7 @@ ALTER TABLE games ADD COLUMN new_status TEXT NOT NULL DEFAULT 'not_set_up'
 UPDATE games SET new_status = status WHERE status IN ('setting_up', 'ready', 'missing');
 ALTER TABLE games DROP COLUMN status;
 ALTER TABLE games RENAME COLUMN new_status TO status;
-)sql",
+)sql", "ALTER TABLE games DROP COLUMN confidence;",
 };
 
 // The fields a removed game keeps: what the user chose, not what a store or scan finds again.
@@ -254,7 +254,7 @@ std::vector<std::string_view> Columns() {
   std::vector<std::string_view> columns(kTextColumns.begin(), kTextColumns.end());
   columns.insert(columns.end(), kIntColumns.begin(), kIntColumns.end());
   columns.insert(columns.end(), kJsonColumns.begin(), kJsonColumns.end());
-  columns.insert(columns.end(), {"confidence", "reviewed", "last_played_at"});
+  columns.insert(columns.end(), {"reviewed", "last_played_at"});
   return columns;
 }
 
@@ -343,7 +343,6 @@ Result<void> GameStore::ReadAll() {
     for (const std::string_view name : kJsonColumns) {
       document[name] = json::parse(select->Text(column++), nullptr, /*allow_exceptions=*/false);
     }
-    document["confidence"] = select->Real(column++);
     document["reviewed"] = select->Int(column++) != 0;
     if (!select->IsNull(column)) document["last_played_at"] = select->Int(column);
     games_.push_back(model::GameFromJson(document));
@@ -528,7 +527,6 @@ Result<void> GameStore::Write(model::Game& game) {
   for (const std::string_view name : kIntColumns)
     insert->Bind(index++, document[name].get<std::int64_t>());
   for (const std::string_view name : kJsonColumns) insert->Bind(index++, document[name].dump());
-  insert->Bind(index++, game.confidence);
   insert->Bind(index++, std::int64_t{game.reviewed});
   if (game.last_played_at) {
     insert->Bind(index, *game.last_played_at);

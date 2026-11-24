@@ -252,11 +252,11 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     const auto listing = library::ListArchive(archive->path, passwords);
     if (!listing) return SendError(res, 409, listing.error());
     const std::string stem = library::StemWithoutArchiveExtension(archive->path).string();
-    std::vector<std::filesystem::path> files;
+    std::vector<library::Detector::ListedFile> files;
     std::map<std::string, std::uintmax_t> sizes;
     std::uintmax_t bytes = 0;
     for (const library::ArchiveEntry& entry : listing->entries) {
-      files.push_back(entry.path);
+      files.push_back({entry.path, static_cast<std::int64_t>(entry.size)});
       sizes[entry.path.generic_string()] = entry.size;
       bytes += entry.size;
     }
@@ -273,10 +273,11 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     // Named for the one folder it holds when its own name says nothing.
     std::string name = strings::CleanGameName(stem);
     if (strings::IsGenericName(name) && !files.empty()) {
-      const std::filesystem::path top = *files.front().begin();
-      const bool single = std::ranges::all_of(files, [&](const std::filesystem::path& file) {
-        return file.has_parent_path() && *file.begin() == top;
-      });
+      const std::filesystem::path top = *files.front().path.begin();
+      const bool single =
+          std::ranges::all_of(files, [&](const library::Detector::ListedFile& file) {
+            return file.path.has_parent_path() && *file.path.begin() == top;
+          });
       if (single) name = strings::CleanGameName(top.string());
     }
     answer["suggested_name"] = name;

@@ -1677,12 +1677,15 @@ Schema::Schema() {
   s.Section("Detection", "Scoring");
   s.ResetTogether();
 
-  s.Add({.key = "detect.rules",
-         .label = "Detection scoring rules",
-         .type = Type::StringArray,
-         .default_value = json::array({"deny_patterns", "name_similarity", "depth", "shallowest"}),
-         .doc = "The rules that score candidate executables to find the game's main executable, "
-                "applied in order. Remove a rule to turn it off."});
+  s.Add(
+      {.key = "detect.rules",
+       .label = "Detection scoring rules",
+       .type = Type::StringArray,
+       .default_value = json::array({"deny_patterns", "name_similarity", "engine", "helpers",
+                                     "depth", "size", "build", "shallowest", "program_info"}),
+       .doc = "The rules that score candidate executables to find the game's main executable. "
+              "Remove a rule to turn it off.",
+       .old_defaults = {json::array({"deny_patterns", "name_similarity", "depth", "shallowest"})}});
 
   s.Add({.key = "detect.name_match_bonus",
          .label = "Name match bonus",

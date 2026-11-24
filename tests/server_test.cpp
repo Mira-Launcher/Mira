@@ -270,7 +270,6 @@ TEST_CASE("Reviewing a game keeps only its program, and detecting again rebuilds
   model::Game unsure;
   unsure.id = "splodey";
   unsure.name = "Splodey";
-  unsure.confidence = 0.3;
   unsure.exe_path = "Splodey.exe";
   unsure.candidates = {{.rel_path = "Splodey.exe", .score = 4.0, .chosen = true},
                        {.rel_path = "Launcher.exe", .score = 3.0}};
