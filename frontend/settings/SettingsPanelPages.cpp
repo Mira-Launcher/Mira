@@ -412,6 +412,16 @@ void SettingsPanel::BuildInterfacePage() {
   shape_row(control_radius_, "Control rounding", "Corner radius of buttons, fields and dropdowns",
             20, &FrontendPrefs::control_radius);
   AddCardReset(layout, std::move(layout_fields), {});
+  // Library and Layout each hold a preview; flowed, the tall Appearance card would push Library
+  // under it and split the two.
+  page->Place(appearance, 3, 0);
+  page->Place(general, 3, 0);
+  page->Place(library, 3, 1);
+  page->Place(layout, 3, 2);
+  page->Place(appearance, 2, 0);
+  page->Place(general, 2, 0);
+  page->Place(library, 2, 1);
+  page->Place(layout, 2, 1);
   RefreshShapeDefaults();
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this,
           &SettingsPanel::RefreshShapeDefaults);

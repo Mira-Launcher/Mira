@@ -211,10 +211,9 @@ void SettingsNavWidget::SyncToScroll() {
     sticky_title_->setText(in->page->Title());
     sticky_group_->setText(in->group_heading != nullptr ? in->group_heading->text() : QString());
     sticky_group_->setVisible(!sticky_group_->text().isEmpty());
-    // Over the page's own column, at its width.
-    const int left =
-        in->page->mapTo(scroll_->viewport(), QPoint(0, 0)).x() + in->page->ColumnLeft();
-    sticky_->resize(SettingsColumnWidth(in->page->width()), sticky_->sizeHint().height());
+    // Over the page's cards, as wide as they span.
+    const int left = in->page->mapTo(scroll_->viewport(), QPoint(0, 0)).x() + in->page->GridLeft();
+    sticky_->resize(in->page->GridWidth(), sticky_->sizeHint().height());
     int y = 0;
     if (next != nullptr)
       y = std::min(0, next->page->y() - kTitleClearance - value - sticky_->height());

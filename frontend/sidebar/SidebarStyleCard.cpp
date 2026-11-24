@@ -22,6 +22,11 @@
 namespace mira_gui {
 namespace {
 
+// A style tile's size; narrower down to kTileMinWidth in a card that can't fit three at full width.
+constexpr int kTileWidth = 176;
+constexpr int kTileMinWidth = 136;
+constexpr int kTileHeight = 132;
+
 // A tile previewing one style above its name.
 class StyleChoice : public QAbstractButton {
  public:
@@ -34,8 +39,12 @@ class StyleChoice : public QAbstractButton {
     setCursor(Qt::PointingHandCursor);
     setFocusPolicy(Qt::StrongFocus);
     setAccessibleName(option.label);
-    setFixedSize(176, 132);
+    setFixedHeight(kTileHeight);
+    setMinimumWidth(kTileMinWidth);
+    setMaximumWidth(kTileWidth);
   }
+
+  QSize sizeHint() const override { return {kTileWidth, kTileHeight}; }
 
  protected:
   void paintEvent(QPaintEvent*) override {
