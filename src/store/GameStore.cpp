@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 13> kMigrations = {
+constexpr std::array<std::string_view, 14> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -184,6 +184,24 @@ UPDATE games SET new_status = status WHERE status IN ('setting_up', 'ready', 'mi
 ALTER TABLE games DROP COLUMN status;
 ALTER TABLE games RENAME COLUMN new_status TO status;
 )sql", "ALTER TABLE games DROP COLUMN confidence;",
+    R"sql(
+-- Each game's state with the user's own remote (saves::remote).
+CREATE TABLE IF NOT EXISTS remote_sync(
+  game_id TEXT NOT NULL,
+  slot TEXT NOT NULL,
+  remote_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  base TEXT NOT NULL,
+  base_files TEXT NOT NULL CHECK(json_valid(base_files)),
+  local_marker TEXT NOT NULL,
+  state TEXT NOT NULL,
+  pending INTEGER NOT NULL,
+  checked_at INTEGER NOT NULL,
+  synced_at INTEGER NOT NULL,
+  error TEXT NOT NULL,
+  PRIMARY KEY(game_id, slot)
+) STRICT;
+)sql",
 };
 
 // The fields a removed game keeps: what the user chose, not what a store or scan finds again.
@@ -411,6 +429,73 @@ Result<void> GameStore::SetCloudSync(const std::string& id, const CloudSync& sta
       .Bind(6, state.local_marker)
       .Bind(7, state.checked_at)
       .Run();
+}
+
+std::optional<RemoteSync> GameStore::RemoteSyncOf(const std::string& id,
+                                                  const std::string& slot) const {
+  std::lock_guard lock(mutex_);
+  auto select = db_.Prepare(
+      "SELECT remote_id, key, base, base_files, local_marker, state, pending, checked_at, "
+      "synced_at, error FROM remote_sync WHERE game_id = ? AND slot = ?");
+  if (!select) return std::nullopt;
+  select->Bind(1, id).Bind(2, slot);
+  const auto row = select->Step();
+  if (!row || !*row) return std::nullopt;
+  return RemoteSync{.slot = slot,
+                    .remote_id = select->Text(0),
+                    .key = select->Text(1),
+                    .base = select->Text(2),
+                    .base_files = select->Text(3),
+                    .local_marker = select->Text(4),
+                    .state = select->Text(5),
+                    .pending = select->Int(6) != 0,
+                    .checked_at = select->Int(7),
+                    .synced_at = select->Int(8),
+                    .error = select->Text(9)};
+}
+
+Result<void> GameStore::SetRemoteSync(const std::string& id, const RemoteSync& state) {
+  std::lock_guard lock(mutex_);
+  auto upsert = db_.Prepare(
+      "INSERT OR REPLACE INTO remote_sync(game_id, slot, remote_id, key, base, base_files, "
+      "local_marker, state, pending, checked_at, synced_at, error) "
+      "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  if (!upsert) return std::unexpected(upsert.error());
+  return upsert->Bind(1, id)
+      .Bind(2, state.slot)
+      .Bind(3, state.remote_id)
+      .Bind(4, state.key)
+      .Bind(5, state.base)
+      .Bind(6, state.base_files)
+      .Bind(7, state.local_marker)
+      .Bind(8, state.state)
+      .Bind(9, static_cast<std::int64_t>(state.pending))
+      .Bind(10, state.checked_at)
+      .Bind(11, state.synced_at)
+      .Bind(12, state.error)
+      .Run();
+}
+
+std::vector<std::string> GameStore::PendingRemoteSyncs(const std::string& slot) const {
+  std::lock_guard lock(mutex_);
+  std::vector<std::string> ids;
+  auto select = db_.Prepare(
+      "SELECT game_id FROM remote_sync WHERE slot = ? AND pending = 1 ORDER BY game_id");
+  if (!select) return ids;
+  select->Bind(1, slot);
+  while (true) {
+    const auto row = select->Step();
+    if (!row || !*row) break;
+    ids.push_back(select->Text(0));
+  }
+  return ids;
+}
+
+Result<void> GameStore::ForgetRemoteSyncs(const std::string& slot) {
+  std::lock_guard lock(mutex_);
+  auto drop = db_.Prepare("DELETE FROM remote_sync WHERE slot = ?");
+  if (!drop) return std::unexpected(drop.error());
+  return drop->Bind(1, slot).Run();
 }
 
 std::string GameStore::Secret(const std::string& key) const {
@@ -1119,7 +1204,8 @@ Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::st
         continue;
       }
       for (const char* sql :
-           {"DELETE FROM removed_games WHERE id = ?", "DELETE FROM cloud_sync WHERE game_id = ?"}) {
+           {"DELETE FROM removed_games WHERE id = ?", "DELETE FROM cloud_sync WHERE game_id = ?",
+            "DELETE FROM remote_sync WHERE game_id = ?"}) {
         auto drop = db_.Prepare(sql);
         if (!drop) return std::unexpected(drop.error());
         if (auto done = drop->Bind(1, game.id).Run(); !done) return done;
