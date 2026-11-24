@@ -1,0 +1,283 @@
+#include "saves/remote/RemoteSync.h"
+
+#include <algorithm>
+#include <cstdlib>
+#include <format>
+
+#include "config/Resolver.h"
+#include "core/Log.h"
+#include "core/Strings.h"
+#include "saves/Manifest.h"
+#include "saves/Saves.h"
+#include "saves/remote/Apply.h"
+#include "saves/remote/RemoteConfig.h"
+#include "saves/remote/Revisions.h"
+
+namespace mira::saves::remote {
+namespace {
+using nlohmann::json;
+namespace fs = std::filesystem;
+
+constexpr std::size_t kKeep = 5;
+
+// Copies of the local files in `folder`/files, with their checksums as copied.
+Result<std::vector<RevisionFile>> Stage(const std::vector<SaveFile>& files,
+                                        const fs::path& folder) {
+  std::vector<RevisionFile> out;
+  std::vector<fs::path> copies;
+  for (const SaveFile& file : files) {
+    const fs::path copy = folder / "files" / file.root / file.path;
+    std::error_code ec;
+    fs::create_directories(copy.parent_path(), ec);
+    if (!ec) fs::copy_file(file.absolute, copy, ec);
+    const auto bytes = ec ? 0 : fs::file_size(copy, ec);
+    if (ec)
+      return Err("saves_failed",
+                 std::format("Couldn't copy {}: {}", file.absolute.string(), ec.message()));
+    out.push_back({.root = file.root,
+                   .path = file.path,
+                   .bytes = bytes,
+                   .mtime_ns = file.mtime_ns,
+                   .sha256 = {}});
+    copies.push_back(copy);
+  }
+  const auto sums = Sha256(copies);
+  if (!sums) return std::unexpected(sums.error());
+  for (std::size_t i = 0; i < out.size(); ++i) out[i].sha256 = (*sums)[i];
+  return out;
+}
+
+// An empty folder for one sync, removed at its end unless an apply's journal stands in it.
+Result<void> EmptyFolder(const fs::path& folder) {
+  std::error_code ec;
+  fs::remove_all(folder, ec);
+  fs::create_directories(folder, ec);
+  if (ec) return Err("saves_failed", std::format("{}: {}", folder.string(), ec.message()));
+  return {};
+}
+
+std::vector<RevisionFile> FilesOf(const std::string& text) {
+  const json files = json::parse(text, nullptr, false);
+  if (!files.is_array() || files.empty()) return {};
+  const json doc = {{"format", 1}, {"id", "base"}, {"files", files}};
+  const auto revision = ParseManifest(doc.dump(), "base");
+  return revision ? revision->files : std::vector<RevisionFile>();
+}
+
+}  // namespace
+
+std::string KeyFor(const model::Game& game, const std::string& entry_name) {
+  // A folder's name on every remote, so short, plain and the same on every computer.
+  const auto key = [](std::string_view kind, std::string_view text) {
+    const std::string slug = strings::Slugify(text);
+    if (slug.empty()) return std::string();
+    return std::format(
+        "{}-{}", kind,
+        slug.size() <= 80 ? slug : slug.substr(0, 60) + "-" + strings::StableHash(text));
+  };
+  if (game.runner_ref.starts_with("steam:")) return key("steam", game.runner_ref.substr(6));
+  for (const std::string_view store : {"gog", "epic", "amazon", "itch"})
+    if (game.source == store && !game.source_ref.empty()) {
+      // Ids may differ only in case, which slugs and some remotes don't keep.
+      return std::format("{}-{}", key(store, game.source_ref),
+                         strings::StableHash(game.source_ref));
+    }
+  if (!entry_name.empty()) return key("save", entry_name);
+  return key("name", Normalize(game.name));
+}
+
+Result<json> RunRemote(const config::Config& config, const store::MetadataStore& cache,
+                       store::GameStore& games, const model::Game& game, const Device& device,
+                       CloudAction action, const std::function<Result<void>()>& before_download) {
+  const auto info = FindRemote(config, "primary");
+  if (!info) return Err("remote_none", "No remote is connected.");
+  const Remote remote = RemoteFor(config, *info);
+
+  Survey survey = SurveyFor(config, cache, game);
+  store::RemoteSync row =
+      games.RemoteSyncOf(game.id, info->slot).value_or(store::RemoteSync{.slot = info->slot});
+  if (row.remote_id != info->id)
+    row = {.slot = info->slot, .remote_id = info->id, .key = row.key, .pending = row.pending};
+  if (row.key.empty())
+    row.key = KeyFor(game, survey.match ? survey.match->entry.name : std::string());
+  if (row.key.empty())
+    return Err("remote_unsyncable", std::format("{} has no name to sync under.", game.name));
+
+  const auto store_row = [&] {
+    row.checked_at = model::NowSeconds();
+    if (auto stored = games.SetRemoteSync(game.id, row); !stored)
+      log::Warn("couldn't keep {}'s sync state: {}", game.id, stored.error().message);
+  };
+  const auto failed = [&](const Error& error) {
+    row.error = error.code;
+    store_row();
+    return std::unexpected(error);
+  };
+
+  // A download cut short comes first: until it's finished the files here are neither side's.
+  const auto finished = FinishApply(config, game, survey, before_download);
+  if (!finished) return failed(finished.error());
+  if (!finished->empty()) survey = SurveyFor(config, cache, game);
+
+  const auto listed = ListRevisions(config, remote, row.key);
+  if (!listed) return failed(listed.error());
+  const std::vector<Revision> leaves = Leaves(*listed);
+  std::vector<SaveFile> local = LocalFiles(survey);
+  const std::string marker = LocalMarker(local);
+
+  const fs::path upload = StagingFolder(config, game).parent_path() / ".remote-upload";
+  const struct Cleanup {
+    const fs::path& folder;
+    ~Cleanup() {
+      std::error_code ec;
+      fs::remove_all(folder, ec);
+    }
+  } cleanup{upload};
+  std::optional<std::vector<RevisionFile>> staged;
+  const auto stage = [&]() -> Result<void> {
+    if (staged) return {};
+    std::uintmax_t total = 0;
+    for (const SaveFile& file : local) total += file.bytes;
+    if (total >
+        static_cast<std::uintmax_t>(config::Resolver(config, game.overrides).GetInt("saves.max_mb"))
+            << 20)
+      return Err("saves_too_large",
+                 std::format("{}'s saves are bigger than a backup may be.", game.name),
+                 "Raise the size limit for this game's backups if all of it is saves.",
+                 Fix::Game(game.id, "saves"));
+    if (auto made = EmptyFolder(upload); !made) return made;
+    auto files = Stage(local, upload);
+    if (!files) return std::unexpected(files.error());
+    staged = std::move(*files);
+    return {};
+  };
+
+  if (!finished->empty()) {
+    if (const auto applied = std::ranges::find(*listed, *finished, &Revision::id);
+        applied != listed->end()) {
+      row.base = applied->id;
+      row.base_files = ManifestJson(*applied)["files"].dump();
+      row.local_marker = marker;
+    }
+  }
+
+  // Which sides changed since they were last in sync.
+  const bool had_base = !row.base.empty();
+  const bool single = leaves.size() == 1;
+  bool local_changed = had_base ? marker != row.local_marker : !local.empty();
+  bool remote_changed =
+      had_base ? !leaves.empty() && (!single || leaves.front().id != row.base) : !leaves.empty();
+  // All the saves gone is more likely a prefix made anew than every save deleted.
+  const bool lost = had_base && local.empty() && row.base_files != "[]";
+  if (local_changed && !local.empty()) {
+    if (auto ready = stage(); !ready) return failed(ready.error());
+    if (had_base && SameFiles(*staged, FilesOf(row.base_files))) {
+      local_changed = false;
+      row.local_marker = marker;
+    }
+  }
+  std::string state(kSynced);
+  bool same = false;
+  if (leaves.empty()) {
+    // Never synced, or the remote was emptied: what's here is all there is.
+    state = local.empty() ? kSynced : kLocalNewer;
+  } else if (lost || leaves.size() > 1) {
+    state = kConflict;
+  } else if (local_changed && remote_changed) {
+    same = staged && SameFiles(*staged, leaves.front().files);
+    state = same ? kSynced : kConflict;
+  } else if (remote_changed) {
+    // A game found by name alone may not be the one the remote's saves are of.
+    state = !had_base && row.key.starts_with("name-") ? kConflict : kCloudNewer;
+  } else if (local_changed) {
+    state = kLocalNewer;
+  }
+
+  json answer = json::object();
+  if (!leaves.empty())
+    answer["other"] = {{"device", leaves.front().device_name},
+                       {"at", leaves.front().taken_at},
+                       {"files", leaves.front().files.size()},
+                       {"bytes", leaves.front().Bytes()}};
+  const auto in_sync = [&](const Revision& revision, const std::string& now) {
+    row.base = revision.id;
+    row.base_files = ManifestJson(revision)["files"].dump();
+    row.local_marker = now;
+    row.synced_at = model::NowSeconds();
+    row.pending = false;
+    row.error.clear();
+    state = kSynced;
+  };
+  if (same) in_sync(leaves.front(), marker);
+  row.state = state;
+  if (state == kSynced) {
+    row.pending = false;
+    row.error.clear();
+  }
+  store_row();
+  if (action == CloudAction::Sync && state == kConflict)
+    return Err("saves_conflict",
+               std::format("{}'s saves changed both here and on {} since they were last in sync.",
+                           game.name, info->name),
+               "Choose which to keep. The other is backed up first, so either choice can be "
+               "undone.",
+               Fix::Game(game.id, "saves"));
+
+  const bool download = !leaves.empty() && (action == CloudAction::Download ||
+                                            (action == CloudAction::Sync && state == kCloudNewer));
+  bool send = !local.empty() && (action == CloudAction::Upload ||
+                                 (action == CloudAction::Sync && state == kLocalNewer));
+  if (download) {
+    const Revision& newest = leaves.front();
+    if (newest.Bytes() >
+        static_cast<std::uintmax_t>(config::Resolver(config, game.overrides).GetInt("saves.max_mb"))
+            << 20)
+      return failed(
+          Error{.code = "saves_too_large",
+                .message = std::format("{}'s saves on {} are bigger than a backup may be.",
+                                       game.name, info->name),
+                .hint = {}});
+    const fs::path staging = StagingFolder(config, game);
+    if (auto made = EmptyFolder(staging); !made) return failed(made.error());
+    if (auto got = DownloadRevision(config, remote, row.key, newest, staging); !got)
+      return failed(got.error());
+    if (auto applied = Apply(config, game, survey, newest, before_download); !applied)
+      return failed(applied.error());
+    survey = SurveyFor(config, cache, game);
+    local = LocalFiles(survey);
+    in_sync(newest, LocalMarker(local));
+    answer["moved"] = "download";
+    // Other leaves are joined to the one chosen, or they'd conflict again.
+    send = leaves.size() > 1 && !local.empty();
+    staged.reset();
+  }
+  if (send) {
+    const std::string now = LocalMarker(local);
+    row.pending = true;
+    row.state = kLocalNewer;
+    store_row();
+    if (auto ready = stage(); !ready) return failed(ready.error());
+    Revision revision{.id = NewRevisionId(model::NowSeconds()),
+                      .device_id = device.id,
+                      .device_name = device.name,
+                      .game_name = game.name,
+                      .taken_at = model::NowSeconds(),
+                      .files = *staged};
+    for (const Revision& leaf : leaves) revision.parents.push_back(leaf.id);
+    if (auto sent = UploadRevision(config, remote, row.key, revision, upload); !sent)
+      return failed(sent.error());
+    in_sync(revision, now);
+    if (!download) answer["moved"] = "upload";
+    std::vector<Revision> all = *listed;
+    all.push_back(revision);
+    for (const std::string& id : Prunable(all, kKeep))
+      if (auto gone = DeleteRevision(config, remote, row.key, id); !gone) break;
+  }
+  row.state = state;
+  store_row();
+  answer["state"] = state;
+  answer["revision"] = row.base;
+  return answer;
+}
+
+}  // namespace mira::saves::remote

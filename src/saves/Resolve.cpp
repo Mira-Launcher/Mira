@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <set>
 
+#include "core/Paths.h"
 #include "core/Strings.h"
 #include "epic/Legendary.h"
 #include "library/GameIdentity.h"
@@ -483,6 +484,60 @@ Location Find(std::string_view location, const Roots& roots) {
       found.skipped.push_back(logical->first + ":" + logical->second);
   }
   return found;
+}
+
+namespace {
+
+// How many of `names` the pattern `parts` match from the front, or 0 when they don't; the fewest.
+std::size_t MatchedDepth(const std::vector<std::string>& parts, std::size_t part,
+                         const std::vector<std::string>& names, std::size_t name, bool fold) {
+  if (part == parts.size()) return name;
+  if (parts[part] == "**") {
+    for (std::size_t at = name; at <= names.size(); ++at)
+      if (const std::size_t depth = MatchedDepth(parts, part + 1, names, at, fold)) return depth;
+    return 0;
+  }
+  if (name == names.size() || !MatchComponent(parts[part], names[name], fold)) return 0;
+  return MatchedDepth(parts, part + 1, names, name + 1, fold);
+}
+
+}  // namespace
+
+fs::path CoveredBy(std::string_view location, const Roots& roots, const fs::path& path) {
+  const std::vector<std::string> names = Components(path.generic_string());
+  for (const std::string& name : names)
+    if (name == ".." || strings::ToLower(name) == "dosdevices") return {};
+  for (const std::string& pattern : Expand(location, roots)) {
+    if (TooBroad(pattern, roots)) continue;
+    const std::size_t depth = MatchedDepth(Components(pattern), 0, names, 0, roots.windows);
+    if (depth == 0) continue;
+    fs::path covered = "/";
+    for (std::size_t i = 0; i < depth; ++i) covered /= names[i];
+    return covered;
+  }
+  return {};
+}
+
+fs::path Folded(const fs::path& path) {
+  fs::path out = "/";
+  bool found = true;
+  for (const fs::path& part : path.relative_path()) {
+    std::error_code ec;
+    if (found && !fs::exists(out / part, ec)) {
+      found = false;
+      const std::string lower = strings::ToLower(part.string());
+      for (const fs::path& entry : paths::ListDir(out)) {
+        if (strings::ToLower(entry.filename().string()) == lower) {
+          out = entry;
+          found = true;
+          break;
+        }
+      }
+      if (found) continue;
+    }
+    out /= part;
+  }
+  return out;
 }
 
 std::vector<std::string> FileLocations(const json& entry, const Roots& roots) {

@@ -5,8 +5,11 @@
 
 #include "config/Config.h"
 #include "core/Files.h"
+#include "saves/Backups.h"
+#include "saves/remote/Apply.h"
 #include "saves/remote/Rclone.h"
 #include "saves/remote/RemoteConfig.h"
+#include "saves/remote/RemoteSync.h"
 #include "saves/remote/Revisions.h"
 #include "support/TestEnv.h"
 
@@ -60,7 +63,7 @@ void UseFakeRclone(config::Config& config, const fs::path& dir) {
 echo "$* [$RCLONE_CONFIG]" >> '{0}/calls'
 case "$*" in *" obscure -") pw="$(cat)"; echo "obscured_${{#pw}}"; exit 0 ;; esac
 [ -e '{0}/offline' ] && exit 5
-at() {{ case "$1" in box:*) echo "{0}/box/${{1#box:}}" ;; *) echo "$1" ;; esac; }}
+at() {{ case "$1" in box:*|primary:*) echo "{0}/box/${{1#*:}}" ;; *) echo "$1" ;; esac; }}
 case "$*" in *--files-from-raw*--max-size*) exit 1 ;; esac  # as rclone does
 from="$(at "$2")"
 case "$1" in
@@ -297,4 +300,211 @@ TEST_CASE(
   CHECK(saves::remote::ForgetRemote(config, "primary"));
   REQUIRE(saves::remote::ForgetRemote(config, "mirror"));
   CHECK(files::ReadFile(conf) == "[other]\nx = 1\n");
+}
+
+namespace {
+
+// One computer with a native GOG game saving in <install>/saves, synced with `shared`'s remote.
+struct Computer {
+  Computer(std::string_view name, const fs::path& shared) : env(name), saves(env.dir / "g/saves") {
+    UseFakeRclone(env.config, shared);
+    REQUIRE(saves::remote::SaveRemote(env.config, {.slot = "primary",
+                                                   .provider = "webdav",
+                                                   .name = "nas",
+                                                   .folder = "s",
+                                                   .values = {{"url", "https://nas.example"}}}));
+    game.id = "gog-1";
+    game.name = "Game";
+    game.source = "gog";
+    game.source_ref = "1";
+    game.platform = model::Platform::Native;
+    game.install_path = (env.dir / "g").string();
+    game.overrides = {{"saves.extra_paths", {"<base>/saves"}}};
+    fs::create_directories(env.dir / "g");
+    device = {.id = std::string(name), .name = std::string(name)};
+  }
+
+  Result<nlohmann::json> Run(saves::CloudAction action = saves::CloudAction::Sync) {
+    return saves::remote::RunRemote(env.config, env.games.Metadata(), env.games, game, device,
+                                    action, [this]() -> Result<void> {
+                                      ++snapshots;
+                                      if (refuse) return Err("saves_disk_full", "no room");
+                                      return {};
+                                    });
+  }
+  std::string Moved(saves::CloudAction action = saves::CloudAction::Sync) {
+    const auto run = Run(action);
+    if (!run) return run.error().code;
+    return run->value("moved", run->value("state", std::string()));
+  }
+  void Write(const char* file, std::string_view text) { test::Touch(saves / file, text); }
+  std::string Read(const char* file) { return files::ReadFile(saves / file).value_or("(none)"); }
+
+  test::TestEnv env;
+  fs::path saves;
+  model::Game game;
+  saves::remote::Device device;
+  int snapshots = 0;
+  bool refuse = false;
+};
+
+}  // namespace
+
+TEST_CASE("saves follow the player between computers, deletions too, and never from an empty one") {
+  const fs::path shared = test::TempDir("remote-sync-shared");
+  Computer a("remote-sync-a", shared);
+  Computer b("remote-sync-b", shared);
+  CHECK(a.Moved() == "synced");
+  a.Write("one.sav", "1");
+  a.Write("two.sav", "2");
+  CHECK(a.Moved() == "upload");
+  CHECK(a.Moved() == "synced");
+  CHECK(b.Moved() == "download");
+  CHECK(b.snapshots == 1);
+  CHECK(b.Read("one.sav") == "1");
+  CHECK(b.Moved() == "synced");
+
+  fs::remove(b.saves / "two.sav");
+  b.Write("one.sav", "changed");
+  CHECK(b.Moved() == "upload");
+  CHECK(a.Moved() == "download");
+  CHECK(a.Read("one.sav") == "changed");
+  CHECK(a.Read("two.sav") == "(none)");
+
+  // Only the time changed: nothing to send.
+  fs::last_write_time(a.saves / "one.sav", fs::file_time_type::clock::now());
+  CHECK(a.Moved() == "synced");
+
+  // A prefix made anew: asked about, and neither side loses its saves.
+  fs::remove_all(a.saves);
+  CHECK(a.Moved() == "saves_conflict");
+  CHECK(b.Moved() == "synced");
+  CHECK(a.Moved(saves::CloudAction::Upload) == "conflict");
+  CHECK(a.Moved(saves::CloudAction::Download) == "download");
+  CHECK(a.Read("one.sav") == "changed");
+
+  // The remote emptied: what's here goes up again.
+  fs::remove_all(shared / "box");
+  CHECK(a.Moved() == "upload");
+  CHECK(a.Read("one.sav") == "changed");
+}
+
+TEST_CASE("saves changed on both computers wait for a choice, and either choice settles it") {
+  const fs::path shared = test::TempDir("remote-conflict-shared");
+  Computer a("remote-conflict-a", shared);
+  Computer b("remote-conflict-b", shared);
+  a.Write("s.sav", "base");
+  CHECK(a.Moved() == "upload");
+  CHECK(b.Moved() == "download");
+  a.Write("s.sav", "from a");
+  b.Write("s.sav", "from b!");
+  CHECK(a.Moved() == "upload");
+  CHECK(b.Moved() == "saves_conflict");
+  CHECK(b.Read("s.sav") == "from b!");
+  b.refuse = true;
+  CHECK(b.Moved(saves::CloudAction::Download) == "saves_disk_full");
+  CHECK(b.Read("s.sav") == "from b!");
+  b.refuse = false;
+  CHECK(b.Moved(saves::CloudAction::Upload) == "upload");
+  CHECK(a.Moved() == "download");
+  CHECK(a.Read("s.sav") == "from b!");
+
+  // Two uploads at once: two leaves, joined by whichever is chosen.
+  const std::string key = saves::remote::KeyFor(a.game, "");
+  const auto row = a.env.games.RemoteSyncOf("gog-1", "primary");
+  REQUIRE(row);
+  const auto info = saves::remote::FindRemote(a.env.config, "primary");
+  const saves::remote::Remote remote = saves::remote::RemoteFor(a.env.config, *info);
+  a.Write("s.sav", "third");
+  CHECK(a.Moved() == "upload");
+  const fs::path staged = shared / "fork";
+  test::Touch(staged / "files/install/saves/s.sav", "fork");
+  const Revision fork{
+      .id = "20990101T000000Z-fork",
+      .parents = {row->base},
+      .device_name = "other",
+      .taken_at = 4'000'000'000,
+      .files = {{"install", "saves/s.sav", 4, 1,
+                 (*saves::remote::Sha256({staged / "files/install/saves/s.sav"}))[0]}}};
+  REQUIRE(saves::remote::UploadRevision(a.env.config, remote, key, fork, staged));
+  CHECK(a.Moved() == "saves_conflict");
+  CHECK(a.Moved(saves::CloudAction::Download) == "download");
+  CHECK(a.Read("s.sav") == "fork");
+  CHECK(a.Moved() == "synced");
+  CHECK(b.Moved() == "download");
+  CHECK(b.Read("s.sav") == "fork");
+}
+
+TEST_CASE("an upload waits while the remote is offline, and a hostile revision changes nothing") {
+  const fs::path shared = test::TempDir("remote-hostile-shared");
+  Computer a("remote-hostile-a", shared);
+  a.Write("s.sav", "mine");
+  CHECK(a.Moved() == "upload");
+  a.Write("s.sav", "mine too");
+  test::Touch(shared / "offline");
+  CHECK(a.Moved() == "remote_offline");
+  fs::remove(shared / "offline");
+  CHECK(a.Moved() == "upload");
+
+  const std::string key = saves::remote::KeyFor(a.game, "");
+  const auto info = saves::remote::FindRemote(a.env.config, "primary");
+  const saves::remote::Remote remote = saves::remote::RemoteFor(a.env.config, *info);
+  const auto plant = [&](const char* root, const char* path, const std::string& id) {
+    const fs::path staged = shared / id;
+    test::Touch(staged / "files" / root / path, "evil");
+    const std::string base = a.env.games.RemoteSyncOf("gog-1", "primary")->base;
+    const Revision evil{.id = id,
+                        .parents = {base},
+                        .taken_at = 1,
+                        .files = {{root, path, 4, 1,
+                                   (*saves::remote::Sha256({staged / "files" / root / path}))[0]}}};
+    REQUIRE(saves::remote::UploadRevision(a.env.config, remote, key, evil, staged));
+  };
+  plant("home", ".bashrc", "evil-home");
+  CHECK(a.Moved() == "remote_unsafe");
+  REQUIRE(saves::remote::DeleteRevision(a.env.config, remote, key, "evil-home"));
+  plant("install", "game.sh", "evil-install");
+  CHECK(a.Moved() == "remote_unsafe");
+  REQUIRE(saves::remote::DeleteRevision(a.env.config, remote, key, "evil-install"));
+  plant("prefix_user", "x.sav", "evil-prefix");
+  CHECK(a.Moved() == "saves_unplaceable");
+  REQUIRE(saves::remote::DeleteRevision(a.env.config, remote, key, "evil-prefix"));
+  fs::create_directories(a.env.dir / "outside");
+  fs::create_directory_symlink(a.env.dir / "outside", a.saves / "link");
+  plant("install", "saves/link/x.sav", "evil-link");
+  CHECK(a.Moved() == "remote_unsafe");
+  CHECK_FALSE(fs::exists(a.env.dir / "outside/x.sav"));
+  CHECK(a.snapshots == 0);
+  CHECK(a.Read("s.sav") == "mine too");
+}
+
+TEST_CASE("a download cut short is finished before anything else") {
+  const fs::path shared = test::TempDir("remote-cut-shared");
+  Computer a("remote-cut-a", shared);
+  Computer b("remote-cut-b", shared);
+  a.Write("one.sav", "1");
+  a.Write("two.sav", "2");
+  CHECK(a.Moved() == "upload");
+  CHECK(b.Moved() == "download");
+  a.Write("one.sav", "new 1");
+  a.Write("two.sav", "new 2");
+  CHECK(a.Moved() == "upload");
+
+  // As a crash after the first file leaves it.
+  const auto info = saves::remote::FindRemote(b.env.config, "primary");
+  const saves::remote::Remote remote = saves::remote::RemoteFor(b.env.config, *info);
+  const std::string key = saves::remote::KeyFor(b.game, "");
+  const auto leaves =
+      saves::remote::Leaves(*saves::remote::ListRevisions(b.env.config, remote, key));
+  REQUIRE(leaves.size() == 1);
+  const fs::path staging = saves::remote::StagingFolder(b.env.config, b.game);
+  fs::create_directories(staging);
+  REQUIRE(saves::remote::DownloadRevision(b.env.config, remote, key, leaves[0], staging));
+  test::Touch(staging / "applying.json", saves::remote::ManifestJson(leaves[0]).dump());
+  b.Write("one.sav", "new 1");
+
+  CHECK(b.Moved() == "synced");
+  CHECK(b.snapshots == 2);
+  CHECK(b.Read("two.sav") == "new 2");
+  CHECK_FALSE(fs::exists(staging));
 }
