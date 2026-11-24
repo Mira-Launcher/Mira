@@ -233,6 +233,10 @@ void Card::SetProminentTitle() {
   header_layout_->setContentsMargins(kRowPaddingX + 2, 16, 10, 6);
 }
 
+void Card::SetOverArt(bool over_art) {
+  theme::SetStyleProperty(this, "over_art", over_art ? "true" : "false");
+}
+
 void Card::SetResettable(bool resettable) {
   if (reset_ == nullptr) {
     reset_ = new QToolButton(header_);

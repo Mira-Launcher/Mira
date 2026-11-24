@@ -28,6 +28,9 @@ class SettingRow : public QWidget {
   // A control that takes all the width the label leaves, e.g. a line of its own text, placed
   // right after the label.
   void AddWideControl(QWidget* control);
+  // On a line of its own under the label, starting where the label does: a control too wide to
+  // sit beside it, e.g. a path field with its buttons.
+  void AddControlBelow(QWidget* control);
   // Full width under the label, e.g. a folder list.
   void SetBelow(QWidget* widget);
   // Under the row from one edge of its card to the other, e.g. a list's items as rows of their own.
@@ -62,6 +65,10 @@ class SettingRow : public QWidget {
   bool eventFilter(QObject* watched, QEvent* event) override;
 
  private:
+  // Where the label starts inside the row's line.
+  int LabelLeft() const;
+  // A line under the label holding `widget`, `left` px in from the line's start, `gap` px below it.
+  QHBoxLayout* AddLineBelow(QWidget* widget, int left, int gap, int stretch);
   void ShowRevert();
 
   SettingRow* included_in_ = nullptr;
@@ -120,7 +127,7 @@ class ExpanderRow : public QWidget {
   QList<QWidget*> rows_;
 };
 
-// `field` stretched to fill kFieldColumnWidth beside `buttons`.
+// `field` stretched beside `buttons`, for a row's AddControlBelow.
 QWidget* FieldWithButtons(QWidget* field, const std::vector<QWidget*>& buttons);
 
 }  // namespace mira_gui

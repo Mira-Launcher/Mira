@@ -151,6 +151,8 @@ A theme is a TOML file of tokens. `themes/base.qss` is the only stylesheet, and 
 
 File and folder pickers are the desktop's own, through xdg-desktop-portal: unless `QT_QPA_PLATFORMTHEME` is set, `main.cpp` starts Qt with its portal platform theme (`xdgdesktopportal`, bundled in the AppImage next to the GTK one), which only takes over the file dialog and keeps the desktop's usual platform theme for the palette and fonts. It's unset again once the app starts, so mirad and games don't inherit it. Without a running portal Qt falls back to that theme's picker.
 
+A card over a game's art (the game card's) is the surface color at the theme's `art_card_alpha` (255 makes it solid), as the dim behind a modal card is `modal_scrim_alpha`.
+
 `theme::Overrides` applies tile spacing, grid padding and corner radii from `frontend.toml` on top of any theme. A key left out of the file uses the theme's value.
 
 Widgets that paint by hand read tokens directly and repaint on `theme::Notifier::Changed`: `library/GameTileDelegate`, `library/CoverArt` and `game/HeroBackdrop`.
@@ -186,12 +188,12 @@ Each kind of thing the GUI shows more than once is one component with one API an
 
 | Kind | Components |
 |---|---|
-| Cards | `Card` (a titled group of rows, foldable, scrollable), `SheetCard` (a card that stands alone: heading, close kept last, back arrow, error line, button row), `SettingRow` and `ExpanderRow`, `DividedRows`, `Fold`, `SettingsPage`, `ChangeBar`, `PageHeader`, `ListRow` (a divided row of a popover's list) |
+| Cards | `Card` (a titled group of rows, foldable, scrollable, translucent over a game's art), `SheetCard` (a card that stands alone: heading, close kept last, back arrow, error line, button row), `SettingRow` and `ExpanderRow`, `DividedRows`, `Fold`, `SettingsPage`, `ChangeBar`, `PageHeader`, `ListRow` (a divided row of a popover's list) |
 | Text | `Text` (`TextStyle` and `SetTextStyle`, `Anchor` for a link in text), `Labels` (`MakeLabel`, `ElidedLabel`, dividers), `Format` (counts, sizes, paths), `Dot` and `StatusLine` (a state with its dot), `Badge` |
 | Buttons | `Button` (by kind), `IconButton`, `NavRow` (the sidebar's and Settings' rows), `Chip` and `ChipGroup`, `Segmented`, `Switch`, `LaidOutButton`, `TabRow` |
 | Fields | `SearchField` (and `AddClearButton`), `FlatCombo`, `PathField`, `CopyField`, `ListEdit`, `ShortcutEdit`; a number box is a `QSpinBox` at `kNumberWidth` |
 | Popups and windows | `PopupDialog`, `Popover` (placed by `popup::PlaceBelow`, again when it resizes while open), `PopupCard`, `HoverDwell`, `ToolTip`, `WindowCards`, `ModalOverlay` (dimmed by the theme's `modal_scrim_alpha`), `TitleBar` and `WindowButtons` (`WindowChrome`), `FramelessRoot` |
-| Layout and input | `Metrics` (`kControlHeight`, `kRowPaddingX`, `kLabelInset`, the field and column widths), `Scrolling` (`SetUpScrolling`, `SettleLayout`, `SeeThrough`), `OverlayScrollBar`, `FlowLayout`, `TileGridLayout`, `TileFit`, `TileView`, `FocusRing`, `SpatialNav`, `ProgressRail` |
+| Layout and input | `Metrics` (`kControlHeight`, `kRowPaddingX`, `kLabelInset`, the field width, `kCardColumn` and `ColumnsWidth`), `ColumnGrid` (cards in fixed-width columns, each at its own height, starting at the left of the widest grid that fits: flowed down one column and on into the next, or placed by the page per column count), `SectionNav` (buttons that glide a scroll to their section and follow it), `Scrolling` (`SetUpScrolling`, `SettleLayout`, `SeeThrough`), `OverlayScrollBar`, `FlowLayout`, `TileGridLayout`, `TileFit`, `TileView`, `FocusRing`, `SpatialNav`, `ProgressRail` |
 | Painting | `paint/Pill` and `paint/Rail`, shared with big screen |
 
 Big screen draws its own controls for a TV and a controller and shares only `components/paint/` with the desktop UI.

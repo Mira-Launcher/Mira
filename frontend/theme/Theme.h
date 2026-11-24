@@ -48,6 +48,9 @@ struct Tokens {
   // How dark the dim behind a modal card is.
   int modal_scrim_alpha = 150;
 
+  // How solid a card over a game's art is (the game card's); 255 hides the art behind it.
+  int art_card_alpha = 189;
+
   int radius_panel = 8;
   int radius_control = 6;
   int radius_tile = 6;

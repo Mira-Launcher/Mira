@@ -7,6 +7,7 @@
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFrame>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
@@ -106,7 +107,19 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
       segments->setAccessibleName(QString::fromStdString(label));
       for (size_t i = 0; i < entry.one_of.size(); ++i)
         segments->AddOption(QString::fromStdString(entry.one_of[i]), option_label(i));
-      row->AddControl(segments);
+      // Long options get the row's width under the label rather than squeezing it.
+      segments->ensurePolished();
+      if (segments->sizeHint().width() > kFieldColumnWidth) {
+        auto* line = new QHBoxLayout();
+        line->setContentsMargins(0, 0, 0, 0);
+        auto* holder = new QWidget(row);
+        holder->setLayout(line);
+        line->addWidget(segments);
+        line->addStretch(1);
+        row->AddControlBelow(holder);
+      } else {
+        row->AddControl(segments);
+      }
     } else {
       combo = new FlatCombo(row);
       for (size_t i = 0; i < entry.one_of.size(); ++i)
@@ -197,7 +210,7 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
       line->setFixedWidth(kFieldColumnWidth);
       row->AddControl(line);
     } else {
-      row->AddControl(FieldWithButtons(line, buttons));
+      row->AddControlBelow(FieldWithButtons(line, buttons));
     }
   }
   return row;

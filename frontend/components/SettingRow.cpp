@@ -46,7 +46,7 @@ SettingRow::SettingRow(const QString& label, const QString& doc, QWidget* parent
   line_->addWidget(dot_, 0, Qt::AlignVCenter);
   line_->addSpacing(4);
 
-  label_ = new QLabel(label, this);
+  label_ = new WrapWhenNarrowLabel(label, this);  // a long label in a narrow card takes two lines
   label_->setMinimumHeight(kControlHeight);
   line_->addWidget(label_);
   if (!doc.isEmpty()) {
@@ -126,13 +126,30 @@ void SettingRow::AddAfterLabel(QWidget* widget) {
   line_->insertWidget(label_end_++, widget, 0, Qt::AlignVCenter);
 }
 
-void SettingRow::SetBelow(QWidget* widget) {
-  auto* indent = new QHBoxLayout();
+namespace {
+constexpr const char* kControlLine = "control_below";
+}  // namespace
+
+int SettingRow::LabelLeft() const {
+  return dot_->width() + 4 + line_->spacing();  // the dot and its gaps
+}
+
+QHBoxLayout* SettingRow::AddLineBelow(QWidget* widget, int left, int gap, int stretch) {
+  auto* below = new QHBoxLayout();
   const QMargins line = line_->contentsMargins();
-  indent->setContentsMargins(line.left() + 16, 0, line.right(), line.bottom());
-  line_->setContentsMargins(line.left(), line.top(), line.right(), 6);
-  indent->addWidget(widget);
-  outer_->addLayout(indent);
+  below->setContentsMargins(line.left() + left, 0, line.right(), line.bottom());
+  line_->setContentsMargins(line.left(), line.top(), line.right(), gap);
+  below->addWidget(widget, stretch);
+  outer_->addLayout(below);
+  return below;
+}
+
+void SettingRow::AddControlBelow(QWidget* control) {
+  AddLineBelow(control, LabelLeft(), 4, 1)->setObjectName(kControlLine);
+}
+
+void SettingRow::SetBelow(QWidget* widget) {
+  AddLineBelow(widget, 16, 6, 0);
 }
 
 void SettingRow::SetBelowFlush(QWidget* widget) {
@@ -146,7 +163,8 @@ void SettingRow::SetIndent(int pixels) {
     if (auto* below = qobject_cast<QHBoxLayout*>(outer_->itemAt(i)->layout());
         below != nullptr && below != line_) {
       const QMargins m = below->contentsMargins();
-      below->setContentsMargins(8 + pixels + 16, m.top(), m.right(), m.bottom());
+      const int left = below->objectName() == kControlLine ? LabelLeft() : 16;
+      below->setContentsMargins(8 + pixels + left, m.top(), m.right(), m.bottom());
     }
   }
 }
@@ -255,7 +273,6 @@ bool ExpanderRow::eventFilter(QObject* watched, QEvent* event) {
 
 QWidget* FieldWithButtons(QWidget* field, const std::vector<QWidget*>& buttons) {
   auto* group = new QWidget(field->parentWidget());
-  group->setFixedWidth(kFieldColumnWidth);
   auto* layout = new QHBoxLayout(group);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);

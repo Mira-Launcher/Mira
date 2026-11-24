@@ -53,6 +53,8 @@ class Card : public QFrame {
   void AddFooterRow(QWidget* row, int at = -1);
   // The scroll the rows are in, once SetScrollable made one.
   QScrollArea* Scroll() const { return scroll_; }
+  // A translucent surface for a card over a game's art, as solid as the theme's art_card_alpha.
+  void SetOverArt(bool over_art);
   // A "Reset to defaults" button in the header, shown while `resettable`.
   void SetResettable(bool resettable);
 

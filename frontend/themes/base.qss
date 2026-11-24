@@ -659,6 +659,11 @@ mira_gui--AchievementTile {
   border-radius: @radius_card;
 }
 
+/* A card over a game's art lets it show through (Card::SetOverArt, the theme's art_card_alpha). */
+mira_gui--Card[over_art="true"] {
+  background: @surface_over_art;
+}
+
 /* components/SettingRow's ExpanderRow: its rows, opened, on a sunken surface. */
 QWidget#expander_body {
   background: @surface_sunken;
