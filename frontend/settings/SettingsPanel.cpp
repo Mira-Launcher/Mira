@@ -247,6 +247,7 @@ void SettingsPanel::BuildSchemaPages() {
     ExpanderRow* expander = nullptr;
     int group = -1;
     std::vector<size_t> card_rows;
+    Card* gamemode_card = nullptr;  // GameMode's status sits with its toggle
     const auto finish_card = [&] {
       if (card != nullptr && fields_[card_rows.front()].entry.group_resettable) {
         AddCardReset(card, {}, card_rows);
@@ -273,6 +274,7 @@ void SettingsPanel::BuildSchemaPages() {
       }
       AddSchemaRow(card, i, expander);
       card_rows.push_back(i);
+      if (entry.key == "launch.gamemode") gamemode_card = card;
       // The password sits with the settings for when hidden games lock again, before them.
       if (fields_[i].entry.key.starts_with("hidden.") &&
           card->findChild<HiddenPasswordRow*>() == nullptr) {
@@ -284,13 +286,12 @@ void SettingsPanel::BuildSchemaPages() {
     }
     finish_card();
 
-    if (category == "Launching") {
-      Card* first = page->findChild<Card*>();
+    if (gamemode_card != nullptr) {
       auto* row = new SettingRow("GameMode", {});
       gamemode_status_ = new QLabel("Checking…", row);
       SetTextStyle(gamemode_status_, text::kSubtle);
       row->AddControl(gamemode_status_);
-      first->AddRow(row);
+      gamemode_card->AddRow(row);
       nav_->RegisterRow(row, "gamemode feral daemon status");
       LoadGameModeStatus();
     }
