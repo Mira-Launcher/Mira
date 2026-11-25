@@ -44,6 +44,10 @@ std::string SharedFolder(const config::Config& config, const model::Game& game,
 // and is deleted as that file alone, never with the folder it sits in.
 bool RunsFromAppImage(const model::Game& game);
 
+// Why Mira leaves where `game`'s files are to its store or launcher ("Steam keeps track of them"),
+// or empty when they're Mira's to move or point elsewhere.
+std::string TrackedByStore(const model::Game& game);
+
 // The game runs a program that isn't its own files: an executable outside the
 // game's folder, or an AppImage handed the game's file in its arguments (an
 // emulator). Moving and deleting the game leave that program where it is.

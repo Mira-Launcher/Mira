@@ -1843,7 +1843,7 @@ int CmdSet(int argc, char** argv) {
     std::fprintf(stderr,
                  "usage: mira set <id> [--name N] [--exe PATH] [--args ARGS]\n"
                  "                     [--runner kind:name] [--data-dir PATH]\n"
-                 "                     [--env KEY=VALUE]...\n"
+                 "                     [--install-path PATH] [--env KEY=VALUE]...\n"
                  "                     [--tag NAME]... [--untag NAME]...\n"
                  "                     [--override dotted.key=VALUE]... [--unset dotted.key]...\n"
                  "  --tag hidden leaves this game out of `mira list`/GET /v1/games by\n"
@@ -1874,6 +1874,8 @@ int CmdSet(int argc, char** argv) {
       patch["runner_ref"] = next();
     } else if (arg == "--data-dir") {
       patch["data_dir"] = next();
+    } else if (arg == "--install-path") {
+      patch["install_path"] = next();
     } else if (arg == "--env") {
       const std::string kv = next();
       if (const auto eq = kv.find('='); eq != std::string::npos) {

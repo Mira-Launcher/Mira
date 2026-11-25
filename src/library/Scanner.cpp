@@ -20,6 +20,7 @@
 #include "library/FolderTags.h"
 #include "library/GameSetup.h"
 #include "library/PrefixNaming.h"
+#include "library/Relocate.h"
 #include "library/WinePrefix.h"
 #include "runner/RunnerRegistry.h"
 
@@ -194,7 +195,7 @@ Result<model::Game> Scanner::Follow(const model::Game& moved, const fs::path& fo
         game.data_dir = (new_base / inside).string();
     }
     game.install_path = folder.string();
-    TagsForPlace(rules, game, old_root, root, place);
+    if (!root.empty()) TagsForPlace(rules, game, old_root, root, place);
     if (game.status == model::GameStatus::Missing) {
       game.status = RestoredStatus(game);
       if (game.status != model::GameStatus::NotSetUp) game.last_error.clear();
@@ -208,6 +209,48 @@ Result<model::Game> Scanner::Follow(const model::Game& moved, const fs::path& fo
   events_.Publish("game.updated", model::ToJson(*updated));
   log::Info("{} was moved by hand to {}", moved.id, found.string());
   return *updated;
+}
+
+Result<model::Game> Scanner::Repoint(const std::string& id, const fs::path& found) {
+  auto folders_lock = games_.LockFolders();
+  const auto game = games_.Find(id);
+  if (!game) return Err("game_not_found", "no such game");
+  if (const std::string kept = TrackedByStore(*game); !kept.empty()) {
+    return Err("store_managed", std::format("{}'s files can't be pointed elsewhere: {}", game->name,
+                                            strings::ToLower(kept.substr(0, 1)) + kept.substr(1)));
+  }
+  const SortRules rules(config_);
+  std::error_code ec;
+  const bool file = fs::is_regular_file(found, ec);
+  // An emulator's game is its file; a loose AppImage's install_path is the folder it's in.
+  const bool own_file = file && fs::is_regular_file(game->install_path, ec);
+  const bool loose = file && !own_file && IsLooseAppImage(rules, *game);
+  if (!fs::exists(found, ec) || (file && !own_file && !loose)) {
+    return Err("folder_missing", std::format("\"{}\" isn't a folder", found.string()),
+               "Pick the folder the game's files are in now.");
+  }
+  const fs::path folder = loose ? found.parent_path() : found;
+  const fs::path exe(game->exe_path);
+  if (!own_file && !game->exe_path.empty() && exe.is_relative() &&
+      !fs::exists(folder / (loose ? exe.filename() : exe), ec)) {
+    return Err("exe_not_found",
+               std::format("{} isn't in \"{}\"", exe.filename().string(), folder.string()),
+               "Pick the folder that has the game's program in it.");
+  }
+  const fs::path old_place = SortingFolderOf(rules, *game);
+  Result<model::Game> followed;
+  if (own_file) {
+    followed = games_.Update(id, [&](model::Game& g) {
+      g.install_path = found.string();
+      if (g.status == model::GameStatus::Missing) g.status = RestoredStatus(g);
+      g.updated_at = model::NowSeconds();
+    });
+    if (followed) events_.Publish("game.updated", model::ToJson(*followed));
+  } else {
+    followed = Follow(*game, found, loose, RootOf(rules, folder), rules);
+  }
+  if (followed && !old_place.empty()) PruneEmptyContainers(config_, old_place, games_.All());
+  return followed;
 }
 
 Result<model::Game> Scanner::Settle(const fs::path& folder, const std::optional<std::string>& id) {

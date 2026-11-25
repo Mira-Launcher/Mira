@@ -394,6 +394,94 @@ TEST_CASE("A game moved by hand into another library folder keeps its history") 
   CHECK(env.games.All().size() == 1);
 }
 
+TEST_CASE("A game moved outside Mira is pointed at its new folder, and a store game isn't") {
+  LiveServer server(TempDir("repoint-state"));
+  const fs::path games_root = TempDir("repoint-games");
+  const fs::path elsewhere = TempDir("repoint-elsewhere");
+  config::Config& config = server.MutableConfig();
+  REQUIRE(config.Set("library_roots", json::array({games_root.string()})).has_value());
+  REQUIRE(config.Patch(Sorting(games_root, {"RPG"})).has_value());
+  AddGame(server.games(), "quest", games_root / "RPG" / "Quest", {"RPG"});
+  REQUIRE(server.games()
+              .Update("quest",
+                      [&](model::Game& game) {
+                        game.data_dir = (games_root / "RPG" / "Quest" / "prefix").string();
+                      })
+              .has_value());
+  AddGame(server.games(), "steam-game", games_root / "SteamGame", {}, "steam");
+  // Moved by hand out of the library: a scan marks it missing.
+  fs::rename(games_root / "RPG" / "Quest", elsewhere / "Quest");
+  library::Scanner(config, server.games(), server.events()).ScanAll();
+  REQUIRE(server.games().Find("quest")->status == model::GameStatus::Missing);
+  httplib::Client client = server.Client();
+
+  // A folder without the game's program in it isn't the game's.
+  const auto wrong =
+      client.Patch("/v1/games/quest", json{{"install_path", elsewhere}}.dump(), "application/json");
+  REQUIRE(wrong != nullptr);
+  CHECK(wrong->status == 400);
+  CHECK(json::parse(wrong->body)["error"]["code"] == "exe_not_found");
+
+  const json repointed = PatchGame(client, "quest", {{"install_path", elsewhere / "Quest"}});
+  CHECK(repointed["install_path"] == (elsewhere / "Quest").string());
+  const model::Game quest = *server.games().Find("quest");
+  CHECK(quest.status == model::GameStatus::Ready);
+  CHECK(quest.data_dir == (elsewhere / "Quest" / "prefix").string());  // its prefix came along
+  CHECK(quest.tags == std::vector<std::string>{"RPG"});  // outside the library, tags stay
+  CHECK(fs::exists(elsewhere / "Quest" / "run.sh"));     // nothing moved
+  CHECK_FALSE(fs::exists(games_root / "RPG"));           // the sorting folder it left is pruned
+
+  const auto store =
+      client.Patch("/v1/games/steam-game", json{{"install_path", elsewhere / "Quest"}}.dump(),
+                   "application/json");
+  REQUIRE(store != nullptr);
+  CHECK(store->status == 400);
+  CHECK(json::parse(store->body)["error"]["code"] == "store_managed");
+  CHECK(server.games().Find("steam-game")->install_path == (games_root / "SteamGame").string());
+
+  // The game's detail says which games are kept where they are, and by whom.
+  const auto detail = [&](const std::string& id) {
+    const auto res = client.Get("/v1/games/" + id);
+    REQUIRE(res != nullptr);
+    return json::parse(res->body);
+  };
+  CHECK(detail("steam-game").value("files_kept_by", "").find("Steam") != std::string::npos);
+  CHECK_FALSE(detail("quest").contains("files_kept_by"));
+}
+
+TEST_CASE("A game's art is fetched again when what it's found by changes, and only then") {
+  LiveServer server(TempDir("refetch-identity-state"));
+  AddGame(server.games(), "quest", TempDir("refetch-identity-games") / "Quest");
+  httplib::Client client = server.Client();
+  const auto patch_config = [&](const json& body) {
+    const auto res = client.Patch("/v1/games/quest/config", body.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+  };
+  const auto fetches = [&] {
+    int count = 0;
+    for (const model::Event& event : server.events().Since(0)) {
+      if (event.type.starts_with("game.metadata_") && event.payload.value("id", "") == "quest")
+        ++count;
+    }
+    return count;
+  };
+
+  // Automatic fetching is off in tests; these fetch all the same. With no SteamGridDB key every
+  // fetch fails at once offline, so each event is one fetch.
+  patch_config({{"saves.keep", 3}});
+  server.services().fetches.WaitIdle();
+  CHECK(fetches() == 0);
+
+  patch_config({{"metadata.steamgriddb_id", 5}});
+  server.services().fetches.WaitIdle();
+  CHECK(fetches() == 1);
+
+  PatchGame(client, "quest", {{"name", "Quest Remastered"}});
+  server.services().fetches.WaitIdle();
+  CHECK(fetches() == 2);
+}
+
 TEST_CASE("A hand edit of the sorting settings sorts the library as a request would") {
   LiveServer server(TempDir("folder-tags-hand-edit-state"));
   const fs::path root = TempDir("folder-tags-hand-edit-games");

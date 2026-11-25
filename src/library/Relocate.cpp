@@ -106,6 +106,17 @@ std::string KeptBy(const model::Game& game) {
   return "Their store keeps track of them";
 }
 
+}  // namespace
+
+std::string TrackedByStore(const model::Game& game) {
+  const bool tracked = game.source == "steam" || game.source == "epic" || game.source == "gog" ||
+                       game.source == "itch" || game.source == "amazon" ||
+                       launchers::ForGame(game) != nullptr;
+  return tracked ? KeptBy(game) : std::string();
+}
+
+namespace {
+
 RelocatePart Part(std::string action, std::string from, std::string reason = {}) {
   RelocatePart part;
   part.action = std::move(action);
@@ -165,10 +176,8 @@ Result<RelocatePlan> PlanRelocate(const config::Config& config, const model::Gam
   // Lutris only launches what it found, so its games are Mira's to move.
   // A store launcher's prefix holds the launcher and every game installed in it.
   const bool shared_prefix = launchers::ForGame(game) != nullptr;
-  const bool store_managed = game.source == "steam" || game.source == "epic" ||
-                             game.source == "gog" || game.source == "itch" ||
-                             game.source == "amazon" || shared_prefix ||
-                             emulators::ForGame(game) != nullptr;
+  // TrackedByStore covers launcher games too.
+  const bool store_managed = !TrackedByStore(game).empty() || emulators::ForGame(game) != nullptr;
   // Steam makes its own prefix (compatdata) again where it expects it, so a moved one is just left
   // behind.
   const bool steam_prefix = game.source == "steam" || game.runner_ref.starts_with("steam:");

@@ -75,8 +75,13 @@ class Scanner {
   Result<model::Game> Settle(const std::filesystem::path& folder,
                              const std::optional<std::string>& id);
 
+  // Points game `id` at `found`, where it was moved outside Mira, without moving anything: a folder
+  // that has the game's program (an emulator's game file, or a loose AppImage, is a file).
+  Result<model::Game> Repoint(const std::string& id, const std::filesystem::path& found);
+
  private:
-  // Points `moved` at `found`, with its tags following the new place under `root`.
+  // Points `moved` at `found`, with its tags following the new place under `root` (left as they are
+  // outside every library folder).
   Result<model::Game> Follow(const model::Game& moved, const std::filesystem::path& found,
                              bool loose, const std::filesystem::path& root, const SortRules& rules);
 

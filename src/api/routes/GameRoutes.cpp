@@ -130,6 +130,8 @@ void RegisterGameRoutes(Router& http, Services& s) {
     unpinned.runner_ref.clear();
     body["default_runner"] = runner::RunnerRegistry(s.config).ResolveRef(unpinned);
     body["identity"] = library::ToJson(library::Identify(s.config, *game));
+    if (const std::string kept = library::TrackedByStore(*game); !kept.empty())
+      body["files_kept_by"] = kept;
     if (const auto fix = ProtonFixStatus(s.config, *game)) body["protonfix"] = *fix;
     if (const auto log = NewestFile(proc::ProtonLogDir(s.games.Dir(), game->id)); !log.empty())
       body["proton_log"] = log.string();
@@ -203,6 +205,21 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (const auto problem = library::GamePatchProblem(b))
       return SendError(res, 400, "invalid_body", *problem);
 
+    // A new install_path points the game at where its files were moved outside Mira; nothing moves.
+    if (b.contains("install_path")) {
+      const auto current = s.games.Find(id);
+      if (!current) return SendError(res, 404, "game_not_found", "no such game");
+      const std::filesystem::path wanted = paths::Expand(b["install_path"].get<std::string>());
+      if (wanted.lexically_normal() !=
+          std::filesystem::path(current->install_path).lexically_normal()) {
+        const auto claim = s.Claim(id, "moved");  // not while it runs from the old folder
+        if (!claim) return SendError(res, 409, claim.error());
+        library::Scanner scanner(s.config, s.games, s.events);
+        if (auto repointed = scanner.Repoint(id, wanted); !repointed)
+          return SendError(res, 400, repointed.error());
+      }
+    }
+
     const auto before = s.games.Find(id);
     // Turned into a Windows or web game without a data folder: it gets one, as POST
     // /v1/games/manual does. A game turned native keeps its data_dir, so switching back reuses the
@@ -233,6 +250,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
     s.SyncDesktopEntry(id);
     SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
     if (provision) s.ProvisionLater(*result);
+    if (before) s.RefetchIfIdentityChanged(*before, *result);
     // A new folder too: a game sorted by a link needs its link pointed at it.
     if (before &&
         (before->tags != result->tags || before->folder_tag != result->folder_tag ||
@@ -368,6 +386,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
     if (auto problem = library::ValidateOverridesPatch(*body)) {
       return SendError(res, 400, "invalid_setting", *problem);
     }
+    const auto before = s.games.Find(id);
     auto result = s.games.Update(id, [&](model::Game& game) {
       library::ApplyOverridesPatch(game, *body, s.config);
       // Written against the game's folders, so they follow it when it or its prefix moves.
@@ -383,6 +402,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
     // An override can turn desktop_entries.enabled off for this game.
     s.SyncDesktopEntry(id);
     SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
+    if (before) s.RefetchIfIdentityChanged(*before, *result);
   });
 
   http.Delete(R"(/v1/games/([^/]+))", [&s](const Request& req, Response& res) {

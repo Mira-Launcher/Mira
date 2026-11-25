@@ -103,8 +103,8 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
 // ignored.
 std::optional<std::string> GamePatchProblem(const json& patch) {
   if (!patch.is_object()) return "expected a JSON object";
-  for (const char* key :
-       {"name", "exe_path", "args", "working_dir", "runner_ref", "data_dir", "folder_tag"}) {
+  for (const char* key : {"name", "exe_path", "args", "working_dir", "runner_ref", "data_dir",
+                          "folder_tag", "install_path"}) {
     if (patch.contains(key) && !patch[key].is_string())
       return std::format("\"{}\" must be a string", key);
   }

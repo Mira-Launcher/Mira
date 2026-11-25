@@ -304,6 +304,16 @@ void Services::SettingsChanged(const std::vector<std::string>& keys) {
       })) {
     SortingChanged();
   }
+  // A new SteamGridDB key, or fetching turned back on: the games still without a cover get one.
+  if ((std::ranges::contains(keys, std::string("steamgriddb.api_key")) &&
+       !config.GetString("steamgriddb.api_key").empty()) ||
+      (std::ranges::contains(keys, std::string("metadata.disabled")) &&
+       !config.GetBool("metadata.disabled"))) {
+    for (const model::Game& game : games.All()) {
+      if (!games.Metadata().ArtVersions(game.id).contains("cover"))
+        fetches.Enqueue(config, events, game, /*force=*/true, /*announce=*/false);
+    }
+  }
   if (std::ranges::contains(keys, std::string("steam.sync_art"))) {
     if (config.GetBool("steam.sync_art")) {
       for (const model::Game& game : games.All()) SyncSteamArt(game.id);
@@ -313,6 +323,19 @@ void Services::SettingsChanged(const std::vector<std::string>& keys) {
     }
   }
   events.Publish("config.changed", {{"keys", keys}, {"frontend", config.FrontendSettings()}});
+}
+
+void Services::RefetchIfIdentityChanged(const model::Game& before, const model::Game& after) {
+  // Checked first: a batch edit calls this for every game, and most change neither.
+  if (before.name == after.name && before.overrides == after.overrides) return;
+  // Fetched even with automatic fetching off: the user just said which game it is.
+  const auto identity = [this](const model::Game& game) {
+    const config::Resolver resolved(config, game.overrides);
+    return std::tuple(game.name, resolved.GetInt("metadata.steam_appid"),
+                      resolved.GetInt("metadata.steamgriddb_id"));
+  };
+  if (identity(before) != identity(after))
+    fetches.Enqueue(config, events, after, /*force=*/true, /*announce=*/false);
 }
 
 void Services::SyncDesktopEntries() {
