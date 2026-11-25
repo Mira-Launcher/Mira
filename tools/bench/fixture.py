@@ -41,6 +41,7 @@ TAGS = ["RPG", "Action", "Puzzle", "Platformer", "Strategy", "Co-op", "Indie", "
 SETTINGS = """auto_setup = false
 
 [metadata]
+disabled = true
 enabled = false
 
 [launchers]

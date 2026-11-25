@@ -267,7 +267,7 @@ void RegisterMetadataRoutes(Router& http, Services& s) {
     res.status = 204;
   });
 
-  // force=true: an explicit refresh works even with metadata.enabled off.
+  // force=true: an explicit refresh works even with metadata.disabled on.
   http.Post(R"(/v1/games/([^/]+)/metadata/refresh)", [&s](const Request& req, Response& res) {
     auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");

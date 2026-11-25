@@ -283,9 +283,9 @@ std::string RunnerRegistry::ResolveRef(const model::Game& game) const {
     ref = config_.GetString(game.source + ".runner");
   }
   if (ref.empty()) {
-    ref = config_.GetString(game.platform == model::Platform::Native ? "default_runner.native"
-                            : web                                    ? "default_runner.web"
-                                                                     : "default_runner.windows");
+    // Native games have one runner, which starts them directly.
+    if (game.platform == model::Platform::Native) return "native:native";
+    ref = config_.GetString(web ? "default_runner.web" : "default_runner.windows");
   }
   // "auto" isn't itself "kind:name": for a web game it's the best browser; otherwise it means "the
   // best available windows runner": Proton if a build is installed (protonfixes come with it),

@@ -90,6 +90,9 @@ struct Entry {
   // Defaults it had before. Older versions wrote every default to settings.toml, so in a file from
   // then a stored one of these was never chosen, and is dropped when the file is cleaned.
   std::vector<nlohmann::json> old_defaults = {};
+  // Kept off settings screens: set in settings.toml or with `mira config` only, for values few
+  // people should touch.
+  bool config_only = false;
 
   // Set by the section the entry is declared under, never per entry.
   std::string category = {};

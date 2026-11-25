@@ -813,7 +813,7 @@ TEST_CASE("Artwork thumb routes validate the batch and serve only a cached previ
 TEST_CASE(
     "/v1/library/artwork and /metadata serve a store title's cache and skip it when queuing") {
   LiveServer server(TempDir("server-library-artwork"));
-  REQUIRE(server.MutableConfig().Set("metadata.enabled", true).has_value());
+  REQUIRE(server.MutableConfig().Set("metadata.disabled", false).has_value());
 
   const fs::path artwork_dir = metadata::ArtworkDir(server.config(), "epic-Fortnite");
   fs::create_directories(artwork_dir);
@@ -868,7 +868,7 @@ TEST_CASE(
   CHECK(skipped->status == 202);
   CHECK(nlohmann::json::parse(skipped->body)["queued"] == 0);
 
-  REQUIRE(server.MutableConfig().Set("metadata.enabled", false).has_value());
+  REQUIRE(server.MutableConfig().Set("metadata.disabled", true).has_value());
   auto disabled = client.Post("/v1/library/artwork",
                               R"({"source": "epic", "titles": [{"ref": "X", "title": "X"}]})",
                               "application/json");
@@ -1667,9 +1667,9 @@ TEST_CASE("Confirming looks up the moved game's art only while automatic metadat
     });
   };
 
-  REQUIRE(server.MutableConfig().Set("metadata.enabled", false).has_value());
+  REQUIRE(server.MutableConfig().Set("metadata.disabled", true).has_value());
   CHECK_FALSE(adopt("off"));
-  REQUIRE(server.MutableConfig().Set("metadata.enabled", true).has_value());
+  REQUIRE(server.MutableConfig().Set("metadata.disabled", false).has_value());
   CHECK(adopt("on"));
 }
 

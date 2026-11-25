@@ -64,12 +64,17 @@ TEST_CASE("a setting for some games applies by the game's source, platform and r
   CHECK(schema.Find("launch.gamemode")->applies.Matches("anything", "native", "wine:system"));
 }
 
-TEST_CASE("every setting on the Sources page belongs to a source") {
+TEST_CASE("every setting under a source's row on the Sources page belongs to that source") {
+  int rows = 0;
   for (const Entry& entry : Schema::Instance().Entries()) {
-    if (entry.category != "Sources") continue;
+    if (entry.category != "Sources" || entry.item.empty()) continue;
     INFO("key: ", entry.key);
-    CHECK_FALSE(entry.source.empty());
+    CHECK(entry.source == entry.item);
+    ++rows;
   }
+  CHECK(rows > 0);
+  CHECK(Schema::Instance().Find("runner_sources.comet.repo")->source == "gog");
+  CHECK(Schema::Instance().Find("runner_sources.proton_ge.repo")->source.empty());
 }
 
 TEST_CASE("Schema::Validate rejects bad values with a reason") {

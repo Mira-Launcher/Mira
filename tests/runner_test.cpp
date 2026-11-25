@@ -185,8 +185,7 @@ TEST_CASE(
 
   model::Game native;
   native.platform = model::Platform::Native;
-  CHECK(registry.ResolveRef(native) ==
-        config::Schema::Instance().Find("default_runner.native")->default_value.get<std::string>());
+  CHECK(registry.ResolveRef(native).starts_with("native:"));
 }
 
 TEST_CASE("ResolveRef expands \"auto\" to a real installed windows runner, not native") {

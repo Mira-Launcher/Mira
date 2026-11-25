@@ -202,8 +202,6 @@ Result<RelocatePlan> PlanRelocate(const config::Config& config, const model::Gam
                "Pick a folder inside the prefix folder, or change that setting.",
                Fix::Setting("prefix_root"));
   }
-  const bool allow_copy = config.GetBool("relocate.allow_copy");
-
   if (game.install_path.empty()) {
     plan.files = Part("none", {});
   } else if (plan.install_in_prefix) {
@@ -255,13 +253,6 @@ Result<RelocatePlan> PlanRelocate(const config::Config& config, const model::Gam
       plan.files = plan.single_file
                        ? Move(fs::path(game.install_path) / game.exe_path, target / game.exe_path)
                        : Move(game.install_path, target);
-      if (plan.files.copies && !allow_copy) {
-        return Err(
-            "cross_device",
-            std::format("\"{}\" is on another drive and copying is turned off", target.string()),
-            "Turn on copying across drives, or pick a folder on the same drive.",
-            Fix::Setting("relocate.allow_copy"));
-      }
       plan.install_target = target.string();
       game.install_path = target.string();  // the prefix's place follows the install's new disk
     }
@@ -287,13 +278,6 @@ Result<RelocatePlan> PlanRelocate(const config::Config& config, const model::Gam
       plan.prefix = Part("in_place", game.data_dir, "Already in Mira's folders");
     } else {
       plan.prefix = Move(game.data_dir, target);
-      if (plan.prefix.copies && !allow_copy) {
-        return Err(
-            "cross_device",
-            std::format("\"{}\" is on another drive and copying is turned off", target.string()),
-            "Turn on copying across drives, or pick a folder on the same drive.",
-            Fix::Setting("relocate.allow_copy"));
-      }
     }
   }
   return plan;
@@ -306,10 +290,8 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game,
   const std::string original_install = game.install_path;
   const std::string original_data = game.data_dir;
   game.exe_path = StoredExePath(game.install_path, game.exe_path);
-  const bool allow_copy = config.GetBool("relocate.allow_copy");
-
   if (plan->files.action == "move") {
-    if (auto moved = MovePath(plan->files.from, plan->files.to, allow_copy); !moved)
+    if (auto moved = MovePath(plan->files.from, plan->files.to, /*allow_copy=*/true); !moved)
       return std::unexpected(moved.error());
     game.install_path = plan->install_target;
     if (plan->prefix_in_install && !plan->single_file)
@@ -317,7 +299,7 @@ Result<model::Game> Relocate(const config::Config& config, model::Game game,
   }
 
   if (plan->prefix.action == "move") {
-    if (auto moved = MovePath(plan->prefix.from, plan->prefix.to, allow_copy); !moved) {
+    if (auto moved = MovePath(plan->prefix.from, plan->prefix.to, /*allow_copy=*/true); !moved) {
       if (game.install_path == original_install) return std::unexpected(moved.error());
       // Put the install back, so the stored paths stay true.
       const Result<void> undone = MovePath(plan->files.to, plan->files.from, true);

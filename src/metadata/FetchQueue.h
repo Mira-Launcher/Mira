@@ -27,7 +27,7 @@ class FetchQueue {
   explicit FetchQueue(store::MetadataStore& cache) : cache_(cache) {}
   ~FetchQueue();
 
-  // A tracked game's full Fetch. `force` bypasses metadata.enabled, used
+  // A tracked game's full Fetch. `force` bypasses metadata.disabled, used
   // by the explicit refresh endpoint, where a user asking for a re-fetch
   // should work even with automatic fetching turned off. `announce`
   // publishes a "notification" event on failure. Set for a user-initiated
