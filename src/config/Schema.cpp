@@ -1441,6 +1441,15 @@ Schema::Schema() {
                 "Games whose store's cloud keeps their saves are left to it.",
          .keywords = "cloud sync remote nas onedrive dropbox webdav ssh s3"});
 
+  s.Add({.key = "saves.remote_key",
+         .label = "Folder name on the remote",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::GameOnly,
+         .doc = "The game's folder on your remote, when the same game is named differently on "
+                "another computer. Empty lets Mira name it.",
+         .keywords = "cloud sync remote folder"});
+
   s.Add({.key = "saves.remote_keep",
          .label = "Versions kept on the remote",
          .type = Type::Int,

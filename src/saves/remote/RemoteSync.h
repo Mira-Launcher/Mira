@@ -7,6 +7,7 @@
 #include "config/Config.h"
 #include "model/Types.h"
 #include "saves/Cloud.h"
+#include "saves/Saves.h"
 #include "store/GameStore.h"
 #include "store/MetadataStore.h"
 
@@ -31,5 +32,15 @@ Result<nlohmann::json> RunRemote(const config::Config& config, const store::Meta
                                  store::GameStore& games, const model::Game& game,
                                  const Device& device, CloudAction action,
                                  const std::function<Result<void>()>& before_download);
+
+// Copies the revision the game is in sync with to the mirror, which is only ever written to.
+// Nothing when there's no mirror, it has the revision already, or the saves changed since.
+Result<void> RunMirror(const config::Config& config, const store::MetadataStore& cache,
+                       store::GameStore& games, const model::Game& game, const Device& device);
+
+// The remote's part of CloudOverview: the same fields, with `kind` "remote", `device` (whose the
+// remote's newest saves are), `key`, `pending` and `error`, from what's stored and the disk.
+nlohmann::json RemoteOverview(const config::Config& config, const store::GameStore& games,
+                              const model::Game& game, const Survey& survey);
 
 }  // namespace mira::saves::remote

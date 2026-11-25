@@ -199,6 +199,8 @@ CREATE TABLE IF NOT EXISTS remote_sync(
   checked_at INTEGER NOT NULL,
   synced_at INTEGER NOT NULL,
   error TEXT NOT NULL,
+  other_device TEXT NOT NULL,
+  other_at INTEGER NOT NULL,
   PRIMARY KEY(game_id, slot)
 ) STRICT;
 )sql",
@@ -436,7 +438,7 @@ std::optional<RemoteSync> GameStore::RemoteSyncOf(const std::string& id,
   std::lock_guard lock(mutex_);
   auto select = db_.Prepare(
       "SELECT remote_id, key, base, base_files, local_marker, state, pending, checked_at, "
-      "synced_at, error FROM remote_sync WHERE game_id = ? AND slot = ?");
+      "synced_at, error, other_device, other_at FROM remote_sync WHERE game_id = ? AND slot = ?");
   if (!select) return std::nullopt;
   select->Bind(1, id).Bind(2, slot);
   const auto row = select->Step();
@@ -451,15 +453,17 @@ std::optional<RemoteSync> GameStore::RemoteSyncOf(const std::string& id,
                     .pending = select->Int(6) != 0,
                     .checked_at = select->Int(7),
                     .synced_at = select->Int(8),
-                    .error = select->Text(9)};
+                    .error = select->Text(9),
+                    .other_device = select->Text(10),
+                    .other_at = select->Int(11)};
 }
 
 Result<void> GameStore::SetRemoteSync(const std::string& id, const RemoteSync& state) {
   std::lock_guard lock(mutex_);
   auto upsert = db_.Prepare(
       "INSERT OR REPLACE INTO remote_sync(game_id, slot, remote_id, key, base, base_files, "
-      "local_marker, state, pending, checked_at, synced_at, error) "
-      "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      "local_marker, state, pending, checked_at, synced_at, error, other_device, other_at) "
+      "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
   if (!upsert) return std::unexpected(upsert.error());
   return upsert->Bind(1, id)
       .Bind(2, state.slot)
@@ -473,6 +477,8 @@ Result<void> GameStore::SetRemoteSync(const std::string& id, const RemoteSync& s
       .Bind(10, state.checked_at)
       .Bind(11, state.synced_at)
       .Bind(12, state.error)
+      .Bind(13, state.other_device)
+      .Bind(14, state.other_at)
       .Run();
 }
 

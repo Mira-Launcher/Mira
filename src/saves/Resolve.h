@@ -79,8 +79,8 @@ std::string Shorten(std::string_view path, const Roots& roots);
 // dosdevices is never entered. Files outside every logical root are left out.
 Location Find(std::string_view location, const Roots& roots);
 
-// The part of `path` that `location` itself names (a save file, or the folder holding it), by
-// pattern alone, so also for files not there yet. Empty when `location` doesn't cover `path` or
+// The part of `path` that `location` spells out, before any wildcard, by pattern alone, so also
+// for files not there yet. Empty when `location` doesn't cover `path` or
 // isn't read (too broad, unknown placeholder).
 std::filesystem::path CoveredBy(std::string_view location, const Roots& roots,
                                 const std::filesystem::path& path);

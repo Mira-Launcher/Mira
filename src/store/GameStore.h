@@ -55,6 +55,8 @@ struct RemoteSync {
   std::int64_t checked_at = 0;  // unix seconds
   std::int64_t synced_at = 0;   // unix seconds
   std::string error{};          // the last failure's code
+  std::string other_device{};   // whose the remote's newest saves were at the last check
+  std::int64_t other_at = 0;    // and when they were taken, unix seconds
 };
 
 // A source's place in Mira: whether it's set up, on, in the sidebar and where.

@@ -94,21 +94,6 @@ bool HttpsUrl(const std::string& url) {
   return !rest.substr(0, rest.find('/')).empty();
 }
 
-bool SftpHost(const std::string& host) {
-  return !host.empty() && host[0] != '-' && std::ranges::all_of(host, [](unsigned char c) {
-    return std::isalnum(c) || c == '.' || c == ':' || c == '-' || c == '_';
-  });
-}
-
-bool ValidPort(const std::string& port) {
-  if (port.size() > 5 ||
-      !std::ranges::all_of(port, [](unsigned char c) { return std::isdigit(c); }))
-    return false;
-  int number = 0;
-  std::from_chars(port.data(), port.data() + port.size(), number);
-  return number >= 1 && number <= 65535;
-}
-
 // rclone's obscured form of `password`; the password goes on stdin, never in argv.
 Result<std::string> Obscure(const config::Config& config, const std::string& password) {
   const runner::ToolStatus tool = DetectRclone(config);
@@ -179,13 +164,32 @@ json Entry(const RemoteInfo& info) {
 
 }  // namespace
 
+bool SignsIn(std::string_view provider) {
+  return provider == "onedrive" || provider == "dropbox";
+}
+
+bool SftpHost(const std::string& host) {
+  return !host.empty() && host[0] != '-' && std::ranges::all_of(host, [](unsigned char c) {
+    return std::isalnum(c) || c == '.' || c == ':' || c == '-' || c == '_';
+  });
+}
+
+bool ValidPort(const std::string& port) {
+  if (port.size() > 5 ||
+      !std::ranges::all_of(port, [](unsigned char c) { return std::isdigit(c); }))
+    return false;
+  int number = 0;
+  std::from_chars(port.data(), port.data() + port.size(), number);
+  return number >= 1 && number <= 65535;
+}
+
 Result<void> CheckRequest(const RemoteRequest& request) {
   const Values& values = request.values;
   const std::string& provider = request.provider;
   if (request.slot != "primary" && request.slot != "mirror")
     return Invalid("The slot must be primary or mirror.");
-  if (provider != "webdav" && provider != "sftp" && provider != "s3")
-    return Invalid("The provider must be webdav, sftp or s3.");
+  if (!SignsIn(provider) && provider != "webdav" && provider != "sftp" && provider != "s3")
+    return Invalid("The provider must be onedrive, dropbox, webdav, sftp or s3.");
   if (request.name.empty() || request.name.size() > 64)
     return Invalid("The name must be 1 to 64 bytes.");
   if (HasControl(request.slot) || HasControl(provider) || HasControl(request.name) ||
@@ -198,12 +202,16 @@ Result<void> CheckRequest(const RemoteRequest& request) {
   }
   if (!FolderOk(request.folder))
     return Invalid("The folder must be relative, with no empty, . or .. part.");
-  if (!request.ca_file.empty() && (provider == "sftp" || !IsAbsoluteFile(request.ca_file)))
+  if (!request.ca_file.empty() &&
+      (provider == "sftp" || SignsIn(provider) || !IsAbsoluteFile(request.ca_file)))
     return Invalid("The certificate must be an existing absolute file, for webdav or s3.");
   if (values.contains("password") && values.at("password").size() > kMaxPassword)
     return Invalid("The password is too long.");
 
-  if (provider == "webdav") {
+  if (SignsIn(provider)) {
+    if (!KeysAllowed(values, {"token", "drive_id", "drive_type"}))
+      return Invalid("An unknown setting was given.");
+  } else if (provider == "webdav") {
     if (!KeysAllowed(values, {"url", "user", "password"}))
       return Invalid("An unknown setting was given.");
     if (!HttpsUrl(Get(values, "url")))
@@ -239,7 +247,8 @@ fs::path RcloneConfigFile(const config::Config& config) {
   return config.File().parent_path() / "rclone.conf";
 }
 
-Result<RemoteInfo> SaveRemote(const config::Config& config, const RemoteRequest& request) {
+Result<RemoteInfo> SaveRemote(const config::Config& config, const RemoteRequest& request,
+                              const std::function<Result<void>(const Remote&)>& check) {
   if (const auto checked = CheckRequest(request); !checked) return std::unexpected(checked.error());
   const Values& values = request.values;
   std::string obscured;
@@ -256,7 +265,12 @@ Result<RemoteInfo> SaveRemote(const config::Config& config, const RemoteRequest&
                   .folder = request.folder,
                   .ca_file = request.ca_file};
   std::vector<std::pair<std::string, std::string>> keys;
-  if (request.provider == "webdav") {
+  if (SignsIn(request.provider)) {
+    keys = {{"type", request.provider},
+            {"token", Get(values, "token")},
+            {"drive_id", Get(values, "drive_id")},
+            {"drive_type", Get(values, "drive_type")}};
+  } else if (request.provider == "webdav") {
     keys = {{"type", "webdav"},
             {"url", Get(values, "url")},
             {"vendor", "other"},
@@ -285,8 +299,25 @@ Result<RemoteInfo> SaveRemote(const config::Config& config, const RemoteRequest&
   for (const auto& [key, value] : keys)
     if (!value.empty()) section += std::format("{} = {}\n", key, value);
 
-  const std::lock_guard lock(ConfigLock());
   const fs::path conf = RcloneConfigFile(config);
+  if (check) {
+    const fs::path trial = conf.string() + "." + info.id;
+    if (auto written = WriteFileAtomic(trial, section, "remote_config_failed", false, 0600);
+        !written)
+      return std::unexpected(written.error());
+    Remote remote = RemoteFor(config, info);
+    remote.config_file = trial;
+    const auto passed = check(remote);
+    // rclone may have refreshed the sign-in meanwhile, and the old one no longer works then.
+    const auto after = files::ReadFile(trial);
+    std::error_code ec;
+    fs::remove(trial, ec);
+    if (!passed) return std::unexpected(passed.error());
+    if (after && after->starts_with(std::format("[{}]\n", request.slot))) section = *after;
+    if (!section.ends_with('\n')) section += '\n';
+  }
+
+  const std::lock_guard lock(ConfigLock());
   const auto text = ReadRcloneConfig(conf);
   if (!text) return std::unexpected(text.error());
   std::string next = WithoutSection(*text, request.slot);

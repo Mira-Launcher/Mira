@@ -11,6 +11,7 @@
 #include "saves/remote/RemoteConfig.h"
 #include "saves/remote/RemoteSync.h"
 #include "saves/remote/Revisions.h"
+#include "support/LiveServer.h"
 #include "support/TestEnv.h"
 
 using namespace mira;
@@ -63,7 +64,7 @@ void UseFakeRclone(config::Config& config, const fs::path& dir) {
 echo "$* [$RCLONE_CONFIG]" >> '{0}/calls'
 case "$*" in *" obscure -") pw="$(cat)"; echo "obscured_${{#pw}}"; exit 0 ;; esac
 [ -e '{0}/offline' ] && exit 5
-at() {{ case "$1" in box:*|primary:*) echo "{0}/box/${{1#*:}}" ;; *) echo "$1" ;; esac; }}
+at() {{ case "$1" in box:*|primary:*) echo "{0}/box/${{1#*:}}" ;; mirror:*) echo "{0}/mirror/${{1#*:}}" ;; *) echo "$1" ;; esac; }}
 case "$*" in *--files-from-raw*--max-size*) exit 1 ;; esac  # as rclone does
 from="$(at "$2")"
 case "$1" in
@@ -474,6 +475,15 @@ TEST_CASE("an upload waits while the remote is offline, and a hostile revision c
   plant("install", "saves/link/x.sav", "evil-link");
   CHECK(a.Moved() == "remote_unsafe");
   CHECK_FALSE(fs::exists(a.env.dir / "outside/x.sav"));
+  REQUIRE(saves::remote::DeleteRevision(a.env.config, remote, key, "evil-link"));
+  // A symlink a wildcard would match, as one it doesn't.
+  a.game.overrides = {{"saves.extra_paths", {"<base>/**/saves"}}};
+  CHECK(a.Moved() == "synced");
+  fs::create_directories(a.env.dir / "outside/saves");
+  fs::create_directory_symlink(a.env.dir / "outside", a.env.dir / "g/evil");
+  plant("install", "evil/saves/x.sav", "evil-wildcard");
+  CHECK(a.Moved() == "remote_unsafe");
+  CHECK_FALSE(fs::exists(a.env.dir / "outside/saves/x.sav"));
   CHECK(a.snapshots == 0);
   CHECK(a.Read("s.sav") == "mine too");
 }
@@ -513,8 +523,81 @@ TEST_CASE("a download cut short is finished before anything else") {
   CHECK(a.Moved() == "upload");
   test::Touch(staging / "applying.json", "not json");
   b.Write("one.sav", "played");
-  CHECK(b.Moved() == "saves_failed");
-  saves::remote::DropApply(b.env.config, b.game);
   CHECK(b.Moved() == "saves_conflict");
   CHECK(b.Read("one.sav") == "played");
+}
+
+TEST_CASE("a remote connected through the API syncs a game before and after play and is mirrored") {
+  const fs::path dir = test::TempDir("remote-api");
+  test::LiveServer server(dir);
+  auto client = server.Client();
+  UseFakeRclone(server.MutableConfig(), dir);
+  const auto connect = [&](const char* slot, const char* url) {
+    return test::AwaitJob(
+        client, client.Put(std::format("/v1/saves/remote/{}", slot),
+                           nlohmann::json{{"provider", "webdav"},
+                                          {"name", "nas"},
+                                          {"values", {{"url", url}, {"password", "hunter22"}}}}
+                               .dump(),
+                           "application/json"));
+  };
+  CHECK(connect("primary", "http://nas.example").value("state", "") == "failed");
+  // One that can't be reached replaces nothing.
+  REQUIRE(connect("primary", "https://nas.example").value("state", "") == "finished");
+  test::Touch(dir / "offline");
+  CHECK(connect("primary", "https://other.example").value("state", "") == "failed");
+  CHECK(files::ReadFile(dir / "rclone.conf")->contains("https://nas.example"));
+  fs::remove(dir / "offline");
+  REQUIRE(connect("mirror", "https://nas2.example").value("state", "") == "finished");
+
+  model::Game game;
+  game.id = "itch-1";
+  game.name = "Game";
+  game.source = "itch";
+  game.source_ref = "1";
+  game.platform = model::Platform::Native;
+  game.status = model::GameStatus::Ready;
+  game.install_path = (dir / "g").string();
+  game.overrides = {{"saves.extra_paths", {"<base>/saves"}}, {"saves.enabled", false}};
+  test::Touch(dir / "g/saves/s.sav", "one");
+  REQUIRE(server.games().Upsert(game));
+
+  REQUIRE(server.services().SavesBeforeLaunch(game, ""));
+  server.services().saves.WaitIdle();
+  const auto kept = [&](const char* remote) {
+    std::string found;
+    for (const auto& entry : fs::recursive_directory_iterator(dir / remote))
+      if (entry.path().filename() == "s.sav")
+        found += files::ReadFile(entry.path()).value_or("") + " ";
+    return found;
+  };
+  CHECK(kept("box") == "one ");
+  CHECK(kept("mirror") == "one ");
+
+  // Offline after playing: owed, shown, and sent by the next sync.
+  test::Touch(dir / "g/saves/s.sav", "two!");
+  test::Touch(dir / "offline");
+  server.services().SavesAfterPlay("itch-1", [] {});
+  server.services().saves.WaitIdle();
+  CHECK(test::GetJson(client, "/v1/saves/remote")["pending"][0].value("error", "") ==
+        "remote_offline");
+  REQUIRE(server.services().SavesBeforeLaunch(game, ""));  // plays with the saves here
+  fs::remove(dir / "offline");
+  CHECK(test::AwaitJob(client, client.Post("/v1/saves/remote/sync")).value("state", "") ==
+        "finished");
+  server.services().saves.WaitIdle();
+  CHECK(kept("box").contains("two!"));
+  CHECK(kept("mirror").contains("two!"));
+  const auto shown = test::GetJson(client, "/v1/games/itch-1/saves")["cloud"];
+  CHECK(shown.value("kind", "") == "remote");
+  CHECK(shown.value("state", "") == "synced");
+
+  // The password is in no reply, no argument and not in the open on disk.
+  CHECK_FALSE(test::GetJson(client, "/v1/saves/remote").dump().contains("hunter22"));
+  for (const char* file : {"calls", "rclone.conf", "remotes.json"})
+    CHECK_FALSE(files::ReadFile(dir / file)->contains("hunter22"));
+
+  REQUIRE(client.Delete("/v1/saves/remote/primary")->status == 200);
+  CHECK(test::GetJson(client, "/v1/saves/remote")["mirror"].is_null());
+  CHECK(kept("box").contains("two!"));
 }

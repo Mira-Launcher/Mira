@@ -106,6 +106,7 @@ std::string LocalMarker(const std::vector<SaveFile>& files) {
 Result<std::vector<fs::path>> Targets(const Roots& roots, const Survey& survey,
                                       const std::vector<RevisionFile>& files) {
   std::vector<fs::path> targets;
+  std::set<std::string> seen;
   for (const RevisionFile& file : files) {
     const fs::path root = RootPath(roots, file.root);
     if (root.empty())
@@ -119,7 +120,8 @@ Result<std::vector<fs::path>> Targets(const Roots& roots, const Survey& survey,
       covered = CoveredBy(location.pattern, roots, target);
       if (!covered.empty()) break;
     }
-    if (covered.empty() || ThroughSymlink(covered, target))
+    if (covered.empty() || ThroughSymlink(covered, target) ||
+        !seen.insert(Name(target, roots.windows)).second)
       return std::unexpected(Unsafe(file.path));
     std::error_code ec;
     if (fs::is_directory(target, ec)) return std::unexpected(Unsafe(file.path));
@@ -158,11 +160,14 @@ void DropApply(const config::Config& config, const model::Game& game) {
 Result<std::string> FinishApply(const config::Config& config, const model::Game& game,
                                 const Survey& survey, const std::function<Result<void>()>& before) {
   const auto text = files::ReadFile(StagingFolder(config, game) / kJournal);
-  if (!text) return std::string();
+  if (!text) {
+    if (!ApplyUnfinished(config, game)) return std::string();
+    return Err("saves_failed", "a sync that was cut short can't be read");
+  }
   const nlohmann::json doc = nlohmann::json::parse(*text, nullptr, false);
   const std::string id = doc.is_object() ? doc.value("id", std::string()) : std::string();
   const auto revision = ParseManifest(*text, id);
-  if (!revision) return Err("saves_failed", "a sync that was cut short can't be read");
+  if (!revision) return Err("remote_damaged", "a sync that was cut short can't be read");
   if (auto ready = before(); !ready) return std::unexpected(ready.error());
   if (auto placed = Place(config, game, survey, *revision); !placed)
     return std::unexpected(placed.error());

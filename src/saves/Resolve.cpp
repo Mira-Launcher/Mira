@@ -509,8 +509,9 @@ fs::path CoveredBy(std::string_view location, const Roots& roots, const fs::path
     if (name == ".." || strings::ToLower(name) == "dosdevices") return {};
   for (const std::string& pattern : Expand(location, roots)) {
     if (TooBroad(pattern, roots)) continue;
-    const std::size_t depth = MatchedDepth(Components(pattern), 0, names, 0, roots.windows);
-    if (depth == 0) continue;
+    const std::vector<std::string> parts = Components(pattern);
+    if (MatchedDepth(parts, 0, names, 0, roots.windows) == 0) continue;
+    const std::size_t depth = std::ranges::find_if(parts, HasWildcard) - parts.begin();
     fs::path covered = "/";
     for (std::size_t i = 0; i < depth; ++i) covered /= names[i];
     return covered;

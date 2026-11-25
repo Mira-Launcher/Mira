@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -16,7 +17,7 @@ namespace mira::saves::remote {
 struct RemoteInfo {
   std::string slot;      // "primary" or "mirror"
   std::string id;        // random, new for each connection
-  std::string provider;  // "webdav", "sftp" or "s3"
+  std::string provider;  // "onedrive", "dropbox", "webdav", "sftp" or "s3"
   std::string name;      // shown to the user
   std::string folder{};  // path in the remote; for s3 it starts with the bucket
   std::string ca_file{};
@@ -32,14 +33,21 @@ struct RemoteRequest {
   std::map<std::string, std::string> values{};
 };
 
+// Whether a provider is signed in to in a browser, rather than typed in.
+bool SignsIn(std::string_view provider);
+bool SftpHost(const std::string& host);
+bool ValidPort(const std::string& port);
+
 // Refuses a request that isn't safe to store, with invalid_remote.
 Result<void> CheckRequest(const RemoteRequest& request);
 
 // Mira's rclone config file; remotes are described in remotes.json beside it.
 std::filesystem::path RcloneConfigFile(const config::Config& config);
 
-// Stores the slot's connection, replacing any earlier one for that slot.
-Result<RemoteInfo> SaveRemote(const config::Config& config, const RemoteRequest& request);
+// Stores the slot's connection, replacing any earlier one for that slot, once `check` (if any)
+// passed on a private copy of its settings.
+Result<RemoteInfo> SaveRemote(const config::Config& config, const RemoteRequest& request,
+                              const std::function<Result<void>(const Remote&)>& check = {});
 
 // The slot's connection, or nullopt when there is none.
 std::optional<RemoteInfo> FindRemote(const config::Config& config, std::string_view slot);

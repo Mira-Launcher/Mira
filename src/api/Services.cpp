@@ -1170,7 +1170,7 @@ Result<json> Services::SyncCloud(const model::Game& game, saves::CloudAction act
       return Result<void>(std::unexpected(taken.error()));
     return Result<void>();
   };
-  if (!RemoteSyncs(game)) {
+  if (!RemoteEligible(game)) {
     auto synced = saves::RunCloud(config, games.Metadata(), games, game, action, snapshot);
     events.Publish("game.saves_changed", {{"id", game.id}});
     return synced;
@@ -1178,6 +1178,7 @@ Result<json> Services::SyncCloud(const model::Game& game, saves::CloudAction act
   auto synced = saves::remote::RunRemote(config, games.Metadata(), games, game, RemoteDevice(),
                                          action, snapshot);
   NoteRemote(game, synced);
+  if (synced) MirrorSaves(game.id);
   events.Publish("game.saves_changed", {{"id", game.id}});
   return synced;
 }
@@ -1188,10 +1189,82 @@ bool Services::CloudSyncs(const model::Game& game) const {
          !saves::KnownUnsupported(games.Metadata(), game);
 }
 
-bool Services::RemoteSyncs(const model::Game& game) const {
+bool Services::RemoteEligible(const model::Game& game) const {
   return saves::remote::FindRemote(config, "primary") && !CloudSyncs(game) &&
-         config::Resolver(config, game.overrides).GetBool("saves.remote") &&
          !saves::SteamCloudKeeps(config, game, saves::FindEntry(config, games.Metadata(), game));
+}
+
+bool Services::RemoteSyncs(const model::Game& game) const {
+  return config::Resolver(config, game.overrides).GetBool("saves.remote") && RemoteEligible(game);
+}
+
+json Services::RemoteState() {
+  const auto slot = [&](const char* name) -> json {
+    const auto info = saves::remote::FindRemote(config, name);
+    if (!info) return nullptr;
+    return {{"provider", info->provider}, {"name", info->name}, {"folder", info->folder}};
+  };
+  json pending = json::array();
+  std::int64_t synced_at = 0;
+  for (const model::Game& game : games.All()) {
+    if (Conceals(game)) continue;
+    for (const char* name : {"primary", "mirror"}) {
+      const auto row = games.RemoteSyncOf(game.id, name);
+      if (!row) continue;
+      synced_at = std::max(synced_at, row->synced_at);
+      if (row->pending || row->state == saves::kConflict)
+        pending.push_back({{"id", game.id},
+                           {"name", game.name},
+                           {"slot", name},
+                           {"state", row->state},
+                           {"error", row->error}});
+    }
+  }
+  const runner::ToolStatus rclone = saves::remote::DetectRclone(config);
+  return {{"primary", slot("primary")},
+          {"mirror", slot("mirror")},
+          {"rclone", {{"installed", rclone.installed}, {"path", rclone.path}}},
+          {"synced_at", synced_at},
+          {"pending", std::move(pending)}};
+}
+
+Result<json> Services::SyncAllRemote(JobRegistry::Progress& progress) {
+  std::vector<model::Game> all;
+  for (model::Game& game : games.All())
+    if (RemoteSyncs(game)) all.push_back(std::move(game));
+  int done = 0;
+  int synced = 0;
+  json failed = json::array();
+  for (const model::Game& game : all) {
+    if (ThisTaskStop().stop_requested()) return Err("cancelled", "the sync was stopped");
+    progress.Report(done++, static_cast<int>(all.size()), Conceals(game) ? "" : game.name);
+    const auto claim = Claim(game.id, "saves");
+    auto result = claim ? SyncCloud(game, saves::CloudAction::Sync, [] { return Result<void>(); })
+                        : Result<json>(std::unexpected(claim.error()));
+    if (result) {
+      ++synced;
+      continue;
+    }
+    failed.push_back({{"id", game.id}, {"code", result.error().code}});
+    // The rest would fail the same way.
+    if (result.error().code == "remote_offline" || result.error().code == "remote_sign_in" ||
+        result.error().code == "rclone_missing")
+      return std::unexpected(result.error());
+  }
+  return json{{"synced", synced}, {"failed", std::move(failed)}};
+}
+
+void Services::MirrorSaves(const std::string& id) {
+  if (!saves::remote::FindRemote(config, "mirror")) return;
+  // No claim: it only reads, so it never holds up a launch.
+  saves.Post([this, id] {
+    const auto game = games.Find(id);
+    if (!game || !RemoteSyncs(*game)) return;
+    if (auto copied =
+            saves::remote::RunMirror(config, games.Metadata(), games, *game, RemoteDevice());
+        !copied)
+      log::Warn("couldn't copy {}'s saves to the mirror: {}", id, copied.error().message);
+  });
 }
 
 saves::remote::Device Services::RemoteDevice() {
@@ -1245,6 +1318,7 @@ void Services::RetryRemoteSyncs() {
   if (now < remote_retry_at_) return;
   remote_retry_at_ = now + std::chrono::minutes(15);
   if (!saves::remote::FindRemote(config, "primary")) return;
+  for (const std::string& id : games.PendingRemoteSyncs("mirror")) MirrorSaves(id);
   for (const std::string& id : games.PendingRemoteSyncs("primary"))
     saves.Post([this, id] {
       const auto game = games.Find(id);

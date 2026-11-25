@@ -1,6 +1,7 @@
 #include "saves/remote/RemoteSync.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <format>
 #include <utility>
@@ -63,16 +64,26 @@ std::vector<RevisionFile> FilesOf(const std::string& text) {
   return revision ? revision->files : std::vector<RevisionFile>();
 }
 
+// The user's own name for the game's folder; empty for none.
+std::string ChosenKey(const config::Config& config, const model::Game& game) {
+  const std::string chosen =
+      strings::Trim(config::Resolver(config, game.overrides).GetString("saves.remote_key"));
+  return chosen.empty() ? chosen : strings::Slugify(chosen);
+}
+
 }  // namespace
 
 std::string KeyFor(const model::Game& game, const std::string& entry_name) {
   // A folder's name on every remote, so short, plain and the same on every computer.
   const auto key = [](std::string_view kind, std::string_view text) {
+    const auto plain = [](unsigned char c) { return c < 0x80; };
+    const bool named = std::ranges::any_of(text, [](unsigned char c) { return std::isalnum(c); });
+    if (text.empty() || (!named && std::ranges::all_of(text, plain))) return std::string();
     const std::string slug = strings::Slugify(text);
-    if (slug.empty()) return std::string();
-    return std::format(
-        "{}-{}", kind,
-        slug.size() <= 80 ? slug : slug.substr(0, 60) + "-" + strings::StableHash(text));
+    // Slugs drop other scripts' letters, and are cut where too long.
+    if (std::ranges::all_of(text, plain) && slug.size() <= 80)
+      return std::format("{}-{}", kind, slug);
+    return std::format("{}-{}-{}", kind, slug.substr(0, 60), strings::StableHash(text));
   };
   if (game.runner_ref.starts_with("steam:")) return key("steam", game.runner_ref.substr(6));
   for (const std::string_view store : {"gog", "epic", "amazon", "itch"})
@@ -97,10 +108,21 @@ Result<json> RunRemote(const config::Config& config, const store::MetadataStore&
       games.RemoteSyncOf(game.id, info->slot).value_or(store::RemoteSync{.slot = info->slot});
   if (row.remote_id != info->id)
     row = {.slot = info->slot, .remote_id = info->id, .key = row.key, .pending = row.pending};
+  if (const std::string chosen = ChosenKey(config, game); !chosen.empty() && chosen != row.key)
+    row = {.slot = info->slot, .remote_id = info->id, .key = chosen, .pending = row.pending};
   if (row.key.empty())
     row.key = KeyFor(game, survey.match ? survey.match->entry.name : std::string());
   if (row.key.empty())
     return Err("remote_unsyncable", std::format("{} has no name to sync under.", game.name));
+  for (const model::Game& other : games.All()) {
+    if (other.id == game.id) continue;
+    const auto theirs = games.RemoteSyncOf(other.id, info->slot);
+    if (theirs && theirs->remote_id == info->id && theirs->key == row.key)
+      return Err("remote_key_taken",
+                 std::format("{} already syncs with that folder on {}.", other.name, info->name),
+                 "Give this game its own folder name in its save settings.",
+                 Fix::Game(game.id, "saves"));
+  }
 
   const auto store_row = [&] {
     row.checked_at = model::NowSeconds();
@@ -114,9 +136,11 @@ Result<json> RunRemote(const config::Config& config, const store::MetadataStore&
   };
 
   // A download cut short comes first: until it's finished the files here are neither side's.
-  // One that can't be finished mustn't stand in the way of a side chosen by hand.
+  // One that never can be is given up, and what's here compared as it is.
   auto finished = FinishApply(config, game, survey, before_download);
-  if (!finished && (action == CloudAction::Download || action == CloudAction::Upload)) {
+  if (!finished &&
+      (finished.error().code == "remote_unsafe" || finished.error().code == "saves_unplaceable" ||
+       finished.error().code == "remote_damaged")) {
     DropApply(config, game);
     finished = std::string();
   }
@@ -185,7 +209,7 @@ Result<json> RunRemote(const config::Config& config, const store::MetadataStore&
   if (leaves.empty()) {
     // Never synced, or the remote was emptied: what's here is all there is.
     state = local.empty() ? kSynced : kLocalNewer;
-  } else if (lost || leaves.size() > 1) {
+  } else if (lost || leaves.size() > 1 || (leaves.front().files.empty() && !local.empty())) {
     state = kConflict;
   } else if (local_changed && remote_changed) {
     same = staged && SameFiles(*staged, leaves.front().files);
@@ -203,6 +227,8 @@ Result<json> RunRemote(const config::Config& config, const store::MetadataStore&
                        {"at", leaves.front().taken_at},
                        {"files", leaves.front().files.size()},
                        {"bytes", leaves.front().Bytes()}};
+  row.other_device = leaves.empty() ? std::string() : leaves.front().device_name;
+  row.other_at = leaves.empty() ? 0 : leaves.front().taken_at;
   const auto in_sync = [&](const Revision& revision, const std::string& now) {
     row.base = revision.id;
     row.base_files = ManifestJson(revision)["files"].dump();
@@ -289,6 +315,133 @@ Result<json> RunRemote(const config::Config& config, const store::MetadataStore&
   store_row();
   answer["state"] = state;
   answer["revision"] = row.base;
+  return answer;
+}
+
+Result<void> RunMirror(const config::Config& config, const store::MetadataStore& cache,
+                       store::GameStore& games, const model::Game& game, const Device& device) {
+  const auto primary = FindRemote(config, "primary");
+  const auto mirror = FindRemote(config, "mirror");
+  const auto from = games.RemoteSyncOf(game.id, "primary");
+  if (!primary || !mirror || !from || from->remote_id != primary->id || from->base.empty())
+    return {};
+  store::RemoteSync row =
+      games.RemoteSyncOf(game.id, "mirror").value_or(store::RemoteSync{.slot = "mirror"});
+  if (row.remote_id != mirror->id || row.key != from->key)
+    row = {.slot = "mirror", .remote_id = mirror->id, .key = from->key};
+  if (row.base == from->base) return {};
+  const auto store_row = [&] {
+    row.checked_at = model::NowSeconds();
+    if (auto stored = games.SetRemoteSync(game.id, row); !stored)
+      log::Warn("couldn't keep {}'s mirror state: {}", game.id, stored.error().message);
+  };
+  const std::vector<SaveFile> local = LocalFiles(SurveyFor(config, cache, game));
+  const auto settled = [&] {
+    row.pending = false;
+    row.error.clear();
+    store_row();
+  };
+  // Changed or gone since: what's here isn't that revision. The next sync copies a newer one.
+  if (local.empty() || LocalMarker(local) != from->local_marker) {
+    settled();
+    return {};
+  }
+  row.pending = true;
+  store_row();
+  const auto failed = [&](const Error& error) {
+    row.error = error.code;
+    store_row();
+    return std::unexpected(error);
+  };
+  const fs::path staging = StagingFolder(config, game).parent_path() / ".remote-mirror";
+  const struct Cleanup {
+    const fs::path& folder;
+    ~Cleanup() {
+      std::error_code ec;
+      fs::remove_all(folder, ec);
+    }
+  } cleanup{staging};
+  if (auto made = EmptyFolder(staging); !made) return failed(made.error());
+  const auto staged = Stage(local, staging);
+  if (!staged) return failed(staged.error());
+  if (!SameFiles(*staged, FilesOf(from->base_files))) {
+    settled();
+    return {};
+  }
+  const Remote remote = RemoteFor(config, *mirror);
+  const auto listed = ListRevisions(config, remote, row.key);
+  if (!listed) return failed(listed.error());
+  std::vector<Revision> all = *listed;
+  if (std::ranges::find(all, from->base, &Revision::id) == all.end()) {
+    Revision revision{.id = from->base,
+                      .device_id = device.id,
+                      .device_name = device.name,
+                      .game_name = game.name,
+                      .taken_at = model::NowSeconds(),
+                      .files = *staged};
+    for (const Revision& leaf : Leaves(all)) revision.parents.push_back(leaf.id);
+    if (auto sent = UploadRevision(config, remote, row.key, revision, staging); !sent)
+      return failed(sent.error());
+    all.push_back(revision);
+    for (const std::string& id :
+         Prunable(all, static_cast<std::size_t>(config.GetInt("saves.remote_keep"))))
+      if (auto gone = DeleteRevision(config, remote, row.key, id); !gone) break;
+  }
+  row.base = from->base;
+  row.synced_at = model::NowSeconds();
+  row.state = kSynced;
+  settled();
+  return {};
+}
+
+json RemoteOverview(const config::Config& config, const store::GameStore& games,
+                    const model::Game& game, const Survey& survey) {
+  const auto info = FindRemote(config, "primary");
+  if (!info) return nullptr;
+  json answer = {{"kind", "remote"},
+                 {"store", info->name},
+                 {"state", kUnknown},
+                 {"synced_at", 0},
+                 {"checked_at", 0},
+                 {"local_at", 0},
+                 {"cloud_at", 0},
+                 {"files", 0},
+                 {"bytes", 0},
+                 {"device", ""},
+                 {"locations", json::array()},
+                 {"pending", false},
+                 {"error", ""},
+                 {"key", ""}};
+  const std::vector<SaveFile> local = LocalFiles(survey);
+  std::int64_t newest = 0;
+  std::uintmax_t bytes = 0;
+  for (const SaveFile& file : local) {
+    newest = std::max(newest, file.mtime_ns / 1'000'000'000);
+    bytes += file.bytes;
+  }
+  answer["local_at"] = newest;
+  answer["files"] = local.size();
+  answer["bytes"] = bytes;
+  if (!config::Resolver(config, game.overrides).GetBool("saves.remote")) {
+    answer["state"] = "off";
+    return answer;
+  }
+  const auto row = games.RemoteSyncOf(game.id, info->slot);
+  if (!row || row->remote_id != info->id) return answer;
+  std::string state = row->state.empty() ? std::string(kUnknown) : row->state;
+  // Played since the check: the local side has changed too.
+  if (!row->base.empty() && LocalMarker(local) != row->local_marker) {
+    if (state == kSynced) state = kLocalNewer;
+    if (state == kCloudNewer) state = kConflict;
+  }
+  answer["state"] = state;
+  answer["synced_at"] = row->synced_at;
+  answer["checked_at"] = row->checked_at;
+  answer["cloud_at"] = row->other_at;
+  answer["device"] = row->other_device;
+  answer["pending"] = row->pending;
+  answer["error"] = row->error;
+  answer["key"] = row->key;
   return answer;
 }
 
