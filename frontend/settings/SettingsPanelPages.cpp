@@ -114,11 +114,12 @@ Switch* SettingsPanel::AddToggle(Card* card, const QString& label, const QString
   auto* row = new SettingRow(label, doc);
   auto* toggle = new Switch(row);
   toggle->setAccessibleName(label);
-  toggle->setChecked(fallback);
+  const bool saved = shown_prefs_ ? ((*shown_prefs_).*member).value_or(fallback) : fallback;
+  toggle->setChecked(saved);
   row->AddControl(toggle);
   card->AddRow(row);
   nav_->RegisterRow(row, label + ' ' + search);
-  toggles_.push_back({toggle, member, fallback, fallback});
+  toggles_.push_back({toggle, member, fallback, saved});
   const size_t index = toggles_.size() - 1;
   connect(toggle, &Switch::toggled, this, &SettingsPanel::Refresh);
   AddPrefField(
@@ -294,11 +295,6 @@ void SettingsPanel::BuildInterfacePage() {
             "Opens Mira in the tray when you log in, or in big screen if that's set to open at "
             "start.",
             "autostart login boot startup", &FrontendPrefs::start_on_login, false);
-  AddToggle(general, "Scan the library on startup",
-            "Scan the library each time Mira opens. The daemon already watches your folders while "
-            "it runs, so "
-            "this only catches changes made while it was stopped.",
-            "scan startup", &FrontendPrefs::scan_on_startup, true);
   AddToggle(general, "Drag to select games",
             "Drag across the library to select several games at once", "rubber band multiple",
             &FrontendPrefs::drag_select, true);
@@ -306,12 +302,6 @@ void SettingsPanel::BuildInterfacePage() {
             "Double-clicking a game in the library or on a source page starts it, or stops it "
             "while it runs.",
             "double click launch start play", &FrontendPrefs::double_click_play, true);
-  AddToggle(general, "Show commands instead of asking for your password",
-            "When Mira needs to install or remove a system package, it shows the command to run in "
-            "a terminal "
-            "instead of the system's password prompt.",
-            "sudo pkexec terminal package install root polkit", &FrontendPrefs::copy_commands,
-            false);
 
   Card* library = page->AddCard("Library");
   tile_preview_ = new TilePreview(TilePreviewGames(games), previews_.artwork);
@@ -647,12 +637,10 @@ void SettingsPanel::BuildBigScreenPage() {
                 .mark_saved = [this] { trailer_volume_saved_ = trailer_volume_->value(); }});
 }
 
-void SettingsPanel::BuildSidebarPage() {
-  SettingsPage* page =
-      nav_->AddCategory("Sidebar", CategoryGlyph("Sidebar"), CategoryNavGroup("Sidebar"));
-  pages_["Sidebar"] = page;
+void SettingsPanel::BuildSidebarCards() {
+  SettingsPage* page = pages_["Interface"];
 
-  Card* style = page->AddCard("Pinned and recently played");
+  Card* style = page->AddCard("Sidebar");
   sidebar_style_ =
       new SidebarStyleChoices({}, previews_.pinned, previews_.recent, previews_.artwork, this);
   const QStringList searches = {

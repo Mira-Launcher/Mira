@@ -38,6 +38,8 @@ HealthStatus GetHealthSync() {
 
 void FillConfigSchema(ConfigSchemaResult& result, const json& body) {
   for (const json& entry : body) {
+    // Set in settings.toml or the CLI only: no screen of the GUI shows it.
+    if (entry.value("config_only", false)) continue;
     ConfigSchemaEntry e;
     e.key = entry.value("key", std::string());
     e.type = entry.value("type", std::string());
@@ -146,7 +148,6 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_string("sort_by", result.prefs.sort_by);
   read_bool("sort_descending", result.prefs.sort_descending);
   read_string("not_installed_sort", result.prefs.not_installed_sort);
-  read_bool("scan_on_startup", result.prefs.scan_on_startup);
   read_string("theme", result.prefs.theme);
   read_bool("drag_select", result.prefs.drag_select);
   read_bool("double_click_play", result.prefs.double_click_play);
@@ -233,7 +234,6 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.sort_by) table["sort_by"] = *prefs.sort_by;
   if (prefs.sort_descending) table["sort_descending"] = *prefs.sort_descending;
   if (prefs.not_installed_sort) table["not_installed_sort"] = *prefs.not_installed_sort;
-  if (prefs.scan_on_startup) table["scan_on_startup"] = *prefs.scan_on_startup;
   if (prefs.theme) table["theme"] = *prefs.theme;
   if (prefs.drag_select) table["drag_select"] = *prefs.drag_select;
   if (prefs.double_click_play) table["double_click_play"] = *prefs.double_click_play;

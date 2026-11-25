@@ -68,7 +68,7 @@ SettingsPanel::SettingsPanel(Previews previews, QWidget* parent)
 
   BuildInterfacePage();
   BuildBigScreenPage();
-  BuildSidebarPage();
+  BuildSidebarCards();
   BuildShortcutsPage();
 
   setEnabled(false);
@@ -96,6 +96,7 @@ void SettingsPanel::LoadFrontendPrefs() {
 }
 
 void SettingsPanel::ShowFrontendPrefs(const FrontendPrefs& prefs) {
+  shown_prefs_ = prefs;
   if (prefs.theme) {
     theme_saved_ = QString::fromStdString(*prefs.theme);
     SelectTheme(theme_saved_);
@@ -286,6 +287,13 @@ void SettingsPanel::BuildSchemaPages() {
     }
     finish_card();
 
+    if (category == "Advanced") {
+      AddToggle(
+          page->AddCard("System packages"), "Show commands instead of asking for your password",
+          "When Mira needs to install or remove a system package, it shows the command to "
+          "run in a terminal instead of the system's password prompt.",
+          "sudo pkexec terminal package install root polkit", &FrontendPrefs::copy_commands, false);
+    }
     if (gamemode_card != nullptr) {
       auto* row = new SettingRow("GameMode", {});
       gamemode_status_ = new QLabel("Checking…", row);
@@ -360,9 +368,12 @@ void SettingsPanel::DescribeEmulatorItems() {
 }
 
 void SettingsPanel::DescribeDownloadItems() {
-  // A download's summary is where it comes from, as edited.
+  // A runner download's summary is where it comes from, as edited. A store's tool sits in its
+  // source's row, which has a summary of its own.
   for (SettingEditor& field : fields_) {
-    if (field.entry.item.empty() || !field.entry.key.ends_with(".repo")) continue;
+    if (field.entry.category != "Runners" || field.entry.item.empty() ||
+        !field.entry.key.ends_with(".repo"))
+      continue;
     const auto it = items_.find(
         {QString::fromStdString(field.entry.category), QString::fromStdString(field.entry.item)});
     if (it == items_.end() || field.line == nullptr) continue;
@@ -727,23 +738,30 @@ void SettingsPanel::ShowRemovedGames() {
         });
         row->AddControl(add);
       }
-      if (game.prefix_bytes > 0 || game.saves_bytes > 0) {
-        auto* remove = new QPushButton("Delete", row);
-        connect(remove, &QPushButton::clicked, this, [this, game] {
-          const QString name = QString::fromStdString(game.name);
-          if (!notify::Confirm(this, "Delete what " + name + " kept?",
-                               "Its prefix and save backups are deleted, and can't be recovered. "
-                               "Its play history stays.",
-                               "Delete"))
-            return;
-          api::DeleteRemovedGameAsync(this, game.id, [this, name](StoreActionResult done) {
-            if (!done.ok)
-              notify::FailedRequest(this, "Could not delete what " + name + " kept", done.error);
-            ShowRemovedGames();
-          });
+      // Every row can leave the list: Delete when something was kept, Forget when only the
+      // game's own files are left, which stay where they are.
+      const bool kept_data = game.prefix_bytes > 0 || game.saves_bytes > 0;
+      auto* remove = new QPushButton(kept_data ? "Delete" : "Forget", row);
+      connect(remove, &QPushButton::clicked, this, [this, game, kept_data] {
+        const QString name = QString::fromStdString(game.name);
+        const bool confirmed =
+            kept_data ? notify::Confirm(this, "Delete what " + name + " kept?",
+                                        "Its prefix and save backups are deleted, and can't be "
+                                        "recovered. Its play history stays.",
+                                        "Delete")
+                      : notify::Confirm(this, "Forget " + name + "?",
+                                        "Mira stops listing it here and forgets its settings. Its "
+                                        "files and play history stay.",
+                                        "Forget");
+        if (!confirmed) return;
+        const QString failed =
+            kept_data ? "Could not delete what " + name + " kept" : "Could not forget " + name;
+        api::DeleteRemovedGameAsync(this, game.id, [this, failed](StoreActionResult done) {
+          if (!done.ok) notify::FailedRequest(this, failed, done.error);
+          ShowRemovedGames();
         });
-        row->AddControl(remove);
-      }
+      });
+      row->AddControl(remove);
       removed_card_->AddRow(row);
     }
   });

@@ -131,9 +131,6 @@ class LibraryWindow : public QMainWindow,
   void changeEvent(QEvent* event) override;
   void showEvent(QShowEvent* event) override;
 
-  // Lists the library and scans it at once; the scan's changes arrive as
-  // events. `force_scan` is Refresh's: startup honours scan_on_startup.
-  void Reload(bool force_scan);
   // Ctrl+R and the refresh button: the scan, and every store's owned list asked again.
   void RefreshLibrary();
   // `done` runs once the new list is in the library.
@@ -406,7 +403,6 @@ class LibraryWindow : public QMainWindow,
   static constexpr int kMaxRowsTileWidth = 400;
   static int MaxTileWidth(bool rows) { return rows ? kMaxRowsTileWidth : kMaxTileWidth; }
   static constexpr int kDefaultSourceTileWidth = 150;  // smaller: a source page holds two grids
-  bool scan_on_startup_ = true;
   std::string
       applied_prefs_;  // the frontend table (minus window layout) last applied from config.changed
   // Keyed by "<id>@<tile width>". A generated cover is cheap but not free,

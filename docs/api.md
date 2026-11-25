@@ -173,7 +173,7 @@ What removing each game can delete, to show before asking: `{"ids": [...]}` answ
 Removed games that left something on disk: `[{id, name, removed_at, install_path, exe_path, prefix, prefix_bytes, saves_bytes}]`, newest first. `install_path` and `exe_path` are `""` unless the game's files are still there, to add back with `POST /v1/games/manual` (which takes its record back). `prefix` is its kept prefix, `""` when none; `saves_bytes` its [save backups](#saves).
 
 ### `DELETE /v1/removed-games/{id}`
-Deletes a removed game's kept prefix and save backups, its fetched info and its record. Its play history stays. `404 not_removed`, `409 game_in_library` when it's been added back.
+Deletes a removed game's kept prefix and save backups, its fetched info and its record, so it leaves the list. Its play history stays, and so do its own files when they're still there. `404 not_removed`, `409 game_in_library` when it's been added back.
 
 ### `POST /v1/games/removal/sizes`
 The sizes behind those plans, as a [job](#jobs) since big folders take a while: `{"ids": [...]}`, result `{"<id>": {"files": bytes, "prefix": bytes, "saves": bytes}}`. For a game installed inside its prefix, `prefix` is the rest of it. `saves` counts a file shared between backups once.

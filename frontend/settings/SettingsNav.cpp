@@ -29,9 +29,8 @@
 namespace mira_gui {
 
 QString CategoryNavGroup(const QString& category) {
-  static const QStringList kLookAndFeel = {"Interface", "Big screen", "Sidebar", "Shortcuts"};
-  static const QStringList kSystem = {"Detection", "Scanning", "Desktop entries",
-                                      "Downloads", "Updates",  "Advanced"};
+  static const QStringList kLookAndFeel = {"Interface", "Big screen", "Shortcuts"};
+  static const QStringList kSystem = {"Scanning", "Application menu", "Advanced"};
   if (kLookAndFeel.contains(category)) return "Look and feel";
   if (kSystem.contains(category)) return "System";
   return "Games";
@@ -40,15 +39,20 @@ QString CategoryNavGroup(const QString& category) {
 icons::Glyph CategoryGlyph(const QString& category) {
   using icons::Glyph;
   static const QHash<QString, Glyph> kGlyphs = {
-      {"Interface", Glyph::Monitor},     {"Big screen", Glyph::Gamepad},
-      {"Sidebar", Glyph::Sidebar},       {"Shortcuts", Glyph::Keyboard},
-      {"Library", Glyph::Folder},        {"Metadata", Glyph::Image},
-      {"Sources", Glyph::Layers},        {"Runners", Glyph::Wrench},
-      {"Launching", Glyph::PlayCircle},  {"Installers", Glyph::Download},
-      {"Store launchers", Glyph::Store}, {"Detection", Glyph::Target},
-      {"Scanning", Glyph::Refresh},      {"Desktop entries", Glyph::Grid},
-      {"Advanced", Glyph::Sliders},      {"Saves", Glyph::Save},
-      {"Emulators", Glyph::Chip},        {"Updates", Glyph::Update},
+      {"Interface", Glyph::Monitor},
+      {"Big screen", Glyph::Gamepad},
+      {"Shortcuts", Glyph::Keyboard},
+      {"Library", Glyph::Folder},
+      {"Launching", Glyph::PlayCircle},
+      {"Runners", Glyph::Wrench},
+      {"Saves", Glyph::Save},
+      {"Sources", Glyph::Layers},
+      {"Emulators", Glyph::Chip},
+      {"Art and store info", Glyph::Image},
+      {"Downloads and installers", Glyph::Download},
+      {"Scanning", Glyph::Refresh},
+      {"Application menu", Glyph::Grid},
+      {"Advanced", Glyph::Sliders},
   };
   return kGlyphs.value(category, Glyph::Settings);
 }

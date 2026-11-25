@@ -390,7 +390,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   qApp->installEventFilter(new mira_gui::FocusDropper(this));
 
   sidebar_->RefreshSources();
-  Reload(/*force_scan=*/false);
+  RefreshGames();  // mirad's watcher keeps the library current, so opening scans nothing
 }
 
 void LibraryWindow::BuildShortcuts() {
@@ -547,7 +547,6 @@ void LibraryWindow::BuildShortcuts() {
 }
 
 void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
-  scan_on_startup_ = prefs.scan_on_startup.value_or(true);
   controller_->ApplyPrefs(prefs);
   sidebar_->ApplyPrefs(prefs);
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
@@ -1217,7 +1216,7 @@ void LibraryWindow::InstallErrorNavigator() {
     if (self->daemon_supervisor_ == nullptr) {
       self->daemon_supervisor_ = new mira_gui::DaemonSupervisor(self);
       connect(self->daemon_supervisor_, &mira_gui::DaemonSupervisor::Ready, self,
-              [self] { self->Reload(/*force_scan=*/false); });
+              [self] { self->RefreshGames(); });
       connect(self->daemon_supervisor_, &mira_gui::DaemonSupervisor::Failed, self,
               [self](const QString& error) {
                 mira_gui::notify::FailedWithHint(
@@ -1247,16 +1246,6 @@ void LibraryWindow::FetchMissingArtwork() {
   // Asked for, so a missing SteamGridDB key is worth saying (ShowSteamGridDbNotice).
   artwork_fetch_requested_ = true;
   mira_gui::actions::FetchMissingArtwork(this, [this] { artwork_fetch_requested_ = false; });
-}
-
-void LibraryWindow::Reload(bool force_scan) {
-  RefreshGames();
-  // mirad's own watcher keeps the library current while it runs, so
-  // skipping the startup scan costs nothing except a library that
-  // changed while mirad was stopped.
-  if (force_scan || scan_on_startup_) {
-    mira_gui::api::ScanLibraryAsync(this, [](mira_gui::ScanResult) {});
-  }
 }
 
 void LibraryWindow::RefreshLibrary() {
@@ -1944,9 +1933,9 @@ QWidget* LibraryWindow::BuildSettingsPage() {
   settings_panel_->SetHeader(header);
 
   settings_panel_->AddSectionAction(
-      "Library", "Moving games", "Move games into Mira's folders",
-      "Moves each game's files into the library folder and its prefix into the prefix folder. "
-      "Changing those folders does not move anything until you run this.",
+      "Library", "Folders", "Move games into Mira's folders",
+      "Moves each game's files and its prefix into the default Mira folder's Games and prefixes "
+      "folders. Changing the folders above doesn't move anything until you run this.",
       "Move games…", [this] {
         mira_gui::actions::RelocateLibrary(this, [this](const std::string& id) {
           const mira_gui::GameSummary* game = FindGame(id);
@@ -1954,14 +1943,14 @@ QWidget* LibraryWindow::BuildSettingsPage() {
         });
       });
   settings_panel_->AddSectionAction(
-      "Desktop entries", "Menu entries", "Regenerate desktop entries",
-      "Rewrites Mira's desktop entries now, so changes to the desktop entry settings apply "
-      "without waiting for the next library change.",
+      "Application menu", "Menu entries", "Regenerate menu entries",
+      "Rewrites Mira's application menu entries now, so changes to these settings apply without "
+      "waiting for the next library change.",
       "Regenerate", [this] { mira_gui::actions::SyncDesktopEntries(this); });
-  settings_panel_->AddSectionAction(
-      "Desktop entries", "Menu entries", "Remove all desktop entries",
-      "Turns off desktop entries and deletes every one Mira generated.", "Remove…",
-      [this] { mira_gui::actions::RemoveAllDesktopEntries(this); });
+  settings_panel_->AddSectionAction("Application menu", "Menu entries", "Remove all menu entries",
+                                    "Turns off menu entries and deletes every one Mira made.",
+                                    "Remove…",
+                                    [this] { mira_gui::actions::RemoveAllDesktopEntries(this); });
   return page;
 }
 

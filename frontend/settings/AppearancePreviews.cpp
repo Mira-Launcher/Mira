@@ -70,7 +70,8 @@ ThemeChoice::ThemeChoice(const QString& theme, const QString& label, std::vector
   setCursor(Qt::PointingHandCursor);
   setFocusPolicy(Qt::StrongFocus);
   setAccessibleName(label);
-  setFixedSize(176, 132);
+  // Three to a row in Settings' 470 px column: the built-in themes and Follow the desktop.
+  setFixedSize(148, 116);
   connect(artwork_, &ArtworkStore::CoverChanged, this, qOverload<>(&QWidget::update));
   LoadTokens();
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] {
@@ -93,7 +94,7 @@ void ThemeChoice::paintEvent(QPaintEvent*) {
   painter.setBrush(isChecked() || underMouse() ? tokens.surface_alt : tokens.surface);
   painter.drawRoundedRect(frame, tokens.radius_control + 2, tokens.radius_control + 2);
 
-  const QRectF preview(12, 12, width() - 24, 86);
+  const QRectF preview(12, 12, width() - 24, 70);
   const qreal dpr = devicePixelRatioF();
   if (theme_ == "auto") {
     // Dark above the diagonal, light below: following the desktop means either.
@@ -119,7 +120,7 @@ void ThemeChoice::paintEvent(QPaintEvent*) {
   font.setWeight(QFont::DemiBold);
   painter.setFont(font);
   painter.setPen(tokens.text);
-  painter.drawText(QRect(12, 106, width() - 24, 18), Qt::AlignLeft | Qt::AlignVCenter,
+  painter.drawText(QRect(12, 90, width() - 24, 18), Qt::AlignLeft | Qt::AlignVCenter,
                    painter.fontMetrics().elidedText(label_, Qt::ElideRight, width() - 24));
 }
 

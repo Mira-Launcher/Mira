@@ -54,7 +54,7 @@ enum class Glyph {
   Target,
   Grid,
   ArrowLeft,
-  Undo,
+  Reset,
   Grip,
   More,
   Eye,

@@ -20,7 +20,7 @@ constexpr int kTitleGap = 12;
 // A column of cards on a Settings page or a game's card, at the tuned text size, and the gap
 // between two columns.
 constexpr int kCardColumn = 516;
-constexpr int kColumnGap = 20;
+constexpr int kColumnGap = 12;
 // A column's width at the current text size: wider at a larger one, so labels still fit.
 int CardColumnWidth();
 // How wide `columns` columns of cards `column_width` px wide are, with the gaps between them.

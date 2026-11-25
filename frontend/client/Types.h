@@ -1117,11 +1117,6 @@ struct FrontendPrefs {
   std::optional<std::string> sort_by;  // "name" | "last_played" | "playtime" | "status"
   std::optional<bool> sort_descending;
   std::optional<std::string> not_installed_sort;  // "store" | "name" | "reviews" | "protondb"
-  // Whether opening the frontend also kicks off POST /v1/library/scan.
-  // Worth turning off for a large library on slow storage, where the scan
-  // is the slowest thing about startup and the daemon's own watcher
-  // (library::Watcher) already keeps the library current while it runs.
-  std::optional<bool> scan_on_startup;
   // A theme name (ui/Theme.h), or "auto" (the default) to follow the
   // desktop's own light/dark preference.
   std::optional<std::string> theme;
