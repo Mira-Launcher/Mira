@@ -172,7 +172,7 @@ void ConnectRemoteCard::Fill() {
   Field("folder", provider_ == "s3" ? "Bucket and folder" : "Folder",
         provider_ == "s3" ? "bucket/folder" : "Optional");
   if (provider_ == "webdav" || provider_ == "s3") {
-    QLineEdit* file = Field("ca_file", "Certificate", "Only for a server that signs its own");
+    QLineEdit* file = Field("ca_file", "Certificate", "If it signs its own");
     auto* browse = new QPushButton("Choose…", form_);
     browse->ensurePolished();
     file->setMinimumWidth(320 - browse->sizeHint().width() - 6);  // as wide as the rest with it
