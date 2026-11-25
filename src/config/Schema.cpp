@@ -1432,6 +1432,24 @@ Schema::Schema() {
          .keywords = "cloud sync timeout offline",
          .unit = "s"});
 
+  s.Add({.key = "saves.remote",
+         .label = "Sync saves with your own remote",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "When a remote is connected, sync saves with it when a game starts and closes. "
+                "Games whose store's cloud keeps their saves are left to it.",
+         .keywords = "cloud sync remote nas onedrive dropbox webdav ssh s3"});
+
+  s.Add({.key = "saves.remote_keep",
+         .label = "Versions kept on the remote",
+         .type = Type::Int,
+         .default_value = 5,
+         .doc = "How many versions of each game's saves stay on the remote. Versions in a "
+                "conflict are always kept.",
+         .constraint = Range(1, 100),
+         .keywords = "cloud sync remote history"});
+
   s.Add({.key = "saves.rclone_bin",
          .label = "rclone binary",
          .type = Type::String,

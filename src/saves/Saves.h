@@ -21,6 +21,9 @@ struct Plan {
   // Cloud keeps the saves, while saves.skip_cloud is on).
   std::string status{};
 };
+// Whether Steam starts the game and its Steam Cloud keeps the saves.
+bool SteamCloudKeeps(const config::Config& config, const model::Game& game,
+                     const std::optional<Match>& match);
 Plan PlanFor(const config::Config& config, const model::Game& game,
              const std::optional<Match>& match);
 

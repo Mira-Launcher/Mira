@@ -507,4 +507,14 @@ TEST_CASE("a download cut short is finished before anything else") {
   CHECK(b.snapshots == 2);
   CHECK(b.Read("two.sav") == "new 2");
   CHECK_FALSE(fs::exists(staging));
+
+  // Given up instead, as after playing: the half-replaced saves are compared, never overwritten.
+  a.Write("one.sav", "newer 1");
+  CHECK(a.Moved() == "upload");
+  test::Touch(staging / "applying.json", "not json");
+  b.Write("one.sav", "played");
+  CHECK(b.Moved() == "saves_failed");
+  saves::remote::DropApply(b.env.config, b.game);
+  CHECK(b.Moved() == "saves_conflict");
+  CHECK(b.Read("one.sav") == "played");
 }

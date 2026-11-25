@@ -31,6 +31,11 @@ std::filesystem::path StagingFolder(const config::Config& config, const model::G
 Result<void> Apply(const config::Config& config, const model::Game& game, const Survey& survey,
                    const Revision& revision, const std::function<Result<void>()>& before);
 
+// Whether an Apply was cut short.
+bool ApplyUnfinished(const config::Config& config, const model::Game& game);
+// Gives one up: the saves here stay as they are, for the next sync to compare.
+void DropApply(const config::Config& config, const model::Game& game);
+
 // Finishes an Apply that was cut short; nothing when there's none. Returns its revision's id.
 Result<std::string> FinishApply(const config::Config& config, const model::Game& game,
                                 const Survey& survey, const std::function<Result<void>()>& before);

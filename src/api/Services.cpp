@@ -4,16 +4,19 @@
 #include <httplib.h>
 #include <unistd.h>
 
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <format>
 #include <memory>
 #include <mutex>
+#include <random>
 
 #include "achievements/Achievements.h"
 #include "api/Http.h"
 #include "config/Resolver.h"
 #include "core/Command.h"
+#include "core/Json.h"
 #include "core/Log.h"
 #include "core/LogHub.h"
 #include "core/Paths.h"
@@ -40,6 +43,9 @@
 #include "runner/RunnerUpdates.h"
 #include "saves/Backups.h"
 #include "saves/Manifest.h"
+#include "saves/Match.h"
+#include "saves/remote/Apply.h"
+#include "saves/remote/RemoteConfig.h"
 #include "steam/GridArt.h"
 #include "steam/SteamDetector.h"
 #include "steam/SteamScanner.h"
@@ -478,6 +484,7 @@ void Services::WatchExternalGames() {
       if (stop_wake_.wait_for(lock, wait, stopped)) return;
     }
     LockHiddenWhenIdle();
+    RetryRemoteSyncs();
     const bool steam_uninstalling = CheckSteamUninstalls();
 
     const std::pair revisions{games.Revision(), config.Revision()};
@@ -1155,14 +1162,22 @@ Result<json> Services::SyncCloudSaves(const std::string& id, saves::CloudAction 
 Result<json> Services::SyncCloud(const model::Game& game, saves::CloudAction action,
                                  const std::function<Result<void>()>& before_download) {
   const SavesWork work(*this, game.id, "syncing");
-  auto synced = saves::RunCloud(config, games.Metadata(), games, game, action, [&] {
+  const auto snapshot = [&] {
     if (auto ready = before_download(); !ready) return ready;
     auto taken = saves::TakeSnapshot(config, game, saves::SurveyFor(config, games.Metadata(), game),
                                      saves::kBeforeCloudDownload);
     if (!taken && taken.error().code != "saves_not_found")
       return Result<void>(std::unexpected(taken.error()));
     return Result<void>();
-  });
+  };
+  if (!RemoteSyncs(game)) {
+    auto synced = saves::RunCloud(config, games.Metadata(), games, game, action, snapshot);
+    events.Publish("game.saves_changed", {{"id", game.id}});
+    return synced;
+  }
+  auto synced = saves::remote::RunRemote(config, games.Metadata(), games, game, RemoteDevice(),
+                                         action, snapshot);
+  NoteRemote(game, synced);
   events.Publish("game.saves_changed", {{"id", game.id}});
   return synced;
 }
@@ -1173,8 +1188,80 @@ bool Services::CloudSyncs(const model::Game& game) const {
          !saves::KnownUnsupported(games.Metadata(), game);
 }
 
+bool Services::RemoteSyncs(const model::Game& game) const {
+  return saves::remote::FindRemote(config, "primary") && !CloudSyncs(game) &&
+         config::Resolver(config, game.overrides).GetBool("saves.remote") &&
+         !saves::SteamCloudKeeps(config, game, saves::FindEntry(config, games.Metadata(), game));
+}
+
+saves::remote::Device Services::RemoteDevice() {
+  constexpr const char* kSecret = "saves_device";
+  const std::lock_guard lock(remote_mutex_);
+  if (const json stored = json::parse(games.Secret(kSecret), nullptr, false); stored.is_object())
+    return {.id = core::JsonString(stored, "id"), .name = core::JsonString(stored, "name")};
+  std::array<char, 256> host{};
+  gethostname(host.data(), host.size() - 1);
+  std::random_device random;
+  saves::remote::Device device{.id = std::format("{:08x}{:08x}", random(), random()),
+                               .name = host[0] != '\0' ? host.data() : "This computer"};
+  if (auto saved = games.SetSecret(kSecret, json{{"id", device.id}, {"name", device.name}}.dump());
+      !saved)
+    log::Warn("couldn't keep this computer's sync name: {}", saved.error().message);
+  return device;
+}
+
+void Services::OweRemote(const model::Game& game) {
+  const auto remote = saves::remote::FindRemote(config, "primary");
+  if (!remote) return;
+  store::RemoteSync row =
+      games.RemoteSyncOf(game.id, "primary").value_or(store::RemoteSync{.slot = "primary"});
+  if (row.remote_id != remote->id)
+    row = {.slot = "primary", .remote_id = remote->id, .key = row.key};
+  row.pending = true;
+  // Played since a download was cut short: finishing it would overwrite that session.
+  saves::remote::DropApply(config, game);
+  if (auto stored = games.SetRemoteSync(game.id, row); !stored)
+    log::Warn("couldn't note {}'s saves to upload: {}", game.id, stored.error().message);
+}
+
+void Services::NoteRemote(const model::Game& game, const Result<json>& synced) {
+  const std::lock_guard lock(remote_mutex_);
+  if (synced) {
+    remote_failing_ = false;
+    return;
+  }
+  const auto row = games.RemoteSyncOf(game.id, "primary");
+  if (synced.error().code == "saves_conflict" || synced.error().code == "cancelled" || !row ||
+      !row->pending || remote_failing_)
+    return;
+  remote_failing_ = true;
+  events.PublishNotification(model::NotifyLevel::Warning,
+                             std::format("{}'s saves are waiting to be uploaded.", game.name),
+                             api::FailedEvent({{"id", game.id}}, synced.error()));
+}
+
+void Services::RetryRemoteSyncs() {
+  const auto now = std::chrono::steady_clock::now();
+  if (now < remote_retry_at_) return;
+  remote_retry_at_ = now + std::chrono::minutes(15);
+  if (!saves::remote::FindRemote(config, "primary")) return;
+  for (const std::string& id : games.PendingRemoteSyncs("primary"))
+    saves.Post([this, id] {
+      const auto game = games.Find(id);
+      const auto row = games.RemoteSyncOf(id, "primary");
+      // A conflict waits for the user.
+      if (!game || !row || !row->pending || row->state == saves::kConflict || !RemoteSyncs(*game))
+        return;
+      const auto claim = Claim(id, "saves");
+      if (!claim) return;
+      auto synced = SyncCloud(*game, saves::CloudAction::Sync, [] { return Result<void>(); });
+      if (!synced && synced.error().code == "saves_conflict")
+        NotifySavesConflict(*game, synced.error(), "since they were last in sync");
+    });
+}
+
 Result<void> Services::SavesBeforeLaunch(const model::Game& game, std::string_view choice) {
-  if (CloudSyncs(game) && choice != "skip") {
+  if ((CloudSyncs(game) || RemoteSyncs(game)) && choice != "skip") {
     if (auto synced = SyncBeforeLaunch(game, choice); !synced) return synced;
   }
   // A first backup, so even the first session can be undone; after the sync, which tells where
@@ -1245,8 +1332,10 @@ Result<void> Services::SyncBeforeLaunch(const model::Game& game, std::string_vie
 
 void Services::SavesAfterPlay(const std::string& id, std::function<void()> then) {
   const auto game = games.Find(id);
-  if (!game || (!saves::PlanFor(config, *game, std::nullopt).backup && !CloudSyncs(*game)))
+  if (!game || (!saves::PlanFor(config, *game, std::nullopt).backup && !CloudSyncs(*game) &&
+                !RemoteSyncs(*game)))
     return then();
+  if (RemoteSyncs(*game)) OweRemote(*game);
   // One stretch of work from the game's exit through the sync, so a client never sees it idle
   // between, even while the work waits its turn on the lane.
   auto work = std::make_shared<const SavesWork>(*this, id, "backing_up");
@@ -1259,7 +1348,7 @@ void Services::SavesAfterPlay(const std::string& id, std::function<void()> then)
     const auto game = games.Find(id);
     if (!game) return;
     BackUpAfterPlay(*game);
-    if (!CloudSyncs(*game)) return;
+    if (!CloudSyncs(*game) && !RemoteSyncs(*game)) return;
     const auto claim = Claim(id, "saves");
     if (!claim) return;
     auto synced = SyncCloud(*game, saves::CloudAction::Sync, [] { return Result<void>(); });
@@ -1274,9 +1363,14 @@ void Services::SavesAfterPlay(const std::string& id, std::function<void()> then)
 
 void Services::NotifySavesConflict(const model::Game& game, const Error& error,
                                    std::string_view when) {
+  std::string place;
+  if (const auto remote = saves::remote::FindRemote(config, "primary"); remote && RemoteSyncs(game))
+    place = "on " + remote->name;
+  else if (const saves::CloudSide* side = saves::CloudFor(game))
+    place = std::format("in {}'s cloud", side->Name());
   events.PublishNotification(model::NotifyLevel::Warning,
-                             std::format("{}'s saves changed both here and in {}'s cloud {}.",
-                                         game.name, saves::CloudFor(game)->Name(), when),
+                             std::format("{}'s saves changed both here and {} {}.", game.name,
+                                         place.empty() ? "elsewhere" : place, when),
                              api::FailedEvent({{"id", game.id}, {"persistent", true}}, error));
 }
 

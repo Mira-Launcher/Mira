@@ -144,6 +144,17 @@ Result<void> Apply(const config::Config& config, const model::Game& game, const 
   return Place(config, game, survey, revision);
 }
 
+bool ApplyUnfinished(const config::Config& config, const model::Game& game) {
+  std::error_code ec;
+  return fs::exists(StagingFolder(config, game) / kJournal, ec);
+}
+
+void DropApply(const config::Config& config, const model::Game& game) {
+  std::error_code ec;
+  fs::remove(StagingFolder(config, game) / kJournal, ec);
+  fs::remove_all(StagingFolder(config, game), ec);
+}
+
 Result<std::string> FinishApply(const config::Config& config, const model::Game& game,
                                 const Survey& survey, const std::function<Result<void>()>& before) {
   const auto text = files::ReadFile(StagingFolder(config, game) / kJournal);

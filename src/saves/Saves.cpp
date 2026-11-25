@@ -22,15 +22,20 @@ json EntryJson(const std::optional<Match>& match) {
 
 }  // namespace
 
+bool SteamCloudKeeps(const config::Config& config, const model::Game& game,
+                     const std::optional<Match>& match) {
+  const json entry = EntryJson(match);
+  return game.runner_ref.starts_with("steam:") &&
+         config::Resolver(config, game.overrides).GetString("steam.launch_mode") == "steam" &&
+         entry.contains("cloud") && entry["cloud"].is_object() &&
+         entry["cloud"].value("steam", false);
+}
+
 Plan PlanFor(const config::Config& config, const model::Game& game,
              const std::optional<Match>& match) {
   const config::Resolver settings(config, game.overrides);
   if (!settings.GetBool("saves.enabled")) return {.status = "off"};
-  const json entry = EntryJson(match);
-  const bool steam_cloud =
-      entry.contains("cloud") && entry["cloud"].is_object() && entry["cloud"].value("steam", false);
-  if (game.runner_ref.starts_with("steam:") && settings.GetString("steam.launch_mode") == "steam" &&
-      steam_cloud && settings.GetBool("saves.skip_cloud"))
+  if (settings.GetBool("saves.skip_cloud") && SteamCloudKeeps(config, game, match))
     return {.status = "steam_cloud"};
   return {.backup = true};
 }

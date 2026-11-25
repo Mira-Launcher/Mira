@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <format>
+#include <utility>
 
 #include "config/Resolver.h"
 #include "core/Log.h"
@@ -17,8 +18,6 @@ namespace mira::saves::remote {
 namespace {
 using nlohmann::json;
 namespace fs = std::filesystem;
-
-constexpr std::size_t kKeep = 5;
 
 // Copies of the local files in `folder`/files, with their checksums as copied.
 Result<std::vector<RevisionFile>> Stage(const std::vector<SaveFile>& files,
@@ -115,7 +114,12 @@ Result<json> RunRemote(const config::Config& config, const store::MetadataStore&
   };
 
   // A download cut short comes first: until it's finished the files here are neither side's.
-  const auto finished = FinishApply(config, game, survey, before_download);
+  // One that can't be finished mustn't stand in the way of a side chosen by hand.
+  auto finished = FinishApply(config, game, survey, before_download);
+  if (!finished && (action == CloudAction::Download || action == CloudAction::Upload)) {
+    DropApply(config, game);
+    finished = std::string();
+  }
   if (!finished) return failed(finished.error());
   if (!finished->empty()) survey = SurveyFor(config, cache, game);
 
@@ -241,8 +245,15 @@ Result<json> RunRemote(const config::Config& config, const store::MetadataStore&
     if (auto made = EmptyFolder(staging); !made) return failed(made.error());
     if (auto got = DownloadRevision(config, remote, row.key, newest, staging); !got)
       return failed(got.error());
-    if (auto applied = Apply(config, game, survey, newest, before_download); !applied)
+    // Pending, so a crash halfway is picked up by the next retry.
+    const bool owed = std::exchange(row.pending, true);
+    row.state = kCloudNewer;
+    store_row();
+    if (auto applied = Apply(config, game, survey, newest, before_download); !applied) {
+      row.pending = owed || ApplyUnfinished(config, game);
+      row.state = state;
       return failed(applied.error());
+    }
     survey = SurveyFor(config, cache, game);
     local = LocalFiles(survey);
     in_sync(newest, LocalMarker(local));
@@ -270,7 +281,8 @@ Result<json> RunRemote(const config::Config& config, const store::MetadataStore&
     if (!download) answer["moved"] = "upload";
     std::vector<Revision> all = *listed;
     all.push_back(revision);
-    for (const std::string& id : Prunable(all, kKeep))
+    for (const std::string& id :
+         Prunable(all, static_cast<std::size_t>(config.GetInt("saves.remote_keep"))))
       if (auto gone = DeleteRevision(config, remote, row.key, id); !gone) break;
   }
   row.state = state;
