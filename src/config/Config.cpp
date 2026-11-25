@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <iterator>
 #include <sstream>
 
 #include "config/Schema.h"
@@ -551,13 +552,66 @@ std::vector<std::string> Config::GetStringArray(std::string_view key) const {
 }
 
 std::filesystem::path Config::GetPath(std::string_view key) const {
-  return paths::Expand(GetString(key));
+  const std::string value = GetString(key);
+  if (value.empty() && !MiraFolderPart(key).empty())
+    return DefaultMiraFolder(*this) / MiraFolderPart(key);
+  return paths::Expand(value);
 }
 
 std::vector<std::filesystem::path> Config::GetPathArray(std::string_view key) const {
   std::vector<std::filesystem::path> out;
   for (const std::string& value : GetStringArray(key)) out.push_back(paths::Expand(value));
   return out;
+}
+
+bool IsMiraFolder(const Config& config, const std::filesystem::path& path) {
+  if (path.empty()) return false;
+  const std::filesystem::path expanded = paths::Expand(path.string());
+  return std::ranges::any_of(config.GetPathArray("mira_folders"),
+                             [&](const std::filesystem::path& folder) {
+                               return paths::IsWithin(expanded, {folder}, /*allow_equal=*/true) &&
+                                      paths::IsWithin(folder, {expanded}, /*allow_equal=*/true);
+                             });
+}
+
+std::filesystem::path DefaultMiraFolder(const Config& config) {
+  const std::vector<std::filesystem::path> folders = config.GetPathArray("mira_folders");
+  const std::filesystem::path chosen = paths::Expand(config.GetString("default_mira_folder"));
+  if (IsMiraFolder(config, chosen)) return chosen;
+  const std::filesystem::path home = paths::Home();
+  for (const std::filesystem::path& folder : folders)
+    if (paths::IsWithin(folder, {home}, /*allow_equal=*/true)) return folder;
+  return folders.empty() ? home / "Mira" : folders.front();
+}
+
+std::string_view MiraFolderPart(std::string_view key) {
+  static constexpr std::pair<std::string_view, std::string_view> kParts[] = {
+      {"prefix_root", "prefixes"},         {"relocate.install_root", "Games"},
+      {"epic.install_root", "Games/Epic"}, {"gog.install_root", "Games/GOG"},
+      {"itch.install_root", "Games/Itch"}, {"amazon.install_root", "Games/Amazon"},
+      {"emulators.roms_root", "Roms"}};
+  for (const auto& [setting, part] : kParts)
+    if (setting == key) return part;
+  return {};
+}
+
+std::vector<std::filesystem::path> PathsOf(const Config& config, std::string_view key) {
+  if (!config.GetString(key).empty() || MiraFolderPart(key).empty()) return {config.GetPath(key)};
+  std::vector<std::filesystem::path> paths;
+  for (const std::filesystem::path& folder : config.GetPathArray("mira_folders"))
+    paths.push_back(folder / MiraFolderPart(key));
+  if (const std::filesystem::path chosen = config.GetPath(key);
+      !std::ranges::contains(paths, chosen))
+    paths.push_back(chosen);
+  return paths;
+}
+
+std::vector<std::filesystem::path> StoreInstallRoots(const Config& config) {
+  std::vector<std::filesystem::path> roots;
+  for (const char* key :
+       {"epic.install_root", "gog.install_root", "itch.install_root", "amazon.install_root"})
+    std::ranges::move(PathsOf(config, key), std::back_inserter(roots));
+  return roots;
 }
 
 void SetEnvEntry(nlohmann::json& list, const std::string& key, const std::string& value) {

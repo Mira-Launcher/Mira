@@ -218,10 +218,9 @@ Result<RelocatePlan> PlanRelocate(const config::Config& config, const model::Gam
     fs::path target;
     if (request.install_path) {
       target = *request.install_path;
-    } else if (!config.GetString("relocate.install_root").empty()) {
-      target = NamedDir(config, game,
-                        PlacedParent(config, config.GetPath("relocate.install_root"), game),
-                        game.install_path);
+    } else if (const fs::path into = config.GetPath("relocate.install_root");
+               paths::IsWithin(into, library_roots, /*allow_equal=*/true)) {
+      target = NamedDir(config, game, PlacedParent(config, into, game), game.install_path);
     } else if (!library_roots.empty()) {
       target = NamedDir(config, game, PlacedParent(config, library_roots.front(), game),
                         game.install_path);

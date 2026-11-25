@@ -291,10 +291,9 @@ ScanSummary Scanner::ScanRoot(const fs::path& root) {
   // via GogImporter/ItchImporter) shouldn't also get double-detected here
   // as one big bogus game named after the wrapper folder itself.
   std::vector<fs::path> excluded_roots = PrefixRoots(config_);
-  for (const char* key : {"epic.install_root", "gog.install_root", "itch.install_root",
-                          "amazon.install_root", "emulators.roms_root"}) {
-    excluded_roots.push_back(config_.GetPath(key));
-  }
+  std::ranges::move(config::StoreInstallRoots(config_), std::back_inserter(excluded_roots));
+  std::ranges::move(config::PathsOf(config_, "emulators.roms_root"),
+                    std::back_inserter(excluded_roots));
   const DetectorSettings detector_settings = SettingsFromConfig(config_);
   const Detector detector(detector_settings);
   AutoSetup auto_setup(config_, games_, events_);

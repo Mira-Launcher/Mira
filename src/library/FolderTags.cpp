@@ -38,10 +38,7 @@ bool IsApplications(const fs::path& root) {
 // Folders Mira keeps for something else, which pruning must never remove.
 bool IsConfiguredFolder(const config::Config& config, const fs::path& dir) {
   std::vector<fs::path> folders = PrefixRoots(config);
-  for (const char* key :
-       {"epic.install_root", "gog.install_root", "itch.install_root", "amazon.install_root"}) {
-    folders.push_back(config.GetPath(key));
-  }
+  std::ranges::move(config::StoreInstallRoots(config), std::back_inserter(folders));
   for (const char* key : {"runner_search_paths", "wine_search_paths"}) {
     for (fs::path& path : config.GetPathArray(key)) folders.push_back(std::move(path));
   }

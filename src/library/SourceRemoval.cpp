@@ -45,10 +45,7 @@ bool Belongs(const model::Game& game, std::string_view source,
 
 std::vector<fs::path> DeleteRoots(const config::Config& config, const std::string& prefix) {
   std::vector<fs::path> roots = config.GetPathArray("library_roots");
-  for (const char* key :
-       {"epic.install_root", "gog.install_root", "itch.install_root", "amazon.install_root"}) {
-    roots.push_back(config.GetPath(key));
-  }
+  std::ranges::move(config::StoreInstallRoots(config), std::back_inserter(roots));
   // A launcher game installed inside its prefix.
   if (!prefix.empty()) roots.push_back(fs::path(prefix) / "drive_c");
   return roots;
@@ -80,7 +77,7 @@ bool DeletableOutside(const config::Config& config, const fs::path& path) {
   }
   std::vector<fs::path> mira = DeleteRoots(config, {});
   std::ranges::move(PrefixRoots(config), std::back_inserter(mira));
-  mira.push_back(config.GetPath("emulators.roms_root"));
+  std::ranges::move(config::PathsOf(config, "emulators.roms_root"), std::back_inserter(mira));
   mira.push_back(config.File().parent_path());
   return std::ranges::none_of(mira, [&](const fs::path& folder) {
     return !folder.empty() && paths::IsWithin(folder, {target}, /*allow_equal=*/true);
@@ -181,7 +178,8 @@ Result<OwnFiles> FilesToDelete(const config::Config& config, const model::Game& 
   if (const emulators::Emulator* emulator = emulators::ForGame(game)) {
     OwnFiles files{.paths = emulators::GameFiles(config, game),
                    .roots = emulators::GameRoots(config, *emulator)};
-    files.roots.push_back(config.GetPath("emulators.roms_root"));
+    std::ranges::move(config::PathsOf(config, "emulators.roms_root"),
+                      std::back_inserter(files.roots));
     return files;
   }
   // A program the game only runs (an emulator) isn't the game's to delete.

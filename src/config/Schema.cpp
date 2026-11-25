@@ -297,20 +297,22 @@ Schema::Schema() {
   s.Add({.key = "prefix_root",
          .label = "Prefix folder",
          .type = Type::String,
-         .default_value = "~/Mira/prefixes",
-         .doc = "The folder where each game's Wine or Proton prefix is created. A game on another "
+         .default_value = "",
+         .doc = "The folder where each game's Wine or Proton prefix is created. Empty is prefixes "
+                "in the default Mira folder. A game on another "
                 "disk gets its prefix in the prefixes folder of that disk's Mira folder, or in a "
                 "prefix folder inside its own folder when that disk has none. Mira never scans "
                 "them for games.",
          .path = PathKind::Folder,
+         .old_defaults = {"~/Mira/prefixes"},
          .config_only = true});
 
   s.Add({.key = "relocate.install_root",
          .label = "Move destination folder",
          .type = Type::String,
          .default_value = "",
-         .doc = "The library folder that moved games go into. Empty uses the first library folder. "
-                "It must be one of the library folders.",
+         .doc = "The library folder that moved games go into. Empty is Games in the default Mira "
+                "folder, or the first library folder when that isn't one.",
          .path = PathKind::Folder,
          .config_only = true});
 
@@ -1126,11 +1128,12 @@ Schema::Schema() {
   s.Add({.key = "epic.install_root",
          .label = "Install folder",
          .type = Type::String,
-         .default_value = "~/Mira/Games/Epic",
+         .default_value = "",
          .doc = "The folder Epic games are installed into, with one subfolder per game. Mira "
-                "never scans it for games, so it can be inside a library folder.",
+                "never scans it for games, so it can be inside a library folder. "
+                "Empty is Games/Epic in the default Mira folder.",
          .path = PathKind::Folder,
-         .old_defaults = {"~/.local/share/mira/epic"},
+         .old_defaults = {"~/Mira/Games/Epic", "~/.local/share/mira/epic"},
          .config_only = true});
 
   s.Add({.key = "epic.eos_overlay",
@@ -1201,11 +1204,12 @@ Schema::Schema() {
   s.Add({.key = "gog.install_root",
          .label = "Install folder",
          .type = Type::String,
-         .default_value = "~/Mira/Games/GOG",
+         .default_value = "",
          .doc = "The folder GOG games are installed into, with one subfolder per game. Mira never "
-                "scans it for games, so it can be inside a library folder.",
+                "scans it for games, so it can be inside a library folder. "
+                "Empty is Games/GOG in the default Mira folder.",
          .path = PathKind::Folder,
-         .old_defaults = {"~/Games/GOG", "~/.local/share/mira/gog"},
+         .old_defaults = {"~/Mira/Games/GOG", "~/Games/GOG", "~/.local/share/mira/gog"},
          .config_only = true});
 
   s.Add({.key = "gog.folder_naming",
@@ -1269,11 +1273,12 @@ Schema::Schema() {
   s.Add({.key = "itch.install_root",
          .label = "Install folder",
          .type = Type::String,
-         .default_value = "~/Mira/Games/Itch",
+         .default_value = "",
          .doc = "The folder itch.io games are installed into. Mira never scans it for games, so "
-                "it can be inside a library folder.",
+                "it can be inside a library folder. "
+                "Empty is Games/Itch in the default Mira folder.",
          .path = PathKind::Folder,
-         .old_defaults = {"~/.local/share/mira/itch"},
+         .old_defaults = {"~/Mira/Games/Itch", "~/.local/share/mira/itch"},
          .config_only = true});
 
   s.Item("humble", "Humble Bundle");
@@ -1330,11 +1335,12 @@ Schema::Schema() {
   s.Add({.key = "amazon.install_root",
          .label = "Install folder",
          .type = Type::String,
-         .default_value = "~/Mira/Games/Amazon",
+         .default_value = "",
          .doc = "The folder Amazon games are installed into, with one subfolder per game. Mira "
-                "never scans it for games, so it can be inside a library folder.",
+                "never scans it for games, so it can be inside a library folder. "
+                "Empty is Games/Amazon in the default Mira folder.",
          .path = PathKind::Folder,
-         .old_defaults = {"~/.local/share/mira/amazon"},
+         .old_defaults = {"~/Mira/Games/Amazon", "~/.local/share/mira/amazon"},
          .config_only = true});
 
   s.Item("battlenet", "Battle.net");
@@ -1454,9 +1460,11 @@ Schema::Schema() {
   s.Add({.key = "emulators.roms_root",
          .label = "Games folder",
          .type = Type::String,
-         .default_value = "~/Mira/Roms",
-         .doc = "Each emulator keeps its games in a folder of its own here, which Mira watches.",
+         .default_value = "",
+         .doc = "Each emulator keeps its games in a folder of its own here, which Mira watches. "
+                "Empty is Roms in the default Mira folder.",
          .path = PathKind::Folder,
+         .old_defaults = {"~/Mira/Roms"},
          .config_only = true});
 
   s.Add({.key = "emulators.fullscreen",

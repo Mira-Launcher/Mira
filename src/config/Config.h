@@ -125,6 +125,25 @@ class Config {
   std::atomic<std::uint64_t> revision_{0};
 };
 
+// `path` is one of mira_folders, whatever its trailing slash or "~".
+bool IsMiraFolder(const Config& config, const std::filesystem::path& path);
+
+// Where downloads and installs go unless told otherwise: default_mira_folder, else the Mira folder
+// on the boot drive (in the home folder), else the first.
+std::filesystem::path DefaultMiraFolder(const Config& config);
+
+// Where a folder setting that lives in a Mira folder (prefix_root, a store's install_root,
+// emulators.roms_root, relocate.install_root) sits inside one, or empty for
+// any other key. Left empty, such a setting is that folder in the default Mira folder.
+std::string_view MiraFolderPart(std::string_view key);
+
+// Every folder such a setting has pointed at: its own value when set, else its folder in each Mira
+// folder, since what went into one while another Mira folder was the default is still there.
+std::vector<std::filesystem::path> PathsOf(const Config& config, std::string_view key);
+
+// Where Epic, GOG, itch.io and Amazon have installed games, as PathsOf gives each.
+std::vector<std::filesystem::path> StoreInstallRoots(const Config& config);
+
 // Sets `key` in a launch.env list of "KEY=VALUE" strings: drops its earlier entries and appends
 // the new one.
 void SetEnvEntry(nlohmann::json& list, const std::string& key, const std::string& value);
