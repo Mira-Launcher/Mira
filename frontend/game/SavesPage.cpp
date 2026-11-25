@@ -384,8 +384,8 @@ void SavesPage::FillCloud() {
          cloud.local_at > 0 ? "Saved " + saves_text::When(cloud.local_at, now, true) + " · " +
                                   saves_text::Files(cloud.files, cloud.bytes)
                             : QString(),
-         "Uploads them over the cloud's", "upload");
-  choice("Use the cloud's",
+         saves_text::KeepEffect(cloud), "upload");
+  choice(saves_text::UseTheirs(cloud),
          cloud.cloud_at > 0 ? "Uploaded " + saves_text::When(cloud.cloud_at, now, true) : QString(),
          "This computer's are backed up first", "download");
   cloud_->AddRow(choices);
@@ -417,10 +417,14 @@ void SavesPage::LoadSettings() {
     rows.push_back({"saves.extra_paths", "More save locations",
                     extra.empty() ? QString("None") : QString::number(extra.size())});
     if (saves_.cloud) {
-      rows.push_back(
-          {"saves.cloud",
-           QString("Sync with %1's cloud").arg(QString::fromStdString(saves_.cloud->store)),
-           on_off(value("saves.cloud"))});
+      rows.push_back(saves_.cloud->remote
+                         ? Setting{"saves.remote",
+                                   "Sync with " + QString::fromStdString(saves_.cloud->store),
+                                   on_off(value("saves.remote"))}
+                         : Setting{"saves.cloud",
+                                   QString("Sync with %1's cloud")
+                                       .arg(QString::fromStdString(saves_.cloud->store)),
+                                   on_off(value("saves.cloud"))});
     }
     for (const Setting& setting : rows) {
       QHBoxLayout* line = nullptr;

@@ -2129,7 +2129,7 @@ void LibraryWindow::ChooseSaves(const std::string& id,
   // Started from the tray: a notification brings the question up.
   if ((!isVisible() || isMinimized()) &&
       mira_gui::notify::AskOutOfSight(
-          this, QString::fromStdString(game->name) + "'s saves changed here and in the cloud",
+          this, QString::fromStdString(game->name) + "'s saves changed here and elsewhere",
           "Choose which to start with", "Choose…", show)) {
     return;
   }

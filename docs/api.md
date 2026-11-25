@@ -801,7 +801,7 @@ Rewrites Mira's own desktop entries now.
 ## GameMode
 
 ### `GET /v1/system/packages[?for=]`
-The system packages Mira's features use and which are missing, for this distribution. `for` is `core` (curl), `wine` (Wine, winetricks), `winetricks` (cabextract, unzip: winetricks verbs and store launchers like Microsoft 365), `adobe` (zstd, to unpack AdobeWine), `archives` (7-Zip), `performance` (GameMode, MangoHud), `controllers` (the SDL3 library, for big screen) or `browser` (any browser HTML games can run in, offering Chromium; asked for only by name); without it, all of them but `browser`. Returns `{"distro", "family", "missing": [{"tool", "package", "purpose"}], "unavailable": [{"tool", "purpose"}], "install": [argv...], "restart"}`. `unavailable` lists what's missing with no package on this distribution (on Debian and Ubuntu, a name `apt-cache` doesn't know). `family` is `arch`, `debian`, `fedora`, `suse`, `ostree` (Bazzite, Silverblue: layered with rpm-ostree, so `restart` is true), `steamos` or `unknown`. `install` is the command that installs the missing packages, for a client to run as root (`pkexec`), and empty when nothing's missing or Mira has no way to install them (SteamOS, unknown). Running winetricks or installing a launcher that uses it fails with `missing_packages` and fix `{"kind": "packages", "target": "winetricks"}` until they're there, and an HTML game fails the same way with target `browser` while no browser is installed.
+The system packages Mira's features use and which are missing, for this distribution. `for` is `core` (curl), `wine` (Wine, winetricks), `winetricks` (cabextract, unzip: winetricks verbs and store launchers like Microsoft 365), `adobe` (zstd, to unpack AdobeWine), `archives` (7-Zip), `performance` (GameMode, MangoHud), `controllers` (the SDL3 library, for big screen) or `browser` (any browser HTML games can run in, offering Chromium; asked for only by name) or `ssh` (OpenSSH, for save remotes over SSH; likewise); without it, all of them but those two. Returns `{"distro", "family", "missing": [{"tool", "package", "purpose"}], "unavailable": [{"tool", "purpose"}], "install": [argv...], "restart"}`. `unavailable` lists what's missing with no package on this distribution (on Debian and Ubuntu, a name `apt-cache` doesn't know). `family` is `arch`, `debian`, `fedora`, `suse`, `ostree` (Bazzite, Silverblue: layered with rpm-ostree, so `restart` is true), `steamos` or `unknown`. `install` is the command that installs the missing packages, for a client to run as root (`pkexec`), and empty when nothing's missing or Mira has no way to install them (SteamOS, unknown). Running winetricks or installing a launcher that uses it fails with `missing_packages` and fix `{"kind": "packages", "target": "winetricks"}` until they're there, and an HTML game fails the same way with target `browser` while no browser is installed.
 
 ### `GET /v1/gamemode/status`
 `{"installed": true, "daemon_running": false}`. `installed` means `gamemoded` or `gamemoderun` is on `PATH`; `daemon_running` means GameMode owns its D-Bus name. With `launch.gamemode` on, an unreachable daemon is logged and the game still launches.
@@ -948,6 +948,39 @@ Saves are synced before each launch (see [launch](#post-v1gamesidlaunch)) and ag
 ### `POST /v1/games/{id}/saves/cloud`
 `{"action": "check" | "sync" | "download" | "upload"}`, whatever `saves.cloud` says. `check` compares and stores the states; `sync` also moves each location the way it's behind, failing with `saves_conflict` (with a `fix` to the game's saves and nothing moved) when one changed on both sides; `download` and `upload` replace one side with the other, for picking a side of a conflict (a side with no saves is left as it is). A [job](#jobs) (kind `saves`, target the game) whose result is `{state, locations: [{name, path, state, moved?}]}`, `moved` being `download` or `upload`. `409 cloud_unsupported` for a game of another store; the job fails with `cloud_unsupported` when the store keeps none for the game, `not_authenticated` (fix: sign in), `cloud_sync_failed`, `gog_api_error`, `game_running` or `game_busy`. Publishes `game.saves_changed`. The game's GOG client secret and tokens never appear in a reply, event or log.
 
+
+### Your own remote
+Saves of games no store's cloud keeps can be synced with storage of the user's own (OneDrive, Dropbox, WebDAV, SFTP or S3), moved by rclone (1.76 or newer, which Mira downloads). Connections are always encrypted: `https://` only, the server's certificate or SSH key checked, and a redirect to `http://` refused. Files are kept as they are, so they can be recovered without Mira. Two remotes can be connected: `primary`, which saves sync with, and `mirror`, which is only ever written to, after each sync.
+
+A game's saves are `<folder>/mira-saves/v1/<key>/<revision>/`, each revision a full copy (`files/<root>/<path>`) with a `manifest.json` written last, naming the revisions it's built on. `key` is the store's id for the game, its save list entry, or its name, or `saves.remote_key`. A revision no other is built on is current; more than one is a conflict. `saves.remote_keep` revisions are kept. Two games with one key here: the second fails with `remote_key_taken`.
+
+Saves sync before each launch and after play as [cloud saves](#cloud-saves) do, with the same timeout, `saves` choices, `saves_conflict` and `game.saves_activity`. What changed is decided from the revision last in sync: one side changed moves that way, both is a conflict unless the files are the same. All local saves gone, or a game matched only by its name meeting saves for the first time, is asked about too. A download is checked against its checksums, refused (`remote_unsafe`) when a file isn't in one of the game's save locations, backed up first (`before_cloud_download`), and finished at the next sync when it was cut short. An upload that fails is owed: it's tried again at startup, every 15 minutes and at the game's next launch, with one notification per outage.
+
+`cloud` in `GET /v1/games/{id}/saves` then has `kind` `remote`, `store` (the remote's name), and besides the usual fields `device` (whose the remote's newest saves are), `key`, `pending` and `error` (the last failure's code). `POST /v1/games/{id}/saves/cloud` takes the same actions; its result is `{state, revision, moved?, other?}`, `other` being the remote's newest saves `{device, at, files, bytes}`. Errors: `remote_offline`, `remote_sign_in`, `remote_full`, `remote_certificate`, `remote_host_key`, `remote_insecure`, `remote_damaged`, `remote_unsafe`, `remote_unsyncable`, `remote_key_taken`, `saves_unplaceable`, `saves_too_large`, `rclone_missing` and `remote_failed`.
+
+Sign-ins are in `rclone.conf` in Mira's config folder, readable only by the user; none is in a reply, event or log.
+
+### `GET /v1/saves/remote`
+`{primary, mirror, rclone: {installed, path}, synced_at, pending: [{id, name, slot, state, error}]}`. A remote is `{provider, name, folder}` or null; `pending` are the games owed an upload or in conflict, without locked hidden ones.
+
+### `PUT /v1/saves/remote/{primary|mirror}`
+`{"provider", "name", "folder"?, "ca_file"?, "host_keys"?, "values"?}`. `values` are `url`, `user` and `password` for `webdav`; `host`, `port`, `user`, `password` or `key_file` for `sftp`, which also needs the `host_keys` the user trusted; `endpoint`, `region`, `access_key_id` and `secret_access_key` for `s3`, whose `folder` starts with the bucket; none for `onedrive` and `dropbox`, which are signed in to in a browser. `ca_file` is a certificate to trust besides the system's. A [job](#jobs) (kind `saves`) that writes and deletes a small file before storing anything, so a remote that fails replaces nothing; its result is the `GET`'s. A browser sign-in's address comes as `saves.remote_sign_in {slot, url}` and in the job's progress, and is waited for 5 minutes. Fails with `invalid_remote` or the errors above; `409 remote_none` for a mirror without a primary. Publishes `saves.remote_changed`.
+
+### `DELETE /v1/saves/remote/{primary|mirror}`
+Forgets the sign-in and the games' sync state, and for the primary the mirror's too. Nothing on the remote or this computer is deleted. Publishes `saves.remote_changed`.
+
+### `POST /v1/saves/remote/{primary|mirror}/test`
+A job that writes and deletes a small file there.
+
+### `POST /v1/saves/remote/sync`
+A job that syncs every game, whose result is `{synced, failed: [{id, code}]}`.
+
+### `POST /v1/saves/remote/host-keys`
+`{"host", "port"?}`. A job whose result is `{host_keys, fingerprints}`: the SSH server's keys now, for the user to compare and `PUT` to trust. Needs OpenSSH (package feature `ssh`).
+
+### `POST /v1/saves/remote/ssh-key`
+`{path, public}`: the SSH key Mira makes for remotes, made on first use.
+
 ### `GET /v1/saves/manifest`
 `{url, games, fetched_at, checked_at}`: the list's address, how many games the index holds (0 before the first download, or after `saves.manifest_url` changed until it's fetched from there), when it was last downloaded and when last checked (unix seconds, 0 for never).
 
@@ -986,6 +1019,8 @@ A new connection (no `Last-Event-ID`) first gets the buffered events replayed, t
 | `game.metadata_ready`, `game.metadata_failed` | See metadata refresh. |
 | `game.artwork_*` | See the artwork endpoints. |
 | `game.achievements_ready` | `{id, total, unlocked}` after an [achievements](#achievements) refresh changed the list. |
+| `saves.remote_changed` | `{}` when a save remote was connected or disconnected. |
+| `saves.remote_sign_in` | `{slot, url}` when connecting a save remote needs a browser sign-in, at rclone's page on this computer. |
 | `game.saves_changed` | `{id}` when a game's [save](#saves) backups or cloud state changed, or a backup after play failed or succeeded again. |
 | `saves.manifest_changed` | No payload: a newer save locations list is in use, so any game's `GET /v1/games/{id}/saves` may answer differently. |
 | `tricks.*` | See `POST /v1/games/{id}/tricks`. |

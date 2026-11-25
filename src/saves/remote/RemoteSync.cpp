@@ -253,10 +253,14 @@ Result<json> RunRemote(const config::Config& config, const store::MetadataStore&
                "undone.",
                Fix::Game(game.id, "saves"));
 
-  const bool download = !leaves.empty() && (action == CloudAction::Download ||
-                                            (action == CloudAction::Sync && state == kCloudNewer));
-  bool send = !local.empty() && (action == CloudAction::Upload ||
-                                 (action == CloudAction::Sync && state == kLocalNewer));
+  // Already the same: choosing a side changes nothing.
+  const bool settled = state == kSynced && single;
+  const bool download =
+      !leaves.empty() && !settled &&
+      (action == CloudAction::Download || (action == CloudAction::Sync && state == kCloudNewer));
+  bool send =
+      !local.empty() && !settled &&
+      (action == CloudAction::Upload || (action == CloudAction::Sync && state == kLocalNewer));
   if (download) {
     const Revision& newest = leaves.front();
     if (newest.Bytes() >

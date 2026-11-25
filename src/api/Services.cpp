@@ -1204,13 +1204,17 @@ json Services::RemoteState() {
     if (!info) return nullptr;
     return {{"provider", info->provider}, {"name", info->name}, {"folder", info->folder}};
   };
+  const std::map<std::string, std::optional<saves::remote::RemoteInfo>> remotes = {
+      {"primary", saves::remote::FindRemote(config, "primary")},
+      {"mirror", saves::remote::FindRemote(config, "mirror")}};
   json pending = json::array();
   std::int64_t synced_at = 0;
   for (const model::Game& game : games.All()) {
     if (Conceals(game)) continue;
     for (const char* name : {"primary", "mirror"}) {
       const auto row = games.RemoteSyncOf(game.id, name);
-      if (!row) continue;
+      const auto& info = remotes.at(name);
+      if (!row || !info || row->remote_id != info->id) continue;
       synced_at = std::max(synced_at, row->synced_at);
       if (row->pending || row->state == saves::kConflict)
         pending.push_back({{"id", game.id},
@@ -1238,6 +1242,7 @@ Result<json> Services::SyncAllRemote(JobRegistry::Progress& progress) {
   for (const model::Game& game : all) {
     if (ThisTaskStop().stop_requested()) return Err("cancelled", "the sync was stopped");
     progress.Report(done++, static_cast<int>(all.size()), Conceals(game) ? "" : game.name);
+    if (!RemoteSyncs(game)) continue;  // disconnected meanwhile
     const auto claim = Claim(game.id, "saves");
     auto result = claim ? SyncCloud(game, saves::CloudAction::Sync, [] { return Result<void>(); })
                         : Result<json>(std::unexpected(claim.error()));
@@ -1245,7 +1250,7 @@ Result<json> Services::SyncAllRemote(JobRegistry::Progress& progress) {
       ++synced;
       continue;
     }
-    failed.push_back({{"id", game.id}, {"code", result.error().code}});
+    if (!Conceals(game)) failed.push_back({{"id", game.id}, {"code", result.error().code}});
     // The rest would fail the same way.
     if (result.error().code == "remote_offline" || result.error().code == "remote_sign_in" ||
         result.error().code == "rclone_missing")

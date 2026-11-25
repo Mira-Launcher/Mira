@@ -187,7 +187,10 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 `PATCH /v1/games/{id}/saves/{backup}`. A pinned backup is kept however many newer ones are taken, and doesn't count toward `saves.keep`; `unpin` lets it go with the rest. The game's backups list marks pinned ones.
 
 ### `mira saves cloud <id> check|sync|download|upload`
-`POST /v1/games/{id}/saves/cloud`, waiting for the job. Prints the GOG or Epic game's cloud state, then each cloud location's state, folder and whether it was moved.
+`POST /v1/games/{id}/saves/cloud`, waiting for the job. Prints the state with the game's store's cloud or the connected remote, then each cloud location's state, folder and whether it was moved.
+
+### `mira saves remote [status]` / `connect <provider>` / `test` / `sync` / `disconnect`
+`/v1/saves/remote`. `connect` takes `--name`, `--folder`, `--ca-file`, `--mirror` and the provider's settings (`--url`, `--user`, `--host`, `--port`, `--key-file`, `--endpoint`, `--region`, `--access-key-id`), asks for the password or secret without echo, prints an SSH server's fingerprints to confirm, and the address to sign in at for OneDrive and Dropbox. `sync` syncs every game now; `--mirror` makes `test` and `disconnect` mean the mirror.
 
 ### `mira saves manifest [--update]` / `search <name>`
 `GET /v1/saves/manifest` / `GET /v1/saves/entries?q=`. `manifest` prints where the list of save locations comes from, how many games it holds and when it was downloaded and checked; `--update` checks for a newer one first and waits for it. `search` lists the entries whose name contains `<name>`, for setting a game's `saves.manifest_name`.

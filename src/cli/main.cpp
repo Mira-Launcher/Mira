@@ -1369,6 +1369,8 @@ int CmdSavesRemote(int argc, char** argv) {
     const std::string_view arg = argv[i];
     if (arg == "--mirror")
       slot = "mirror";
+    else if (arg == "--password" || arg == "--secret-access-key")
+      ok = false;  // arguments are public: these are asked for
     else if (what == "connect" && arg.starts_with("--") && i + 1 < argc)
       options[std::string(arg.substr(2))] = argv[++i];
     else if (what == "connect" && !options.contains("provider"))

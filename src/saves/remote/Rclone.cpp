@@ -91,7 +91,7 @@ Error RcloneError(int exit_code, std::string_view log) {
     return {.code = "remote_full", .message = "The remote has no room left.", .hint = {}};
   if (says({"401 Unauthorized", "403 Forbidden", "unable to authenticate", "invalid_grant",
             "expired_access_token", "InvalidAuthenticationToken", "SignatureDoesNotMatch",
-            "InvalidAccessKeyId"}))
+            "InvalidAccessKeyId", "StatusCode: 403"}))
     return {
         .code = "remote_sign_in", .message = "The remote didn't accept the sign-in.", .hint = {}};
   if (exit_code == 3 || exit_code == 4 ||

@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <format>
 #include <json.hpp>
+#include <mutex>
 
 #include "core/AtomicFile.h"
 #include "core/Files.h"
@@ -230,6 +231,8 @@ Result<json> ScanHost(const std::string& host, const std::string& port) {
 }
 
 Result<json> SshKey(const config::Config& config) {
+  static std::mutex making;
+  const std::lock_guard lock(making);
   const fs::path key = Folder(config) / "saves-ssh-key";
   std::error_code ec;
   if (!fs::exists(key, ec)) {

@@ -73,11 +73,14 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
       heading, QString("Which saves should %1 start with?").arg(QString::fromStdString(game.name)),
       text::kHeading);
   heading_layout->addWidget(title);
-  heading_layout->addWidget(
-      MakeLabel(heading,
-                QString("They changed here and in %1's cloud since they were last in sync.")
-                    .arg(store != nullptr ? store->name : QString::fromStdString(game.source)),
-                text::kSubtle));
+  const bool in_store = game.source == "gog" || game.source == "epic";
+  QLabel* place = MakeLabel(
+      heading,
+      in_store ? QString("They changed here and in %1's cloud since they were last in sync.")
+                     .arg(store != nullptr ? store->name : QString::fromStdString(game.source))
+               : QString("They changed here and elsewhere since they were last in sync."),
+      text::kSubtle);
+  heading_layout->addWidget(place);
   SetTitleWidget(heading);
 
   SetClose("Cancel", [this] { emit Chosen({}); });
@@ -93,9 +96,11 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
     choices_layout->addWidget(button, 1);
     return button;
   };
-  choice("Keep this computer's", &local_, "Uploads them over the cloud's", "keep_local");
-  choice("Use the cloud's", &cloud_, "This computer's are backed up first", "use_cloud")
-      ->setFocus();
+  LaidOutButton* keep =
+      choice("Keep this computer's", &local_, "Uploads them over the cloud's", "keep_local");
+  LaidOutButton* theirs =
+      choice("Use the cloud's", &cloud_, "This computer's are backed up first", "use_cloud");
+  theirs->setFocus();
   AddRow(choices);
 
   QHBoxLayout* buttons = ButtonRow();
@@ -107,9 +112,13 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
   connect(cancel, &QPushButton::clicked, this, [this] { emit Chosen({}); });
   buttons->addWidget(cancel);
 
-  api::GetSavesAsync(this, id_, [this](SavesResult result) {
+  api::GetSavesAsync(this, id_, [this, place, keep, theirs](SavesResult result) {
     if (!result.ok || !result.cloud) return;
     const CloudSaves& cloud = *result.cloud;
+    place->setText(QString("They changed here and %1 since they were last in sync.")
+                       .arg(saves_text::Place(cloud)));
+    theirs->findChild<QLabel*>()->setText(saves_text::UseTheirs(cloud));
+    keep->findChildren<QLabel*>().last()->setText(saves_text::KeepEffect(cloud));
     const QDateTime now = QDateTime::currentDateTime();
     if (cloud.local_at > 0) {
       local_->setText("Saved " + saves_text::When(cloud.local_at, now, true) + " · " +
