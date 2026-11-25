@@ -13,6 +13,7 @@
 #include <QVBoxLayout>
 
 #include "../client/api/Artwork.h"
+#include "../components/ActivationKey.h"
 #include "../components/FlowLayout.h"
 #include "../components/IconButton.h"
 #include "../components/ProgressRail.h"
@@ -129,8 +130,7 @@ void AchievementTile::mouseReleaseEvent(QMouseEvent* event) {
 
 void AchievementTile::keyPressEvent(QKeyEvent* event) {
   const int key = event->key();
-  if (Masked() && (key == Qt::Key_Return || key == Qt::Key_Enter || key == Qt::Key_Space))
-    return Reveal();
+  if (Masked() && IsActivationKey(key)) return Reveal();
   QFrame::keyPressEvent(event);
 }
 

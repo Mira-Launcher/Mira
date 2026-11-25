@@ -1,8 +1,6 @@
 #include "GamePage.h"
 
-#include <QHash>
 #include <QNetworkAccessManager>
-#include <QNetworkReply>
 #include <QPainter>
 #include <QPainterPath>
 #include <QTextDocumentFragment>
@@ -18,6 +16,8 @@
 #include "../library/GamePresentation.h"
 #include "../library/OwnedTitles.h"
 #include "../library/PlayChoices.h"
+#include "../library/TitleRatings.h"
+#include "../library/WebImage.h"
 #include "../theme/Theme.h"
 #include "BigScreenWindow.h"
 #include "Screenshots.h"
@@ -27,20 +27,8 @@ namespace {
 
 constexpr double kMargin = 2.6, kTop = 6.4, kCoverW = 17, kCoverH = 25.5, kLogoH = 6;
 constexpr double kShotW = 14, kShotGap = 0.8;
-constexpr qsizetype kMaxShotBytes = 8 * 1024 * 1024;
 constexpr qsizetype kMaxOwnShots = 6;
 constexpr int kOwnShotPx = 640;
-
-std::optional<QColor> ProtonColor(const QString& tier) {
-  static const QHash<QString, QString> colors = {{"platinum", "#b4c7dc"},
-                                                 {"gold", "#cfb53b"},
-                                                 {"silver", "#a6a6a6"},
-                                                 {"bronze", "#cd7f32"},
-                                                 {"borked", "#ff4d4d"}};
-  const auto it = colors.constFind(tier);
-  if (it == colors.constEnd()) return std::nullopt;
-  return QColor(*it);
-}
 
 // Word-wraps `text` to at most `max_lines`, eliding the last one. Returns its height.
 double DrawParagraph(QPainter& painter, QPointF top_left, double width, const QString& text,
@@ -148,22 +136,12 @@ void GamePage::LoadDetails(const QString& key) {
 
 void GamePage::FetchShots(const QString& key, const std::vector<std::string>& urls) {
   for (size_t i = 0; i < std::min(shots_.size(), urls.size()); ++i) {
-    QNetworkReply* reply = network_->get(QNetworkRequest(QUrl(QString::fromStdString(urls[i]))));
-    // Stopped once it's too big, not after the whole body is in memory.
-    connect(reply, &QNetworkReply::downloadProgress, reply, [reply](qint64 received, qint64) {
-      if (received > kMaxShotBytes) reply->abort();
-    });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, key, i] {
-      reply->deleteLater();
-      const QByteArray data = reply->readAll();
-      if (reply->error() != QNetworkReply::NoError || key != item_.key ||
-          data.size() > kMaxShotBytes)
-        return;
-      QPixmap pixmap;
-      if (!pixmap.loadFromData(data)) return;
-      shots_[i] = pixmap;
-      update();
-    });
+    FetchWebImage(network_, QString::fromStdString(urls[i]), this,
+                  [this, key, i](const QPixmap& pixmap) {
+                    if (key != item_.key) return;
+                    shots_[i] = pixmap;
+                    update();
+                  });
   }
 }
 
@@ -320,8 +298,9 @@ void GamePage::paintEvent(QPaintEvent*) {
        u * 0.5;
   x += DrawPill(painter, {x, y}, u, SourceName(item_.source)) + u * 0.5;
   if (!proton_tier_.isEmpty()) {
-    const QString label = "ProtonDB " + proton_tier_.left(1).toUpper() + proton_tier_.mid(1);
-    DrawPill(painter, {x, y}, u, label, ProtonColor(proton_tier_));
+    const std::string tier = proton_tier_.toStdString();
+    DrawPill(painter, {x, y}, u, "ProtonDB " + ProtonDbTierName(ProtonDbFilterTier(tier)),
+             ProtonDbTierChipColor(tier));
   }
   y += u * 3.2;
 

@@ -7,22 +7,15 @@
 #include <algorithm>
 
 #include "../client/api/Artwork.h"
+#include "../components/Format.h"
 #include "../components/PopupCard.h"
 #include "../components/Text.h"
 #include "../theme/Theme.h"
 #include "GamePresentation.h"
+#include "TitleRatings.h"
 
 namespace mira_gui {
 namespace {
-
-std::string Join(const std::vector<std::string>& values) {
-  std::string joined;
-  for (const std::string& value : values) {
-    if (!joined.empty()) joined += ", ";
-    joined += value;
-  }
-  return joined;
-}
 
 QLabel* AddLine(QVBoxLayout* layout, QWidget* parent, TextStyle style) {
   auto* label = new QLabel(parent);
@@ -157,8 +150,7 @@ void HoverCard::ShowTitle(const QString& source, const QString& ref, const QStri
 void HoverCard::ShowMetadata(const GameMetadata& metadata, const std::vector<std::string>& genres) {
   const QString tier = QString::fromStdString(metadata.protondb_tier);
   if (!tier.isEmpty()) {
-    QString label = tier;
-    label[0] = label[0].toUpper();
+    const QString label = ProtonDbTierName(ProtonDbFilterTier(metadata.protondb_tier));
     const QColor background = ProtonDbTierColor(metadata.protondb_tier);
     // A real QSS-painted background, not rich-text HTML: Qt's rich text
     // engine only crudely rounds a span's background.
@@ -169,10 +161,9 @@ void HoverCard::ShowMetadata(const GameMetadata& metadata, const std::vector<std
   }
   protondb_->setVisible(!tier.isEmpty());
 
-  const std::string developer_genre =
-      Join(metadata.developers) + (!metadata.developers.empty() && !genres.empty() ? " · " : "") +
-      Join(genres);
-  SetLine(developer_line_, QString::fromStdString(developer_genre));
+  SetLine(developer_line_, JoinNames(metadata.developers) +
+                               (!metadata.developers.empty() && !genres.empty() ? " · " : "") +
+                               JoinNames(genres));
   Reposition();
 }
 

@@ -5,6 +5,12 @@
 
 namespace mira_gui {
 
+QString JoinNames(const std::vector<std::string>& names) {
+  QStringList list;
+  for (const std::string& name : names) list << QString::fromStdString(name);
+  return list.join(", ");
+}
+
 QString SizeText(qint64 bytes) {
   return QLocale().formattedDataSize(bytes, 1, QLocale::DataSizeTraditionalFormat);
 }

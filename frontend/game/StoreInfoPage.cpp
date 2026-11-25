@@ -5,8 +5,6 @@
 #include <QLocale>
 #include <QMouseEvent>
 #include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
 #include <QRegularExpression>
 #include <QScrollArea>
 #include <QTextDocumentFragment>
@@ -15,15 +13,18 @@
 
 #include "../app/ErrorHelp.h"
 #include "../client/api/Artwork.h"
+#include "../components/ActivationKey.h"
 #include "../components/Badge.h"
 #include "../components/Card.h"
 #include "../components/ColumnGrid.h"
 #include "../components/FlowLayout.h"
+#include "../components/Format.h"
 #include "../components/Metrics.h"
 #include "../components/Scrolling.h"
 #include "../components/Text.h"
 #include "../library/GamePresentation.h"
 #include "../library/TitleRatings.h"
+#include "../library/WebImage.h"
 #include "HeroBackdrop.h"
 
 namespace mira_gui {
@@ -31,12 +32,6 @@ namespace {
 
 constexpr QSize kShot(160, 90);
 constexpr int kMaxShots = 8;
-
-QString Join(const std::vector<std::string>& values) {
-  QStringList list;
-  for (const std::string& value : values) list << QString::fromStdString(value);
-  return list.join(", ");
-}
 
 // A store-provided URL, only when it's http(s), so a store can't hand us a file:// to open.
 QUrl WebUrl(const std::string& url) {
@@ -71,7 +66,7 @@ QString TightRequirements(const std::string& html) {
 QWidget* Row(Card* card, QWidget* content) {
   auto* row = new QWidget(card);
   auto* layout = new QVBoxLayout(row);
-  layout->setContentsMargins(kLabelInset, 6, 12, 6);
+  layout->setContentsMargins(kTextRowMargins);
   content->setParent(row);
   layout->addWidget(content);
   card->AddRow(row);
@@ -94,8 +89,7 @@ class Clickable : public QLabel {
   }
   void keyPressEvent(QKeyEvent* event) override {
     const int key = event->key();
-    if (clicked && (key == Qt::Key_Return || key == Qt::Key_Enter || key == Qt::Key_Space))
-      return clicked();
+    if (clicked && IsActivationKey(key)) return clicked();
     QLabel::keyPressEvent(event);
   }
 };
@@ -166,8 +160,8 @@ void StoreInfoPage::Show(const GameMetadataResult& result) {
   QStringList facts;
   if (!metadata.release_date.empty())
     facts << "Released " + QString::fromStdString(metadata.release_date);
-  if (!metadata.developers.empty()) facts << Join(metadata.developers);
-  if (!metadata.genres.empty()) facts << Join(metadata.genres);
+  if (!metadata.developers.empty()) facts << JoinNames(metadata.developers);
+  if (!metadata.genres.empty()) facts << JoinNames(metadata.genres);
   if (metadata.controller_support == "full") facts << "Full controller support";
   if (metadata.controller_support == "partial") facts << "Partial controller support";
   if (metadata.achievements_total > 0)
@@ -202,11 +196,8 @@ void StoreInfoPage::Show(const GameMetadataResult& result) {
     chips.push_back({review, ReviewBucketColor(ReviewBucketOf(metadata.review_summary))});
   }
   if (!metadata.protondb_tier.empty()) {
-    QString tier = QString::fromStdString(metadata.protondb_tier);
-    tier[0] = tier[0].toUpper();
-    chips.push_back({"ProtonDB " + tier, ProtonDbFilterTier(metadata.protondb_tier).empty()
-                                             ? QColor()
-                                             : ProtonDbTierColor(metadata.protondb_tier)});
+    chips.push_back({"ProtonDB " + ProtonDbTierName(ProtonDbFilterTier(metadata.protondb_tier)),
+                     ProtonDbTierChipColor(metadata.protondb_tier).value_or(QColor())});
   }
   if (!metadata.anticheat_status.empty()) {
     const std::string& status = metadata.anticheat_status;
@@ -267,19 +258,14 @@ void StoreInfoPage::AddScreenshots(const std::vector<std::string>& urls) {
   flow->setContentsMargins(0, 0, 0, 0);
   int shown = 0;
   for (const std::string& url : urls) {
-    const QUrl web = WebUrl(url);
-    if (web.isEmpty()) continue;
+    if (WebUrl(url).isEmpty()) continue;
     if (shown++ == kMaxShots) break;
     auto* shot = new Clickable(holder);
     shot->setFixedSize(kShot);
     shot->setObjectName("screenshot");
     shot->setToolTip("Show larger");
     flow->addWidget(shot);
-    QNetworkReply* reply = network_->get(QNetworkRequest(web));
-    connect(reply, &QNetworkReply::finished, shot, [this, reply, shot] {
-      reply->deleteLater();
-      QPixmap full;
-      if (reply->error() != QNetworkReply::NoError || !full.loadFromData(reply->readAll())) return;
+    FetchWebImage(network_, QString::fromStdString(url), shot, [this, shot](const QPixmap& full) {
       const qreal ratio = shot->devicePixelRatioF();
       const QSize size = kShot * ratio;
       QPixmap thumb = full.scaled(size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
