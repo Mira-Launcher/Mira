@@ -20,7 +20,7 @@ class CoverChip;
 class LaidOutButton;
 class SectionNav;
 
-// The game card's left side: the cover, the name, its status and play time, Play, Game details and
+// The game card's left side: the cover, the name, its status and play time, Play, Store info and
 // Change art, the saves and achievements lines, then a lower part that lists the cards and follows
 // their scroll (the jump list), or holds the controls of the page open on the right with Back. The
 // top stays put whichever page is open.
@@ -74,7 +74,7 @@ class GamePanel : public QWidget {
   QHBoxLayout* tools_ = nullptr;
   QPushButton* details_ = nullptr;
   QPushButton* art_ = nullptr;
-  QBoxLayout* buttons_ = nullptr;  // Game details and Change art
+  QBoxLayout* buttons_ = nullptr;  // Store info and Change art
   LaidOutButton* saves_ = nullptr;
   QLabel* saves_left_ = nullptr;
   QLabel* saves_dot_ = nullptr;

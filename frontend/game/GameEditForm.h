@@ -111,8 +111,9 @@ class GameEditForm : public QWidget {
   void ShowRunnerFieldValues();
   void OnExeComboActivated(int index);
   void BrowseExecutable();
-  // POST /v1/games/{id}/relocate of the install folder or the prefix into a folder the user picks.
-  void MoveFolder(bool prefix);
+  // Points the game (or its prefix) at the folder or file the user picks, moving nothing.
+  void ChangeFolder(bool prefix);
+  void ShowDataDir();
   // POST /v1/games/{id}/detect: rebuilds the list of programs from the game's folder.
   void DetectExecutable();
   void ShowInstallPath();
@@ -122,6 +123,7 @@ class GameEditForm : public QWidget {
 
   std::string id_;
   std::string install_path_;
+  std::string data_dir_;
   std::string browse_start_;  // where Browse… opens: drive C for a game an installer put there
   std::string source_;
   QString noun_ = "game";  // or "app"
@@ -132,12 +134,14 @@ class GameEditForm : public QWidget {
   bool stale_ = false;  // the game changed elsewhere while there were edits; Discard loads it again
 
   QLabel* last_error_label_ = nullptr;
+  QWidget* missing_ = nullptr;  // a missing game's way to point it at where its files went
+  QLabel* missing_text_ = nullptr;
   QPushButton* detect_ = nullptr;
   QLineEdit* install_path_edit_ = nullptr;
   QPushButton* open_install_ = nullptr;
-  QPushButton* move_button_ = nullptr;
+  QPushButton* change_install_ = nullptr;
   QPushButton* open_data_dir_ = nullptr;
-  QPushButton* move_prefix_ = nullptr;
+  QPushButton* change_data_dir_ = nullptr;
 
   QLineEdit* name_edit_ = nullptr;
   QComboBox* exe_combo_ = nullptr;

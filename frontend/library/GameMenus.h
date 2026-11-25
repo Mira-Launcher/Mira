@@ -30,9 +30,7 @@ class GameMenus : public QObject {
     std::function<void(const std::string& id)> toggle_running;
     std::function<void(const std::string& id, const std::string& option)> launch;
     std::function<void(const std::string& id)> open_settings;
-    std::function<void(const std::string& id)> open_details;
     std::function<void(const std::string& id)> offer_setup;
-    std::function<void(const std::string& id)> refresh_metadata;
     // Asks before removing these games (RemoveGamesCard).
     std::function<void(const std::vector<std::string>& ids)> remove;
     // Records a request already changed, applied without waiting for their events.
@@ -41,9 +39,7 @@ class GameMenus : public QObject {
 
   GameMenus(QWidget* parent, Host host);
 
-  // `extra` adds entries after Play (e.g. a store's Update).
-  void ShowGameMenu(const std::string& id, const QPoint& global_pos,
-                    const std::function<void(QMenu&)>& extra = nullptr);
+  void ShowGameMenu(const std::string& id, const QPoint& global_pos);
   // A reduced set of actions applied to every game in `ids` at once.
   void ShowBatchMenu(const std::vector<std::string>& ids, const QPoint& global_pos);
   // Adds (`present`) or removes `tag` on each game that doesn't already match, in one request.

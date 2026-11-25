@@ -52,6 +52,13 @@
 namespace mira_gui {
 namespace {
 
+// A read-only path field shows its start, with the whole path as its tooltip.
+void ShowReadOnlyPath(QLineEdit* edit, const std::string& path) {
+  edit->setText(QString::fromStdString(path));
+  ShowPathStart(edit);
+  edit->setToolTip(edit->text());
+}
+
 // "Age of Wonders · GOG 1207658883 · Steam 61500, from the umu database".
 QString IdentityText(const mira_gui::GameDetail& game) {
   const auto& identity = game.identity;
@@ -129,6 +136,19 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   last_error_label_->hide();
   grid_->AddHeader(last_error_label_);
 
+  missing_ = new QWidget(cards_page);
+  auto* missing_layout = new QHBoxLayout(missing_);
+  missing_layout->setContentsMargins(0, 0, 0, 0);
+  missing_text_ = new QLabel(missing_);
+  missing_text_->setWordWrap(true);
+  SetTextStyle(missing_text_, text::kError);
+  missing_layout->addWidget(missing_text_, 1);
+  auto* find = new QPushButton("Change folder…", missing_);
+  connect(find, &QPushButton::clicked, this, [this] { ChangeFolder(/*prefix=*/false); });
+  missing_layout->addWidget(find);
+  missing_->hide();
+  grid_->AddHeader(missing_);
+
   // The rows are made here and put into cards by Arrange, once the game says which it has.
   exe_combo_ = EditableCombo(this, "Choose the program to run");
   connect(exe_combo_, &QComboBox::activated, this, &GameEditForm::OnExeComboActivated);
@@ -155,7 +175,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   args_row_ = new SettingRow("Arguments", QString(), this);
   args_row_->AddControl(args_edit_);
 
-  working_dir_edit_ = LineEdit(this, "The install folder");
+  working_dir_edit_ = LineEdit(this, "The game folder");
   working_dir_row_ = new SettingRow("Working folder", QString(), this);
   working_dir_row_->AddControl(working_dir_edit_);
 
@@ -170,9 +190,9 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   connect(launch_options_, &LaunchOptionsEdit::Changed, this, &GameEditForm::UpdateModified);
   play_starts_row_ = new SettingRow("Play starts", QString(), this);
   play_starts_row_->AddControl(launch_options_->PlayStarts());
-  only_choice_row_ = new SettingRow("Offer nothing else",
-                                    "Play starts it without asking. Ctrl+click Play still shows "
-                                    "every choice.",
+  only_choice_row_ = new SettingRow("Don't ask which to start",
+                                    "Play starts the option above without asking. Ctrl+click Play "
+                                    "still shows every choice.",
                                     this);
   only_choice_row_->AddControl(launch_options_->OnlyChoice());
 
@@ -185,7 +205,7 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   identity_row_ = new SettingRow(
       "Identified as",
       "The game Mira takes this for. Its art, ratings, saves and Proton fixes all follow it; set "
-      "the Steam game below when it's wrong.",
+      "its Steam game ID below when it's wrong.",
       this);
   identity_text_ = new QLabel(identity_row_);
   SetTextStyle(identity_text_, text::kSubtle);
@@ -242,7 +262,8 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
                      this);
   tags_row_->AddWideControl(tags_edit_);
 
-  // Read-only: editing the path would only repoint the record, Move… moves the files too.
+  // Read-only: Change… points the game at where its files are now; moving them is the menu's
+  // Move to Mira's folders.
   install_path_edit_ = LineEdit(this, "Not installed");
   install_path_edit_->setReadOnly(true);
   open_install_ = new QPushButton("Open", this);
@@ -253,27 +274,26 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
     if (emulator_row_->isVisibleTo(this)) folder = folder.parent_path();
     QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(folder.string())));
   });
-  move_button_ = new QPushButton("Move…", this);
-  connect(move_button_, &QPushButton::clicked, this, [this] { MoveFolder(/*prefix=*/false); });
-  install_row_ = new SettingRow("Install folder", QString(), this);
+  change_install_ = new QPushButton("Change…", this);
+  connect(change_install_, &QPushButton::clicked, this, [this] { ChangeFolder(/*prefix=*/false); });
+  install_row_ = new SettingRow("Game folder", "Where the game's files are.", this);
   install_row_->AddControlBelow(
-      FieldWithButtons(install_path_edit_, {open_install_, move_button_}));
+      FieldWithButtons(install_path_edit_, {open_install_, change_install_}));
 
-  data_dir_edit_ = LineEdit(this, "Automatic");
+  data_dir_edit_ = LineEdit(this, "Not made yet");
+  data_dir_edit_->setReadOnly(true);
   open_data_dir_ = new QPushButton("Open", this);
   open_data_dir_->setToolTip("Open this folder in the file manager");
   open_data_dir_->setEnabled(false);
   connect(open_data_dir_, &QPushButton::clicked, this,
           [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(data_dir_edit_->text())); });
-  // Editing the path repoints the record to another prefix; Move… moves this one.
-  move_prefix_ = new QPushButton("Move…", this);
-  move_prefix_->setVisible(false);
-  connect(move_prefix_, &QPushButton::clicked, this, [this] { MoveFolder(/*prefix=*/true); });
-  data_dir_row_ = new SettingRow("Prefix and data folder",
-                                 "The folder holding this game's Wine or Proton prefix and its "
-                                 "data.",
-                                 this);
-  data_dir_row_->AddControlBelow(FieldWithButtons(data_dir_edit_, {open_data_dir_, move_prefix_}));
+  change_data_dir_ = new QPushButton("Change…", this);
+  change_data_dir_->setVisible(false);
+  connect(change_data_dir_, &QPushButton::clicked, this, [this] { ChangeFolder(/*prefix=*/true); });
+  data_dir_row_ = new SettingRow("Prefix folder",
+                                 "The folder holding this game's Wine or Proton prefix.", this);
+  data_dir_row_->AddControlBelow(
+      FieldWithButtons(data_dir_edit_, {open_data_dir_, change_data_dir_}));
 
   for (SettingRow* row : {exe_row_, args_row_, working_dir_row_, launch_options_row_,
                           play_starts_row_, only_choice_row_, runner_row_, emulator_row_, name_row_,
@@ -289,11 +309,20 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   });
   connect(overrides_, &OverridesEditor::RevealRequested, this, [this](QWidget* row) {
     // After the rows that just showed have their place.
-    QTimer::singleShot(0, row, [this, row] { scroll_->ensureWidgetVisible(row, 0, 48); });
+    QTimer::singleShot(0, row, [this, row] {
+      scroll_->ensureWidgetVisible(row, 0, 48);
+      // Into its field, so the reveal shows even when the row was already in view.
+      for (QWidget* child : row->findChildren<QWidget*>()) {
+        if ((child->focusPolicy() & Qt::TabFocus) && child->isVisibleTo(row)) {
+          child->setFocus(Qt::OtherFocusReason);
+          break;
+        }
+      }
+    });
   });
   connect(overrides_, &OverridesEditor::CardsChanged, this, &GameEditForm::CardsChanged);
 
-  for (QLineEdit* edit : {name_edit_, args_edit_, working_dir_edit_, data_dir_edit_}) {
+  for (QLineEdit* edit : {name_edit_, args_edit_, working_dir_edit_}) {
     connect(edit, &QLineEdit::textChanged, this, &GameEditForm::UpdateModified);
   }
   connect(exe_combo_, &QComboBox::editTextChanged, this, &GameEditForm::UpdateModified);
@@ -339,24 +368,6 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
   });
   revert(tags_row_, &mira_gui::GamePatch::tags);
   revert(runner_row_, &mira_gui::GamePatch::runner_ref);
-  revert(data_dir_row_, &mira_gui::GamePatch::data_dir);
-  // Checked once typing pauses and off the UI thread: a stale network mount can stall a stat.
-  auto* check_data_dir = new QTimer(this);
-  check_data_dir->setSingleShot(true);
-  check_data_dir->setInterval(300);
-  connect(check_data_dir, &QTimer::timeout, this, [this] {
-    const QString path = data_dir_edit_->text();
-    async::Run<bool>(
-        this, [path] { return QDir(path).exists(); },
-        [this, path](bool exists) {
-          if (data_dir_edit_->text() == path) open_data_dir_->setEnabled(exists);
-        });
-  });
-  connect(data_dir_edit_, &QLineEdit::textChanged, this,
-          [this, check_data_dir](const QString& path) {
-            open_data_dir_->setEnabled(false);
-            if (!path.isEmpty()) check_data_dir->start();
-          });
 
   setEnabled(false);
   Load();
@@ -444,13 +455,19 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
       overrides_->PlaceRow(store_keys[i], card, static_cast<int>(i));
   };
 
-  Card* details = add_card("Details", {name_row_, tags_row_});
-  // A Steam game is its own; an emulator's isn't a Steam or store game.
+  add_card("Details", {name_row_, tags_row_});
+  // Everything that says which game it is, for its art, store info and saves. A Steam game is
+  // its own, and an emulator's isn't a Steam or store game.
+  Card* identity = add_card("Game detection", {});
+  int next = 0;
   if (game.source != "steam" && !emulated) {
-    details->AddRow(identity_row_);
+    identity->AddRow(identity_row_);
     identity_row_->show();
-    overrides_->PlaceRow("metadata.steam_appid", details);
+    overrides_->PlaceRow("metadata.steam_appid", identity, ++next);
   }
+  overrides_->PlaceRow("metadata.steamgriddb_id", identity, next + 1);
+  overrides_->PlaceRow("saves.manifest_name", identity);  // after them, though it loads first
+  overrides_->HideWhenEmpty(identity);
   if (game.source == "steam") {
     // Steam starts the game from its own record, so there is no executable or runner to pick.
     Card* steam = add_card("Steam", {launch_options_row_, play_starts_row_, only_choice_row_});
@@ -468,7 +485,6 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
     runner_options_->hide();  // until the runner kind has options
     ShowFixStatus();
     overrides_->PlaceGroup("Proton", runner);
-    overrides_->PlaceGroup("Default runners", runner);  // how an HTML game's browser opens
     if (!store.isEmpty()) {
       Card* card = add_card(store, {});
       place_store_keys(card);
@@ -542,13 +558,23 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
     PopulateRunnerCombo(runners_);
   }
   noun_ = std::ranges::contains(game.tags, tags::kApp) ? "app" : "game";
-  move_button_->setToolTip("Move this " + noun_ + "'s files to another folder");
-  move_prefix_->setToolTip("Move this " + noun_ + "'s prefix to another folder");
+  const bool emulated = game.runner_ref.starts_with("emulator:");
+  change_install_->setToolTip(
+      QString("Point this %1 at the %2 it was moved to").arg(noun_, emulated ? "file" : "folder"));
+  change_data_dir_->setToolTip("Point this " + noun_ + " at another prefix");
   ShowInstallPath();
-  // A desktop entry's files belong to another app; Steam moves its own games.
-  move_button_->setVisible(!game.install_path.empty() && game.source != "desktop-entry" &&
-                           game.source != "steam");
+  data_dir_ = game.data_dir;
+  ShowDataDir();
+  // A desktop entry's files belong to another app, and a store keeps track of its own games.
+  const bool repointable =
+      !game.install_path.empty() && game.source != "desktop-entry" && game.files_kept_by.empty();
+  change_install_->setVisible(repointable);
   open_install_->setVisible(!game.install_path.empty());
+  missing_text_->setText(
+      QString("This %1's files aren't in %2 any more. If you moved them, point it "
+              "at where they are now.")
+          .arg(noun_, QString::fromStdString(game.install_path)));
+  missing_->setVisible(game.status == "missing" && repointable);
 
   detect_->setVisible(!game.install_path.empty());
 
@@ -564,7 +590,6 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   patch.working_dir = game.working_dir;
   patch.tags = game.tags;
   patch.runner_ref = game.runner_ref;
-  patch.data_dir = game.data_dir;
   patch.runner_config_json = game.runner_config_json;
   patch.launch = game.launch;
   default_runner_ = game.default_runner;
@@ -590,9 +615,9 @@ void GameEditForm::Populate(const mira_gui::GameDetail& game) {
   // which Mira manages.
   const bool own_files = game.source != "desktop-entry" && game.platform != "web";
   data_dir_row_->setVisible(data_dir_row_->parentWidget() != this && ShowsPrefixRow(game));
-  move_prefix_->setVisible(own_files && !game.data_dir.empty() && game.source != "steam");
+  change_data_dir_->setVisible(own_files && game.source != "steam");  // Steam makes its own
   // An emulator's game names its emulator, and picking another moves it there.
-  if (game.runner_ref.starts_with("emulator:")) {
+  if (emulated) {
     // The file the emulator opens, rather than the folder it is in.
     if (!game.exe_path.empty()) {
       install_path_edit_->setText(QString::fromStdString(
@@ -632,10 +657,8 @@ void GameEditForm::ShowPatch(const mira_gui::GamePatch& patch) {
   show(name_edit_, patch.name);
   show(args_edit_, patch.args);
   show(working_dir_edit_, patch.working_dir);
-  show(data_dir_edit_, patch.data_dir);
   show(exe_combo_->lineEdit(), patch.exe_path);
-  for (QLineEdit* edit : {working_dir_edit_, data_dir_edit_, exe_combo_->lineEdit()})
-    ShowPathStart(edit);
+  for (QLineEdit* edit : {working_dir_edit_, exe_combo_->lineEdit()}) ShowPathStart(edit);
   SelectOrKeep(runner_combo_, QString::fromStdString(patch.runner_ref.value_or(std::string())));
   tags_edit_->SetTags(patch.tags.value_or(std::vector<std::string>()));
   runner_config_ = nlohmann::json::parse(patch.runner_config_json.value_or("{}"), nullptr, false);
@@ -715,7 +738,7 @@ void GameEditForm::ShowFixStatus() {
   // Not knowing which game it is, Proton can't find its fix: say so where that matters.
   if (!fix_known_) {
     fix_text_->setText("Not known which game this is");
-    fix_use_->setText("Set which game");
+    fix_use_->setText("Set its Steam game ID");
     fix_use_->setVisible(true);
     return;
   }
@@ -743,9 +766,20 @@ void GameEditForm::ShowRunnerFieldValues() {
 }
 
 void GameEditForm::ShowInstallPath() {
-  install_path_edit_->setText(QString::fromStdString(install_path_));
-  ShowPathStart(install_path_edit_);
-  install_path_edit_->setToolTip(install_path_edit_->text());
+  ShowReadOnlyPath(install_path_edit_, install_path_);
+}
+
+void GameEditForm::ShowDataDir() {
+  ShowReadOnlyPath(data_dir_edit_, data_dir_);
+  open_data_dir_->setEnabled(false);
+  if (data_dir_.empty()) return;
+  // Off the UI thread: a stale network mount can stall a stat.
+  const QString path = data_dir_edit_->text();
+  async::Run<bool>(
+      this, [path] { return QDir(path).exists(); },
+      [this, path](bool exists) {
+        if (data_dir_edit_->text() == path) open_data_dir_->setEnabled(exists);
+      });
 }
 
 void GameEditForm::PopulateExeCombo(const std::vector<mira_gui::GameDetail::Candidate>& candidates,
@@ -800,54 +834,43 @@ void GameEditForm::BrowseExecutable() {
   ShowPathStart(exe_combo_->lineEdit());
 }
 
-void GameEditForm::MoveFolder(bool prefix) {
-  const std::string current =
-      prefix ? original_patch_.data_dir.value_or(std::string()) : install_path_;
-  const QString parent_dir =
+void GameEditForm::ChangeFolder(bool prefix) {
+  // An emulator's game is the file it opens.
+  const bool file = !prefix && emulator_row_->isVisibleTo(this);
+  const std::string current = prefix ? data_dir_ : install_path_;
+  const QString start =
       current.empty()
           ? QString()
           : QString::fromStdString(std::filesystem::path(current).parent_path().string());
-  const QString picked = QFileDialog::getExistingDirectory(
-      this, prefix ? "Move the prefix folder into" : "Move the " + noun_ + "'s folder into",
-      parent_dir);
+  const QString picked =
+      file ? QFileDialog::getOpenFileName(this, "Choose the game file",
+                                          QString::fromStdString(install_path_))
+           : QFileDialog::getExistingDirectory(
+                 this, prefix ? "Choose the prefix folder" : "Choose the " + noun_ + "'s folder",
+                 start);
   if (picked.isEmpty()) return;
-  const std::string target =
-      (std::filesystem::path(picked.toStdString()) / std::filesystem::path(current).filename())
-          .string();
-  if (target == current) return;
-  const QString what = "this " + noun_ + (prefix ? "'s prefix" : "'s files");
-  if (!notify::Confirm(
-          this, prefix ? "Move prefix" : "Move " + noun_,
-          QString(
-              "Move %1 to %2? A move to another drive copies them first, which can take a while.")
-              .arg(what, QString::fromStdString(target)),
-          "Move")) {
-    return;
-  }
-  QPushButton* button = prefix ? move_prefix_ : move_button_;
+  mira_gui::GamePatch patch;
+  (prefix ? patch.data_dir : patch.install_path) = picked.toStdString();
+  QPushButton* button = prefix ? change_data_dir_ : change_install_;
   button->setEnabled(false);
-  button->setText("Moving…");
-  api::RelocateGameAsync(
-      this, id_, prefix ? std::string() : target, prefix ? target : std::string(),
-      [this, button, prefix](GameDetailResult result) {
-        button->setText("Move…");
+  // Saved at once, apart from the card's other edits; game.updated then loads the game again.
+  api::PatchGameAsync(
+      this, id_, patch, [this, button, prefix, picked](mira_gui::PatchGameResult result) {
+        button->setEnabled(true);
         if (!result.ok) {
-          button->setEnabled(true);
-          notify::FailedRequest(
-              this, prefix ? "Could not move the prefix" : "Could not move the " + noun_,
-              result.error);
+          notify::FailedRequest(this,
+                                prefix ? "Could not change the prefix folder"
+                                       : "Could not change the " + noun_ + "'s folder",
+                                result.error);
           return;
         }
-        install_path_ = result.game.install_path;
-        ShowInstallPath();
-        // Moved on disk and saved, so not an unsaved change.
-        original_patch_.data_dir = result.game.data_dir;
-        populating_ = true;
-        data_dir_edit_->setText(QString::fromStdString(result.game.data_dir));
-        ShowPathStart(data_dir_edit_);
-        populating_ = false;
-        button->setEnabled(true);
-        UpdateModified();
+        if (prefix) {
+          data_dir_ = picked.toStdString();
+          ShowDataDir();
+        } else {
+          install_path_edit_->setText(picked);
+          ShowPathStart(install_path_edit_);
+        }
       });
 }
 
@@ -871,7 +894,6 @@ mira_gui::GamePatch GameEditForm::CurrentPatch() const {
   patch.working_dir = working_dir_edit_->text().toStdString();
   patch.tags = tags_edit_->Tags();
   patch.runner_ref = RunnerRef(runner_combo_).toStdString();
-  patch.data_dir = data_dir_edit_->text().toStdString();
   patch.runner_config_json = runner_config_.dump(2);
   patch.launch = launch_options_->Launch();
   return patch;
@@ -892,8 +914,6 @@ void GameEditForm::UpdateModified() {
   tags_row_->SetModified(now.tags != original_patch_.tags ||
                          tags_edit_->FolderPick() != original_pick_);
   runner_row_->SetModified(now.runner_ref != original_patch_.runner_ref);
-  data_dir_row_->SetModified(now.data_dir != original_patch_.data_dir);
-  move_prefix_->setEnabled(now.data_dir == original_patch_.data_dir);  // moves the saved prefix
   const nlohmann::json saved_config =
       nlohmann::json::parse(original_patch_.runner_config_json.value_or("{}"), nullptr, false);
   for (const RunnerField& field : runner_fields_) {
@@ -911,8 +931,7 @@ int GameEditForm::ChangeCount() const {
       (now.name != original_patch_.name) + (now.exe_path != original_patch_.exe_path) +
       (now.args != original_patch_.args) + (now.working_dir != original_patch_.working_dir) +
       (now.tags != original_patch_.tags || tags_edit_->FolderPick() != original_pick_) +
-      (now.runner_ref != original_patch_.runner_ref) + (now.data_dir != original_patch_.data_dir) +
-      (now.launch != original_patch_.launch);
+      (now.runner_ref != original_patch_.runner_ref) + (now.launch != original_patch_.launch);
   // One per runner option, since each is its own row.
   const int runner_options = static_cast<int>(
       mapping::MergePatchBetween(
@@ -971,7 +990,6 @@ void GameEditForm::Save() {
   changed(current.args, original_patch_.args, patch.args);
   changed(current.working_dir, original_patch_.working_dir, patch.working_dir);
   changed(current.runner_ref, original_patch_.runner_ref, patch.runner_ref);
-  changed(current.data_dir, original_patch_.data_dir, patch.data_dir);
   changed(current.runner_config_json, original_patch_.runner_config_json, patch.runner_config_json);
   if (current.launch != original_patch_.launch) patch.launch = current.launch;
   // mirad merges the object, so only changed keys go, and a removed one as null.
@@ -984,8 +1002,7 @@ void GameEditForm::Save() {
             .dump();
   }
   const bool fields_changed = patch.name || patch.exe_path || patch.args || patch.working_dir ||
-                              patch.runner_ref || patch.data_dir || patch.runner_config_json ||
-                              patch.launch;
+                              patch.runner_ref || patch.runner_config_json || patch.launch;
 
   const mira_gui::GamesPatch tags = TagsPatch(current.tags);
   const bool tags_changed =

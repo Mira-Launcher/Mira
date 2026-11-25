@@ -115,8 +115,12 @@ void TabRow::Select(const QString& key) {
   if (changed) emit CurrentChanged(key);
 }
 
+QString TabLabel(const QString& label, int count) {
+  return count < 0 ? label : QString("%1  %2").arg(label).arg(count);
+}
+
 void TabRow::Relabel(Tab& tab) {
-  tab.button->setText(tab.count < 0 ? tab.label : QString("%1  %2").arg(tab.label).arg(tab.count));
+  tab.button->setText(TabLabel(tab.label, tab.count));
   updateGeometry();
   Fit();
 }

@@ -75,9 +75,9 @@ void RunInPrefix(QWidget* parent, const std::string& id, const std::string& inst
 void Relocate(QWidget* parent, const std::vector<std::pair<std::string, QString>>& games,
               std::function<void()> on_done);
 
-// Opens install_path in the desktop's file manager. Takes the path directly
+// Opens a folder in the desktop's file manager. Takes the path directly
 // rather than an id: GameSummary already carries it, so no fetch is needed.
-void OpenInstallFolder(QWidget* parent, const std::string& install_path);
+void OpenFolder(QWidget* parent, const std::string& folder);
 
 // Opens the game's live log in a window of its own. Unlike RunInPrefix/Delete, no detail
 // fetch is needed first: id/name are already known from the tile/row.

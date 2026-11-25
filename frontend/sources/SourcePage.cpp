@@ -488,7 +488,7 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
           });
     }
     menu->addAction(icons::For(icons::Glyph::Home), "Open games folder", this,
-                    [this] { actions::OpenInstallFolder(this, emulator_.rom_dir); });
+                    [this] { actions::OpenFolder(this, emulator_.rom_dir); });
     menu->addAction(icons::For(icons::Glyph::Refresh), "Look for new games", this,
                     &SourcePage::Import);
   }
@@ -507,7 +507,7 @@ void SourcePage::FillMoreMenu(QMenu* menu) {
   if (IsLauncher() && launcher_installed_ && !launcher_game_id_.empty()) {
     const std::string game_id = launcher_game_id_;
     menu->addAction(icons::For(icons::Glyph::Home), "Open prefix folder", this,
-                    [this] { actions::OpenInstallFolder(this, launcher_prefix_); });
+                    [this] { actions::OpenFolder(this, launcher_prefix_); });
     menu->addAction(icons::For(icons::Glyph::Wrench), "Winetricks…", this,
                     [this, game_id] { actions::RunWinetricks(this, game_id, source_.name); });
     menu->addAction("Run a program in its prefix…", this, [this, game_id] {
@@ -582,7 +582,7 @@ QWidget* SourcePage::BuildDropZone(QWidget* parent) {
   connect(add, &QPushButton::clicked, this, &SourcePage::PickGames);
   auto* folder = new QPushButton("Open games folder", drop_zone_);
   connect(folder, &QPushButton::clicked, this,
-          [this] { actions::OpenInstallFolder(this, emulator_.rom_dir); });
+          [this] { actions::OpenFolder(this, emulator_.rom_dir); });
   buttons->addWidget(add);
   buttons->addWidget(folder);
   buttons->addStretch(1);
@@ -1536,11 +1536,7 @@ void SourcePage::ShowLibraryMenu(const QPoint& pos) {
     return;
   }
   const QString id = index.data(GameTileDelegate::IdRole).toString();
-  // A store game's id is "<source>-<ref>"; those can also be updated.
-  const QString prefix = source_.id + "-";
-  const QString update_ref =
-      IsStore() && id_ != "humble" && id.startsWith(prefix) ? id.mid(prefix.size()) : QString();
-  emit GameMenuRequested(id, library_grid_->viewport()->mapToGlobal(pos), update_ref);
+  emit GameMenuRequested(id, library_grid_->viewport()->mapToGlobal(pos));
 }
 
 void SourcePage::ShowOwnedMenu(const QPoint& pos) {
@@ -1606,10 +1602,6 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
       break;
     }
   }
-}
-
-void SourcePage::UpdateTitle(const QString& ref) {
-  StartInstall(ref, /*update=*/true);
 }
 
 void SourcePage::HandleEvent(const std::string& type, const std::string& data) {

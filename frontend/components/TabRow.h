@@ -16,6 +16,9 @@ namespace mira_gui {
 
 class SearchField;
 
+// A tab's text: its label, then its count when it has one (`count` 0 or more).
+QString TabLabel(const QString& label, int count);
+
 // A button that opens `menu` below itself, with a chevron centered at its right edge. It opens the
 // menu itself: Qt's own menu indicator on a styled button sits low against the text.
 class DropdownButton : public QPushButton {

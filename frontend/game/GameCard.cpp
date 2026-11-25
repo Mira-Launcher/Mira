@@ -32,6 +32,7 @@
 #include "GamePanel.h"
 #include "SavesPage.h"
 #include "SavesText.h"
+#include "StoreInfoPage.h"
 
 namespace mira_gui {
 
@@ -117,7 +118,15 @@ void GameCard::Build(const GameSummary* title) {
       OpenArtPicker();
     }
   });
-  connect(panel_->DetailsButton(), &QPushButton::clicked, this, &GameCard::DetailsRequested);
+  // setChecked is OpenStoreInfo/CloseStoreInfo's, as with the art picker.
+  connect(panel_->DetailsButton(), &QPushButton::clicked, this, [this] {
+    panel_->DetailsButton()->setChecked(!panel_->DetailsButton()->isChecked());
+    if (StoreInfoOpen()) {
+      CloseStoreInfo();
+    } else {
+      OpenStoreInfo();
+    }
+  });
   connect(achievements_button_, &QPushButton::clicked, this, &GameCard::OpenAchievements);
   connect(panel_, &GamePanel::SavesClicked, this, &GameCard::OpenSaves);
   connect(panel_, &GamePanel::BackClicked, this, &GameCard::Back);
@@ -141,6 +150,10 @@ void GameCard::Build(const GameSummary* title) {
                 ((type == "game.saves_changed" && events::ParseGameId(data) == id_) ||
                  type == "saves.manifest_changed"))
               LoadSaves();
+            // Its store info is fetched again when what it's found by changes.
+            if (live && store_info_ != nullptr && type == "game.metadata_ready" &&
+                events::ParseGameId(data) == id_)
+              store_info_->Load();
             if (live && saves_page_ != nullptr && type == "game.saves_activity" &&
                 events::ParseGameId(data) == id_)
               saves_page_->SetDoing(events::ParseSavesDoing(data));
@@ -233,6 +246,8 @@ void GameCard::Back() {
     CloseAchievements();
   } else if (SavesOpen()) {
     CloseSaves();
+  } else if (StoreInfoOpen()) {
+    CloseStoreInfo();
   } else {
     RequestClose();
   }
@@ -256,7 +271,9 @@ void GameCard::RequestClose() {
 void GameCard::SetLayout(int panel_width, int column_width, bool cover) {
   panel_->setFixedWidth(panel_width);
   panel_->SetCoverShown(cover);
+  column_width_ = column_width;
   if (form_ != nullptr) form_->SetColumnWidth(column_width);
+  if (store_info_ != nullptr) store_info_->SetColumnWidth(column_width);
 }
 
 void GameCard::resizeEvent(QResizeEvent* event) {
@@ -331,6 +348,7 @@ void GameCard::OpenArtPicker() {
   }
   art_button_->setChecked(true);
   bar_->SetText(QString());
+  panel_->DetailsButton()->setChecked(false);
   stack_->setCurrentWidget(picker_);
   panel_->ShowPage("Change art", picker_->Controls());
   picker_->Open("cover");
@@ -464,15 +482,11 @@ void GameCard::OpenAchievements() {
     stack_->addWidget(achievements_page_);
     achievements_page_->Show(*achievements_);
   }
-  if (ArtPickerOpen()) CloseArtPicker();
-  stack_->setCurrentWidget(achievements_page_);
-  panel_->ShowPage("Achievements", achievements_page_->Controls());
+  ShowStackPage(achievements_page_, "Achievements", achievements_page_->Controls());
 }
 
 void GameCard::CloseAchievements() {
-  if (!AchievementsOpen()) return;
-  stack_->setCurrentWidget(form_);
-  panel_->ShowJumps();
+  if (AchievementsOpen()) ShowForm();
 }
 
 bool GameCard::AchievementsOpen() const {
@@ -515,19 +529,46 @@ void GameCard::OpenSaves() {
     });
     saves_page_->Show(*saves_);
   }
-  if (ArtPickerOpen()) CloseArtPicker();
-  stack_->setCurrentWidget(saves_page_);
-  panel_->ShowPage("Saves", saves_page_->Controls());
+  ShowStackPage(saves_page_, "Saves", saves_page_->Controls());
 }
 
 void GameCard::CloseSaves() {
-  if (!SavesOpen()) return;
-  stack_->setCurrentWidget(form_);
-  panel_->ShowJumps();
+  if (SavesOpen()) ShowForm();
 }
 
 bool GameCard::SavesOpen() const {
   return saves_page_ != nullptr && stack_->currentWidget() == saves_page_;
+}
+
+void GameCard::OpenStoreInfo() {
+  if (form_ == nullptr) return;
+  if (store_info_ == nullptr) {
+    store_info_ = new StoreInfoPage(id_, stack_);
+    if (column_width_ > 0) store_info_->SetColumnWidth(column_width_);
+    stack_->addWidget(store_info_);
+  }
+  ShowStackPage(store_info_, "Store info", nullptr);
+}
+
+void GameCard::CloseStoreInfo() {
+  if (StoreInfoOpen()) ShowForm();
+}
+
+void GameCard::ShowStackPage(QWidget* page, const QString& title, QWidget* controls) {
+  if (ArtPickerOpen()) CloseArtPicker();
+  panel_->DetailsButton()->setChecked(page == store_info_);
+  stack_->setCurrentWidget(page);
+  panel_->ShowPage(title, controls);
+}
+
+void GameCard::ShowForm() {
+  panel_->DetailsButton()->setChecked(false);
+  stack_->setCurrentWidget(form_);
+  panel_->ShowJumps();
+}
+
+bool GameCard::StoreInfoOpen() const {
+  return store_info_ != nullptr && stack_->currentWidget() == store_info_;
 }
 
 bool GameCard::ChangesThisGame(const std::string& type, const std::string& data) const {

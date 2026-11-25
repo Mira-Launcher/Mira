@@ -41,7 +41,7 @@ class LaunchOptionsEdit : public QWidget {
   QPushButton* AddButton() const { return add_; }
   // The game's own program, or a "play" option.
   FlatCombo* PlayStarts() const { return default_; }
-  // Offer nothing else when Play is clicked; only with an option picked to start.
+  // Ask nothing else when Play is clicked; only with an option picked to start.
   Switch* OnlyChoice() const { return only_; }
 
  signals:

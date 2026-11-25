@@ -73,8 +73,6 @@ class SourcePage : public QWidget {
   void SetDragSelectEnabled(bool enabled);
   // A few seconds of `text` over that game's tile in "In your library".
   void ShowTileNote(const QString& id, const QString& text);
-  // Starts an update of an installed store title.
-  void UpdateTitle(const QString& ref);
   // Null until the banner's settings button first opens it.
   SourceSettingsCard* Card() const { return settings_card_; }
   bool SettingsModalOpen() const;
@@ -97,9 +95,8 @@ class SourcePage : public QWidget {
   void PlayRequested(QString id);
   // Change cover on a not-installed title.
   void TitleCoverRequested(QString source, QString ref, QString name);
-  // Right-click on an installed game: the library's own game menu, plus
-  // Update when `update_ref` is set.
-  void GameMenuRequested(QString id, QPoint global_pos, QString update_ref);
+  // Right-click on an installed game: the library's own game menu.
+  void GameMenuRequested(QString id, QPoint global_pos);
   // The source was removed from the header's menu; the page should close.
   void Removed();
   // Right-click on several selected installed games.

@@ -161,14 +161,12 @@ void RunInPrefix(QWidget* parent, const std::string& id, const std::string& inst
   cards::Show(parent, new RunInPrefixCard(id, install_path, name));
 }
 
-void OpenInstallFolder(QWidget* parent, const std::string& install_path) {
-  // install_path is already on GameSummary, so a fetch here would only ever
-  // reproduce what the caller already has.
-  if (install_path.empty()) {
-    notify::Failed(parent, "Could not open the install folder", "This game has no install path");
+void OpenFolder(QWidget* parent, const std::string& folder) {
+  if (folder.empty()) {
+    notify::Failed(parent, "Could not open the folder", "There is no folder to open");
     return;
   }
-  QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(install_path)));
+  QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(folder)));
 }
 
 void ViewLog(QWidget* parent, const std::string& id, const QString& name) {

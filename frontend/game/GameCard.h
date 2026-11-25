@@ -19,6 +19,7 @@ class Button;
 class AchievementsPage;
 class ArtPickerPanel;
 class SavesPage;
+class StoreInfoPage;
 class ChangeBar;
 class GameEditForm;
 class GamePanel;
@@ -26,9 +27,9 @@ class GameLibraryModel;
 
 // A game's settings card over its art: the panel on the left (cover, name, Play, the saves and
 // achievements lines, then the jump list or an open page's controls), the settings' cards in
-// columns on the right (or the art picker, Saves or Achievements in their place) with a change bar.
-// Built fresh for each open, so it starts synced to what's saved rather than to a discarded earlier
-// edit.
+// columns on the right (or the art picker, Saves, Achievements or the store info in their place)
+// with a change bar. Built fresh for each open, so it starts synced to what's saved rather than to
+// a discarded earlier edit.
 class GameCard : public CardBackdrop {
   Q_OBJECT
 
@@ -44,7 +45,7 @@ class GameCard : public CardBackdrop {
   bool IsDirty() const;
   // Saves the form's edits; Saved follows on success.
   void Save();
-  // Back and Esc: out of the art picker, Achievements or Saves, then Advanced, then RequestClose.
+  // Back and Esc: out of the art picker or an open page, then RequestClose.
   void Back();
   // The Saves page, once the game's saves have loaded.
   void OpenSaves();
@@ -61,8 +62,6 @@ class GameCard : public CardBackdrop {
   void PlayClicked();
   // A tag chip was clicked: show the library's games with that tag.
   void TagFilterRequested(QString tag);
-  // Game details was clicked: open the game's details page in the card's place.
-  void DetailsRequested();
 
  private:
   // Both constructors' common part; `title` is null for a game.
@@ -87,10 +86,16 @@ class GameCard : public CardBackdrop {
   void OpenAchievements();
   void CloseAchievements();
   bool AchievementsOpen() const;
+  void OpenStoreInfo();
+  void CloseStoreInfo();
+  bool StoreInfoOpen() const;
   // GET /v1/games/{id}/saves into the saves line and the page, again on every change to them.
   void LoadSaves();
   void CloseSaves();
   bool SavesOpen() const;
+  // A page in the settings' place, with its title and controls in the panel; ShowForm goes back.
+  void ShowStackPage(QWidget* page, const QString& title, QWidget* controls);
+  void ShowForm();
 
   std::string id_;
   // A not-installed title's card has no form, so form_ stays null.
@@ -107,6 +112,8 @@ class GameCard : public CardBackdrop {
   // "48 of 52 achievements" under the saves line, which opens their page.
   QPushButton* achievements_button_ = nullptr;
   AchievementsPage* achievements_page_ = nullptr;
+  StoreInfoPage* store_info_ = nullptr;
+  int column_width_ = 0;  // SetLayout's, for a page made after it
   std::optional<AchievementsResult> achievements_;
   SavesPage* saves_page_ = nullptr;
   std::optional<SavesResult> saves_;

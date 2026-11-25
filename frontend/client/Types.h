@@ -354,7 +354,7 @@ struct GameMetadata {
   std::map<std::string, std::int64_t> active_candidate_ids;
 
   // The wider store info that doesn't fit the sidebar; see
-  // GameDetailsCard. requirements_min/rec are HTML, not plain text.
+  // StoreInfoPage. requirements_min/rec are HTML, not plain text.
   std::string requirements_min;
   std::string requirements_rec;
   std::vector<std::int64_t> dlc_ids;
@@ -581,6 +581,8 @@ struct GameDetail {
   std::string env_json;
   // What an empty runner_ref runs with ("proton:auto"), from GET /v1/games/{id} only.
   std::string default_runner;
+  // Who tracks its files when its store or launcher does, so they can't be pointed elsewhere.
+  std::string files_kept_by;
   // Which game it is (library::Identify), from GET /v1/games/{id} only; see docs/api.md.
   struct Identity {
     std::string store;
@@ -619,6 +621,8 @@ struct GamePatch {
   std::optional<std::string> working_dir;
   std::optional<std::string> runner_ref;
   std::optional<std::string> data_dir;
+  // Points the game at where its files are now, moving nothing.
+  std::optional<std::string> install_path;
   // Raw JSON text (must parse to an object); see GameDetail's comment.
   std::optional<std::string> runner_config_json;
   std::optional<std::string> env_json;

@@ -61,7 +61,7 @@ void RelocateLibrary(QWidget* parent, std::function<QString(const std::string& i
           parent, "Move every game to Mira's folders",
           "Move every game's files into your games folder, and each prefix into the prefixes "
           "folder, named after the game? Games installed by a store (Steam, Epic, GOG, itch.io) "
-          "keep their install folder; only the prefix moves. Games on another drive are copied "
+          "keep their game folder; only the prefix moves. Games on another drive are copied "
           "then deleted, which can take a while.",
           "Move games")) {
     return;

@@ -82,7 +82,7 @@ RunInPrefixCard::RunInPrefixCard(std::string game_id, std::string install_path, 
 
   auto* program_row = new SettingRow("Program", QString(), this);
   program_ = new QLineEdit(program_row);
-  program_->setPlaceholderText("Absolute, or in its install folder");
+  program_->setPlaceholderText("Absolute, or in its game folder");
   program_row->AddWideControl(program_);
   // Choose sits inside the field, so both fields share their edges.
   QAction* choose =

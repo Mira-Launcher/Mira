@@ -141,11 +141,6 @@ void InstallGameAsync(QObject* context, const std::string& id, bool interactive,
 void GetInstallProgressAsync(QObject* context, const std::string& id,
                              std::function<void(InstallProgressResult)> callback);
 
-// POST /v1/games/{id}/relocate: moves one game's files to `install_path` and its prefix to
-// `data_dir`. An empty one stays where it is.
-void RelocateGameAsync(QObject* context, const std::string& id, const std::string& install_path,
-                       const std::string& data_dir, std::function<void(GameDetailResult)> callback);
-
 // POST /v1/games/delete, a job: removes games, keeping what the user set on them, and with
 // `delete_files` their files (a Steam game through Steam), with `delete_prefix` their prefixes,
 // with `delete_saves` their save backups.

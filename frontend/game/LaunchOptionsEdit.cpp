@@ -195,7 +195,7 @@ bool LaunchOptionsEdit::Edit(LaunchOption& option) {
   mode->setCurrentIndex(std::max(mode->findData(QString::fromStdString(option.mode)), 0));
   form->addRow("What it does", mode);
   auto* exe = new QLineEdit(QString::fromStdString(option.exe), form_widget);
-  exe->setPlaceholderText("Absolute, or relative to the install folder");
+  exe->setPlaceholderText("Absolute, or relative to the game folder");
   form->addRow("Program", PathRow(exe, [this, form_widget] {
                  const QString picked = QFileDialog::getOpenFileName(
                      form_widget, "Choose the program", QString::fromStdString(install_path_));

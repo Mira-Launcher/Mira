@@ -14,6 +14,7 @@
 #include "../client/api/Artwork.h"
 #include "../client/api/Emulators.h"
 #include "../client/api/Games.h"
+#include "../client/api/Stores.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
 #include "GameActions.h"
@@ -23,11 +24,21 @@
 
 namespace mira_gui {
 
+namespace {
+
+// A store's games are uninstalled through it; the remove card says what any other game loses.
+// `source` is FindSourceInfo of the game's source.
+bool UninstallsThroughStore(const GameSummary& game, const SourceInfo* source) {
+  return game.source == "steam" || game.source == "office" ||
+         (source != nullptr && source->kind == SourceInfo::Kind::Store);
+}
+
+}  // namespace
+
 GameMenus::GameMenus(QWidget* parent, Host host)
     : QObject(parent), parent_(parent), host_(std::move(host)) {}
 
-void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
-                             const std::function<void(QMenu&)>& extra) {
+void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos) {
   // Copied, not kept as a pointer: an event landing while the menu is open can move the library's
   // rows.
   const GameSummary* found = host_.find(id);
@@ -36,11 +47,40 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
   const QString name = QString::fromStdString(game.name);
   const std::string& status = game.status;
   const bool running = game.running;
+  const SourceInfo* source = FindSourceInfo(QString::fromStdString(game.source));
+  const bool emulated = source != nullptr && source->kind == SourceInfo::Kind::Emulator;
 
   QMenu menu(parent_);
-  QAction* play = menu.addAction(running ? "Stop" : RunVerb(game));
-  play->setEnabled(CanPlayOrStop(game));
-  if (host_.install_actions && host_.install_actions(menu, id)) menu.addSeparator();
+  // A game that isn't set up has nothing to play yet: setting it up takes Play's place.
+  const bool installing = !host_.install_text(id).isEmpty();
+  QAction* play = nullptr;
+  QAction* setup = nullptr;
+  if (status == "not_set_up" && !running) {
+    setup = menu.addAction(installing ? "Installing…" : "Set up…");
+    setup->setEnabled(!installing);
+    setup->setToolTip("Choose the program that starts or installs it");
+  } else {
+    play = menu.addAction(running ? "Stop" : RunVerb(game));
+    play->setEnabled(CanPlayOrStop(game));
+  }
+  // A store's game ("<source>-<ref>") can be updated through its store.
+  const QString source_id = QString::fromStdString(game.source);
+  const QString store_prefix = source_id + "-";
+  if (source != nullptr && source->kind == SourceInfo::Kind::Store && source_id != "humble" &&
+      QString::fromStdString(id).startsWith(store_prefix) && status == "ready" && !installing) {
+    const std::string ref = id.substr(store_prefix.size());
+    QAction* update = menu.addAction("Update");
+    update->setEnabled(!running);
+    connect(update, &QAction::triggered, this, [this, source_id, ref, name] {
+      api::InstallStoreTitleAsync(parent_, source_id.toStdString(), ref, /*update=*/true,
+                                  [this, name](StoreActionResult result) {
+                                    if (!result.ok)
+                                      notify::FailedRequest(
+                                          parent_, "Could not update " + name + ".", result.error);
+                                  });
+    });
+  }
+  if (host_.install_actions) host_.install_actions(menu, id);
   // The game's other ways to start, and its tools.
   if (!running && status == "ready") {
     if (const std::vector<PlayChoice> choices = PlayChoices(game, /*all=*/true);
@@ -66,19 +106,61 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
       });
     });
   }
-  // Taking a mod manager off undoes what it did for the game; the card asks first.
-  for (const LaunchOption& option : game.launch.options) {
-    const SourceInfo* manager = FindSourceInfo(QString::fromStdString(option.id));
-    if (manager == nullptr || manager->kind != SourceInfo::Kind::ModManager) continue;
-    QAction* remove_manager = menu.addAction(
-        "Remove " + manager->name + "…", this,
-        [this, id, name, to = option.id] { actions::RemoveModManager(parent_, id, name, to); });
-    remove_manager->setEnabled(!running);
+
+  menu.addSeparator();
+  QAction* properties = menu.addAction("Properties…");
+  QAction* folder = nullptr;
+  if (!game.install_path.empty()) folder = menu.addAction("Open game folder");
+  if (!game.store_url.empty()) {
+    const QUrl page(QString::fromStdString(game.store_url));
+    connect(menu.addAction("Open store page"), &QAction::triggered, parent_,
+            [page] { QDesktopServices::openUrl(page); });
   }
-  if (extra) extra(menu);
+
+  menu.addSeparator();
+  const bool pinned = IsPinned(game);
+  QAction* toggle_pinned = menu.addAction(pinned ? "Unpin" : "Pin to sidebar");
+  const bool hidden = IsHidden(game);
+  QAction* toggle_hidden = menu.addAction(hidden ? "Unhide" : "Hide");
+  toggle_hidden->setToolTip(hidden ? "Show this game in the library again"
+                                   : "Keep this game out of the library until you ask for it " +
+                                         shortcuts::HiddenGamesHint());
+  const bool app = IsApp(game);
+  QAction* toggle_app = menu.addAction(app ? "Mark as game" : "Mark as app");
+  toggle_app->setToolTip(
+      "An app is a program rather than a game: no playtime, and kept out of Continue");
+
+  // Tools for when it doesn't run right. Only a Windows game has a prefix; a program beside any
+  // other runs as it is, and an emulator's game has neither.
+  menu.addSeparator();
+  const bool prefix = game.platform != "native" && game.platform != "web" && !emulated;
+  QAction* run_in_prefix = nullptr;
+  if (!emulated) run_in_prefix = menu.addAction(prefix ? "Run in prefix…" : "Run a program…");
+  QAction* winetricks = prefix ? menu.addAction("Winetricks…") : nullptr;
+  QAction* view_log = menu.addAction(running ? "View live log…" : "View log…");
+  // Shown once mirad says the game has a Proton log, a moment after the menu opens.
+  QAction* proton_log = nullptr;
+  auto proton_log_path = std::make_shared<QString>();
+  if (prefix) {
+    proton_log = menu.addAction("Open Proton log");
+    proton_log->setVisible(false);
+    api::GetGameAsync(&menu, id, [proton_log, proton_log_path](GameDetailResult result) {
+      if (!result.ok || result.game.proton_log.empty()) return;
+      *proton_log_path = QString::fromStdString(result.game.proton_log);
+      proton_log->setToolTip(*proton_log_path);
+      proton_log->setVisible(true);
+    });
+  }
+
+  // Changes to where its files are and what runs it.
+  menu.addSeparator();
+  QAction* relocate = nullptr;
+  if (!emulated) {
+    relocate = menu.addAction("Move to Mira's folders…");
+    relocate->setToolTip("Move this game's files and prefix into the library and prefix folders");
+  }
   // An emulator's game moves to another one for its console; filled in when mirad answers.
-  const SourceInfo* source = FindSourceInfo(QString::fromStdString(game.source));
-  if (source != nullptr && source->kind == SourceInfo::Kind::Emulator) {
+  if (emulated) {
     QMenu* run_with = menu.addMenu("Move to emulator");
     run_with->setEnabled(false);
     api::GetGameEmulatorsAsync(
@@ -102,116 +184,40 @@ void GameMenus::ShowGameMenu(const std::string& id, const QPoint& global_pos,
           run_with->setEnabled(true);
         });
   }
-  QAction* details = menu.addAction("Game settings…");
-  QAction* folder = menu.addAction("Open install folder");
-  if (!game.store_url.empty()) {
-    const QUrl page(QString::fromStdString(game.store_url));
-    connect(menu.addAction("Open store page"), &QAction::triggered, parent_,
-            [page] { QDesktopServices::openUrl(page); });
+  // Taking a mod manager off undoes what it did for the game; the card asks first.
+  for (const LaunchOption& option : game.launch.options) {
+    const SourceInfo* manager = FindSourceInfo(QString::fromStdString(option.id));
+    if (manager == nullptr || manager->kind != SourceInfo::Kind::ModManager) continue;
+    QAction* remove_manager = menu.addAction(
+        "Remove " + manager->name + "…", this,
+        [this, id, name, to = option.id] { actions::RemoveModManager(parent_, id, name, to); });
+    remove_manager->setEnabled(!running);
   }
-  QAction* game_details = menu.addAction("Game details…");
-  const bool pinned = IsPinned(game);
-  QAction* toggle_pinned = menu.addAction(pinned ? "Unpin" : "Pin to sidebar");
+
   menu.addSeparator();
-  const bool installing = !host_.install_text(id).isEmpty();
-  QAction* setup = nullptr;
-  if (status == "not_set_up") {
-    setup = menu.addAction(installing ? "Installing…" : "Set up…");
-    setup->setEnabled(!installing);
-    setup->setToolTip("Choose the program that starts or installs it");
-  }
-  // Only a Windows game has a prefix; a program beside any other runs as it is.
-  const bool prefix = game.platform != "native" && game.platform != "web";
-  QAction* run_in_prefix = menu.addAction(prefix ? "Run in prefix…" : "Run a program…");
-  QAction* refresh_metadata = menu.addAction("Refresh metadata && cover art");
-  QAction* view_log = menu.addAction(running ? "View live log…" : "View log…");
-  QAction* proton_log = menu.addAction("Open Proton log");
-  QAction* winetricks = menu.addAction("Winetricks…");
-  QAction* relocate = menu.addAction("Move to Mira's folders…");
-  relocate->setToolTip("Move this game's files and prefix into the library and prefix folders");
-  // An emulator's game has no installer, prefix or folder of Mira's to move it to.
-  const bool emulated = source != nullptr && source->kind == SourceInfo::Kind::Emulator;
-  // Nor store info for Game details to show.
-  for (QAction* action : {run_in_prefix, winetricks, relocate, game_details})
-    action->setVisible(!emulated);
-  winetricks->setEnabled(prefix);
-  proton_log->setVisible(prefix && !emulated);
-  proton_log->setEnabled(false);
-  proton_log->setToolTip("Turn on Write a Proton log in the game's settings, then play it");
-  auto proton_log_path = std::make_shared<QString>();
-  if (prefix && !emulated) {
-    api::GetGameAsync(&menu, id, [proton_log, proton_log_path](GameDetailResult result) {
-      if (!result.ok || result.game.proton_log.empty()) return;
-      *proton_log_path = QString::fromStdString(result.game.proton_log);
-      proton_log->setEnabled(true);
-      proton_log->setToolTip(*proton_log_path);
-    });
-  }
-  winetricks->setToolTip(prefix                      ? QString()
-                         : game.platform == "native" ? "Native games have no Wine or Proton prefix"
-                                                     : "HTML games have no Wine or Proton prefix");
-  // The resolved setting isn't on GameSummary. The menu opens at once and the
-  // entry fills in when mirad answers, a moment later.
-  QAction* desktop_entry = menu.addAction("Desktop entry");
-  desktop_entry->setEnabled(false);
-  auto desktop_entry_enabled = std::make_shared<bool>(true);
-  api::GetGameConfigAsync(
-      &menu, id, [desktop_entry, desktop_entry_enabled](GameConfigResult result) {
-        if (!result.ok) {
-          desktop_entry->setText("Desktop entry (couldn't read the setting)");
-          return;
-        }
-        const auto entry = std::ranges::find(result.entries, std::string("desktop_entries.enabled"),
-                                             &GameConfigEntry::key);
-        if (entry == result.entries.end()) return;
-        *desktop_entry_enabled = entry->value_display == "true";
-        desktop_entry->setText(*desktop_entry_enabled ? "Remove desktop entry"
-                                                      : "Add desktop entry");
-        desktop_entry->setEnabled(true);
-      });
-  menu.addSeparator();
-  const bool hidden = IsHidden(game);
-  QAction* toggle_hidden = menu.addAction(hidden ? "Unhide" : "Hide");
-  toggle_hidden->setToolTip(hidden ? "Show this game in the library again"
-                                   : "Keep this game out of the library until you ask for it " +
-                                         shortcuts::HiddenGamesHint());
-  const bool app = IsApp(game);
-  QAction* toggle_app = menu.addAction(app ? "Mark as game" : "Mark as app");
-  toggle_app->setToolTip(
-      "An app is a program rather than a game: no playtime, and kept out of Continue");
-  AddTagsMenu(menu, {id});
-  menu.addSeparator();
-  // A store's games are uninstalled; the card says what any other game loses.
-  const bool store = game.source == "steam" || game.source == "office" ||
-                     (source != nullptr && source->kind == SourceInfo::Kind::Store);
-  QAction* remove = menu.addAction(store ? "Uninstall…" : "Remove…");
+  QAction* remove = menu.addAction(UninstallsThroughStore(game, source) ? "Uninstall…" : "Remove…");
 
   QAction* chosen = menu.exec(global_pos);
+  if (chosen == nullptr) return;  // dismissed; also keeps it from matching an entry left out above
   if (chosen == play) {
     running ? host_.toggle_running(id)
             : host_.launch(id, {});  // the default; other choices are under Play with
-  } else if (chosen == details) {
+  } else if (chosen == setup) {
+    host_.offer_setup(id);
+  } else if (chosen == properties) {
     host_.open_settings(id);
   } else if (chosen == folder) {
-    actions::OpenInstallFolder(parent_, game.install_path);
-  } else if (chosen == game_details) {
-    host_.open_details(id);
-  } else if (setup != nullptr && chosen == setup) {
-    host_.offer_setup(id);
+    actions::OpenFolder(parent_, game.install_path);
   } else if (chosen == relocate) {
     actions::Relocate(parent_, {{id, name}}, nullptr);
   } else if (chosen == run_in_prefix) {
     actions::RunInPrefix(parent_, id, game.install_path, name);
-  } else if (chosen == refresh_metadata) {
-    host_.refresh_metadata(id);
   } else if (chosen == view_log) {
     actions::ViewLog(parent_, id, name);
   } else if (chosen == proton_log) {
     QDesktopServices::openUrl(QUrl::fromLocalFile(*proton_log_path));
   } else if (chosen == winetricks) {
     actions::RunWinetricks(parent_, id, name);
-  } else if (chosen == desktop_entry) {
-    actions::ToggleDesktopEntry(parent_, id, *desktop_entry_enabled);
   } else if (chosen == toggle_pinned) {
     ToggleTag(id, tags::kPinned);
   } else if (chosen == toggle_hidden) {
@@ -237,17 +243,19 @@ void GameMenus::ShowBatchMenu(const std::vector<std::string>& ids, const QPoint&
   int pinned = 0;
   int hidden = 0;
   int apps = 0;
+  int store_games = 0;
   for (const std::string& id : ids) {
     const GameSummary* game = host_.find(id);
-    if (game != nullptr && IsPinned(*game)) ++pinned;
-    if (game != nullptr && IsHidden(*game)) ++hidden;
-    if (game != nullptr && IsApp(*game)) ++apps;
+    if (game == nullptr) continue;
+    if (IsPinned(*game)) ++pinned;
+    if (IsHidden(*game)) ++hidden;
+    if (IsApp(*game)) ++apps;
+    if (UninstallsThroughStore(*game, FindSourceInfo(QString::fromStdString(game->source))))
+      ++store_games;
   }
 
   // Each offered for the games it would change, so a mixed selection gets both.
   QMenu menu(parent_);
-  QAction* refresh_metadata =
-      menu.addAction(QString("Refresh metadata && cover art (%1)").arg(count));
   QAction* pin =
       pinned < count ? menu.addAction(QString("Pin to sidebar (%1)").arg(count - pinned)) : nullptr;
   QAction* unpin = pinned > 0 ? menu.addAction(QString("Unpin (%1)").arg(pinned)) : nullptr;
@@ -261,26 +269,19 @@ void GameMenus::ShowBatchMenu(const std::vector<std::string>& ids, const QPoint&
   QAction* mark_app =
       apps < count ? menu.addAction(QString("Mark as app (%1)").arg(count - apps)) : nullptr;
   QAction* mark_game = apps > 0 ? menu.addAction(QString("Mark as game (%1)").arg(apps)) : nullptr;
-  auto* desktop_menu = menu.addMenu("Desktop entry");
-  QAction* add_desktop_entry = desktop_menu->addAction("Add to application menu");
-  QAction* remove_desktop_entry = desktop_menu->addAction("Remove from application menu");
-  QAction* relocate = menu.addAction(QString("Move to Mira's folders… (%1)").arg(count));
   AddTagsMenu(menu, ids);
+  auto* desktop_menu = menu.addMenu("Application menu");
+  QAction* add_desktop_entry = desktop_menu->addAction("Add");
+  QAction* remove_desktop_entry = desktop_menu->addAction("Remove");
   menu.addSeparator();
-  QAction* remove = menu.addAction(QString("Remove… (%1)").arg(count));
+  QAction* relocate = menu.addAction(QString("Move to Mira's folders… (%1)").arg(count));
+  menu.addSeparator();
+  QAction* remove = menu.addAction(
+      QString("%1… (%2)").arg(store_games == count ? "Uninstall" : "Remove").arg(count));
 
   QAction* chosen = menu.exec(global_pos);
   if (chosen == nullptr) return;  // dismissed; also keeps it from matching an action left out above
-  if (chosen == refresh_metadata) {
-    // Activity shows it going; a notice sums it up at the end.
-    api::RefreshMetadataManyAsync(this, ids, [this](MetadataBatchResult result) {
-      if (!result.ok) {
-        notify::FailedRequest(parent_, "Could not refresh metadata", result.error);
-      } else {
-        notify::Notice(parent_, BatchRefreshSummary(result));
-      }
-    });
-  } else if (chosen == pin || chosen == unpin) {
+  if (chosen == pin || chosen == unpin) {
     SetTag(ids, tags::kPinned, chosen == pin);
   } else if (chosen == hide || chosen == unhide) {
     SetTag(ids, tags::kHidden, chosen == hide);

@@ -12,12 +12,12 @@ CardColumns CardColumnsFor(const GameDetail& game, const QString& store) {
     columns.runs = {"Runner"};
     if (!store.isEmpty()) columns.runs.push_back(store);
   }
-  for (const char* title : {"Display", "Performance and overlay", "Logs"})
+  for (const char* title : {"Display", "Performance and overlay", "Stopping and logs"})
     columns.runs.emplace_back(title);
-  columns.game = {"Details"};
+  columns.game = {"Details", "Game detection"};
   if (game.source != "steam" && !game.runner_ref.starts_with("emulator:"))
     columns.game.emplace_back("Launch");
-  for (const char* title : {"Saves", "Scripts", "Files", "Menu entries"})
+  for (const char* title : {"Files", "Scripts", "Saves", "Menu entries"})
     columns.game.emplace_back(title);
   return columns;
 }
