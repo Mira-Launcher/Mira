@@ -87,7 +87,8 @@ class Services {
   Lane installs{"installs", 1};      // installers a scan runs on its own
   Lane achievements{"achievements", 2};
   Lane achievement_icons{"achievement-icons", 4};
-  Lane saves{"saves", 1};  // the save-location list's updates
+  Lane playtime_sends{"playtime-sends", 1};  // a store's playtime, after a session
+  Lane saves{"saves", 1};                    // the save-location list's updates
   library::CatalogCache catalogs;
   Lane catalog_checks{"catalog-checks", 2};  // after `catalogs`, so its tasks stop first
   downloads::Queue downloads{config, games, events};

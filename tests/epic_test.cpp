@@ -2,12 +2,17 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <format>
 #include <fstream>
+#include <map>
+#include <mutex>
+#include <thread>
 
 #include "api/EventBus.h"
 #include "config/Config.h"
 #include "epic/EpicImporter.h"
 #include "epic/Legendary.h"
+#include "epic/Playtime.h"
 #include "library/Catalog.h"
 #include "library/SourceRegistry.h"
 #include "library/StoreProgress.h"
@@ -171,6 +176,107 @@ TEST_CASE("EpicImporter is idempotent") {
   CHECK(second->added == 0);
   CHECK(second->updated == 1);
   CHECK(fixture.games.All().size() == 1);
+}
+
+TEST_CASE("Playtime syncs with Epic both ways, counting each played second once") {
+  Fixture fixture("epic-playtime-sync");
+  fixture.UseFakeLegendary(
+      kNoise, kLoggedIn,
+      R"([{"app_name": "abc", "title": "A Game", "install_path": "/tmp/mira-tests/agame", "executable": "A.exe"}, )"
+      R"({"app_name": "def", "title": "Another", "install_path": "/tmp/mira-tests/another", "executable": "B.exe"}])");
+  std::ofstream(epic::LegendaryConfigDir() / "user.json")
+      << R"({"displayName": "Tester", "refresh_expires_at": "2999-01-01T00:00:00.000Z",
+             "expires_at": "2999-01-01T00:00:00.000Z", "access_token": "token",
+             "account_id": "acct"})";
+
+  // Epic's library service: totals per game, and sent pieces added to them as Epic does.
+  std::mutex mutex;
+  // "def" was never played through Epic, so Epic doesn't list it yet.
+  std::map<std::string, std::int64_t> epic = {{"abc", 7200}};
+  std::int64_t longest_piece = 0;
+  int gets = 0;
+  httplib::Server service;
+  service.Get("/library/api/public/playtime/account/acct/all",
+              [&](const httplib::Request& req, httplib::Response& res) {
+                const std::lock_guard lock(mutex);
+                ++gets;
+                if (req.get_header_value("Authorization") != "Bearer token")
+                  return void(res.status = 401);
+                nlohmann::json out = nlohmann::json::array();
+                for (const auto& [app, total] : epic)
+                  out.push_back({{"accountId", "acct"}, {"artifactId", app}, {"totalTime", total}});
+                res.set_content(out.dump(), "application/json");
+              });
+  service.Put("/library/api/public/playtime/account/acct/bulk", [&](const httplib::Request& req,
+                                                                    httplib::Response& res) {
+    const std::lock_guard lock(mutex);
+    const nlohmann::json body = nlohmann::json::parse(req.body);
+    for (const nlohmann::json& piece : body["playtimeAddList"]) {
+      const auto seconds = [](const nlohmann::json& at) {
+        std::tm tm{};
+        strptime(at.get<std::string>().c_str(), "%Y-%m-%dT%H:%M:%S", &tm);
+        return static_cast<std::int64_t>(timegm(&tm));
+      };
+      const std::int64_t length = seconds(piece["endTime"]) - seconds(piece["startTime"]);
+      longest_piece = std::max(longest_piece, length);
+      epic[piece["artifactId"]] += length;
+    }
+    res.status = 204;
+  });
+  const int port = service.bind_to_any_port("127.0.0.1");
+  std::thread serving([&] { service.listen_after_bind(); });
+  const std::string service_url = std::format("http://127.0.0.1:{}", port);
+  const test::EnvVar endpoint("MIRA_EPIC_LIBRARY_URL", service_url.c_str());
+  REQUIRE(fixture.config.Set("epic.sync_playtime", true));
+  model::Game played;
+  played.id = "epic-def";
+  played.play_seconds = 600;  // Mira's own sessions
+  REQUIRE(fixture.games.Upsert(played));
+  const auto seconds = [&](const char* id) { return fixture.games.Find(id)->play_seconds; };
+
+  // The first time, the higher of the two.
+  epic::EpicImporter importer(fixture.config, fixture.games, fixture.events);
+  REQUIRE(importer.Import());
+  CHECK(seconds("epic-abc") == 7200);
+  CHECK(seconds("epic-def") == 600);
+
+  // Five minutes in the Epic Games Launcher are added.
+  {
+    const std::lock_guard lock(mutex);
+    epic["def"] += 300;
+  }
+  REQUIRE(importer.Import());
+  CHECK(seconds("epic-def") == 900);
+
+  // A 150 s session in Mira goes to Epic in pieces of at most a minute, and isn't counted back.
+  const std::int64_t later = model::NowSeconds() + 1;  // after the first import's second
+  REQUIRE(fixture.games.FinishSession({.game_id = "epic-def",
+                                       .started_at = later,
+                                       .ended_at = later + 150,
+                                       .duration_seconds = 150},
+                                      [](model::Game& game) { game.play_seconds += 150; }));
+  epic::SendPlaytime(fixture.config, fixture.games, "epic-def");
+  {
+    const std::lock_guard lock(mutex);
+    CHECK(epic["def"] == 450);
+    CHECK(longest_piece == 60);
+  }
+  REQUIRE(importer.Import());
+  CHECK(seconds("epic-def") == 1050);
+  // Sent once: the import's retry has nothing left to send.
+  {
+    const std::lock_guard lock(mutex);
+    CHECK(epic["def"] == 450);
+  }
+
+  // Off, Epic isn't asked.
+  REQUIRE(fixture.config.Set("epic.sync_playtime", false));
+  const int asked = gets;
+  REQUIRE(importer.Import());
+  CHECK(gets == asked);
+
+  service.stop();
+  serving.join();
 }
 
 TEST_CASE("The Epic catalog reports every entitlement and marks tracked ones") {

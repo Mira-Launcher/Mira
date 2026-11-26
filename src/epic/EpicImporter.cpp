@@ -7,6 +7,7 @@
 #include "core/Json.h"
 #include "core/Log.h"
 #include "epic/Legendary.h"
+#include "epic/Playtime.h"
 #include "library/ImportSummary.h"
 #include "library/PrefixNaming.h"
 #include "runner/RunnerRegistry.h"
@@ -50,6 +51,9 @@ Result<library::ImportSummary> EpicImporter::Import() {
   if (!installed_json) return std::unexpected(installed_json.error());
 
   const runner::RunnerRegistry provisioner(config_);
+  const auto epic_playtime = config_.GetBool("epic.sync_playtime")
+                                 ? Playtime(config_)
+                                 : std::optional<std::map<std::string, std::int64_t>>();
 
   for (const InstalledTitle& title : ParseInstalled(*installed_json)) {
     const std::string id = "epic-" + title.app_name;
@@ -84,6 +88,12 @@ Result<library::ImportSummary> EpicImporter::Import() {
       log::Error("failed to save epic game {}: {}", id, result.error().message);
       summary.listed.insert(id);  // still installed, only not saved
       continue;
+    }
+    // A game Epic doesn't list was never played through it: its total is 0.
+    if (epic_playtime) {
+      const auto it = epic_playtime->find(title.app_name);
+      TakePlaytime(games_, id, it != epic_playtime->end() ? it->second : 0);
+      SendPlaytime(config_, games_, id);  // what an earlier send couldn't
     }
     library::RecordImported(summary, events_, game, existing.has_value());
   }

@@ -32,6 +32,13 @@ struct PlaySession {
   bool incomplete = false;  // mirad restarted during it, so how it ended is unknown
 };
 
+// A store's playtime total for a game as Mira last took it (`seen`, seconds), and the end of the
+// last session Mira sent the store (`sent_through`, unix seconds).
+struct StorePlaytime {
+  std::int64_t seen = 0;
+  std::int64_t sent_through = 0;
+};
+
 // One cloud save location's state, as saves::Cloud last checked and synced it.
 struct CloudSync {
   std::string location;
@@ -215,6 +222,10 @@ class GameStore {
   // `forget`.
   std::vector<CloudSync> CloudSyncs(const std::string& id) const;
   Result<void> SetCloudSync(const std::string& id, const CloudSync& state);
+
+  // What a store's playtime sync last saw and sent for a game; none before its first sync.
+  std::optional<StorePlaytime> StorePlaytimeOf(const std::string& id) const;
+  Result<void> SetStorePlaytime(const std::string& id, const StorePlaytime& state);
 
   // Remote save state per slot, kept on a plain removal and dropped with `forget`.
   std::optional<RemoteSync> RemoteSyncOf(const std::string& id, const std::string& slot) const;

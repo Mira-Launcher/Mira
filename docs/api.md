@@ -155,6 +155,8 @@ For a Steam game, `delete_files` opens Steam's own uninstall instead (`steam://u
 
 With `delete_files`, `delete_prefix` or `purge` it is a [job](#jobs) (deleting can take minutes) whose result is `{}`, failing with the error that kept the game; otherwise it answers `{}` straight away.
 
+While `epic.sync_playtime` is on, playtime syncs with Epic's library service, with legendary's session (renewed through `legendary status` first when it expired). An Epic import (`POST /v1/stores/epic/import`) reads Epic's total for each installed game and adds what Epic counted since the last import (the Epic Games Launcher, other computers); the first time, a game takes Epic's total when it's higher than its own `play_seconds`. After each session of an Epic game, Mira sends Epic that session in minute-long pieces, as the Epic Games Launcher does, and leaves it out of what the next import adds; a send that fails is tried again on the next import. Sessions from before a game's first import with the setting on aren't sent. Epic gives no last played date. GOG offers playtime only to a signed-in browser session, so a GOG game's is Mira's own.
+
 A store import (`POST /v1/steam/scan`, `POST /v1/stores/{id}/import`) also removes a game the store no longer lists as installed whose files are gone while the folder they were in is still there: it was uninstalled in the store's own client. It keeps its record and publishes `games.removed`. A game whose folder is gone too (a disk that isn't mounted) is marked `missing` instead.
 
 ### `POST /v1/games/delete`

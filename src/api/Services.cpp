@@ -23,6 +23,7 @@
 #include "desktop/DesktopEntries.h"
 #include "epic/EosOverlay.h"
 #include "epic/Legendary.h"
+#include "epic/Playtime.h"
 #include "launchers/Launchers.h"
 #include "library/AutoInstall.h"
 #include "library/FolderTags.h"
@@ -113,6 +114,8 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     }
     StopSharedIfIdle(id);
     RefreshAchievementsAfterPlay(id);
+    if (config.GetBool("epic.sync_playtime") && id.starts_with("epic-"))
+      playtime_sends.Post([this, id] { epic::SendPlaytime(config, games, id); });
     // Its tags may have changed while it ran.
     SavesAfterPlay(id, [this, id] { SortByTags({id}); });
   });

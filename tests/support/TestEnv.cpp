@@ -143,9 +143,10 @@ EnvVar::~EnvVar() {
 }
 
 void Isolate(config::Config& config) {
-  for (const char* key : {"metadata.steam_by_name", "umu.match", "anticheat.check",
-                          "anticheat.runtimes", "steam.import_playtime", "runner_scan_common_dirs",
-                          "tags.steam", "achievements.enabled", "saves.cloud"}) {
+  for (const char* key :
+       {"metadata.steam_by_name", "umu.match", "anticheat.check", "anticheat.runtimes",
+        "steam.import_playtime", "epic.sync_playtime", "runner_scan_common_dirs", "tags.steam",
+        "achievements.enabled", "saves.cloud"}) {
     [[maybe_unused]] auto off = config.Set(key, false);
   }
   [[maybe_unused]] auto no_fetch = config.Set("metadata.disabled", true);

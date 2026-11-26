@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 14> kMigrations = {
+constexpr std::array<std::string_view, 15> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -202,6 +202,14 @@ CREATE TABLE IF NOT EXISTS remote_sync(
   other_device TEXT NOT NULL,
   other_at INTEGER NOT NULL,
   PRIMARY KEY(game_id, slot)
+) STRICT;
+)sql",
+    R"sql(
+-- A store game's playtime as Mira last took it from the store, and up to when it sent its own.
+CREATE TABLE IF NOT EXISTS store_playtime(
+  game_id TEXT PRIMARY KEY,
+  seen INTEGER NOT NULL,
+  sent_through INTEGER NOT NULL
 ) STRICT;
 )sql",
 };
@@ -431,6 +439,24 @@ Result<void> GameStore::SetCloudSync(const std::string& id, const CloudSync& sta
       .Bind(6, state.local_marker)
       .Bind(7, state.checked_at)
       .Run();
+}
+
+std::optional<StorePlaytime> GameStore::StorePlaytimeOf(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  auto select = db_.Prepare("SELECT seen, sent_through FROM store_playtime WHERE game_id = ?");
+  if (!select) return std::nullopt;
+  select->Bind(1, id);
+  auto row = select->Step();
+  if (!row || !*row) return std::nullopt;
+  return StorePlaytime{.seen = select->Int(0), .sent_through = select->Int(1)};
+}
+
+Result<void> GameStore::SetStorePlaytime(const std::string& id, const StorePlaytime& state) {
+  std::lock_guard lock(mutex_);
+  auto upsert = db_.Prepare(
+      "INSERT OR REPLACE INTO store_playtime(game_id, seen, sent_through) VALUES(?, ?, ?)");
+  if (!upsert) return std::unexpected(upsert.error());
+  return upsert->Bind(1, id).Bind(2, state.seen).Bind(3, state.sent_through).Run();
 }
 
 std::optional<RemoteSync> GameStore::RemoteSyncOf(const std::string& id,
@@ -1211,7 +1237,8 @@ Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::st
       }
       for (const char* sql :
            {"DELETE FROM removed_games WHERE id = ?", "DELETE FROM cloud_sync WHERE game_id = ?",
-            "DELETE FROM remote_sync WHERE game_id = ?"}) {
+            "DELETE FROM remote_sync WHERE game_id = ?",
+            "DELETE FROM store_playtime WHERE game_id = ?"}) {
         auto drop = db_.Prepare(sql);
         if (!drop) return std::unexpected(drop.error());
         if (auto done = drop->Bind(1, game.id).Run(); !done) return done;
