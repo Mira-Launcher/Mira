@@ -2,6 +2,7 @@
 
 #include <QHelpEvent>
 #include <QMouseEvent>
+#include <QScrollArea>
 #include <QTimer>
 #include <QToolTip>
 #include <QWheelEvent>
@@ -73,6 +74,27 @@ void TileGrid::FitHeight() {
   const int per_row = qMax(1, (viewport()->width() - 1) / qMax(1, cell.width()));
   const int rows = (VisibleCount() + per_row - 1) / per_row;
   setFixedHeight(rows * cell.height() + 2 * frameWidth());
+}
+
+void TileGrid::scrollTo(const QModelIndex& index, ScrollHint hint) {
+  QListView::scrollTo(index, hint);
+  const QRect tile = visualRect(index);
+  if (!tile.isValid()) return;
+  for (QWidget* parent = parentWidget(); parent != nullptr; parent = parent->parentWidget()) {
+    auto* area = qobject_cast<QScrollArea*>(parent);
+    if (area == nullptr || area->widget() == nullptr || !area->widget()->isAncestorOf(this))
+      continue;
+    const QPoint center = viewport()->mapTo(area->widget(), tile.center());
+    if (hint == PositionAtCenter) {
+      area->ensureVisible(center.x(), center.y(), area->viewport()->width() / 2,
+                          area->viewport()->height() / 2);
+    } else {
+      constexpr int kRoom = 16;  // past the tile, so its neighbours show it isn't the edge
+      area->ensureVisible(center.x(), center.y(), tile.width() / 2 + kRoom,
+                          tile.height() / 2 + kRoom);
+    }
+    return;
+  }
 }
 
 void TileGrid::resizeEvent(QResizeEvent* event) {

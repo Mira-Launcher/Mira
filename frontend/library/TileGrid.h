@@ -28,6 +28,9 @@ class TileGrid : public TileView {
   // Call after rows are added, removed or hidden.
   void FitHeight();
   int VisibleCount() const;
+  // The grid is as tall as its tiles, so the page's scroll area around it moves to show the tile,
+  // as the arrow keys move the current one.
+  void scrollTo(const QModelIndex& index, ScrollHint hint = EnsureVisible) override;
 
  protected:
   void paintEvent(QPaintEvent* event) override;

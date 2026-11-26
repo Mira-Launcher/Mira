@@ -40,6 +40,7 @@ class FocusRing : public QObject {
   QList<QPointer<QObject>> watched_;  // the focused control and what holds it
   QPointer<QObject> painted_;         // a focused list's viewport
   bool shown_ = false;
+  bool by_mouse_ = false;  // the last press was the mouse's, not a key's
   bool place_queued_ = false;
 };
 
