@@ -13,8 +13,8 @@
 #include "../components/Labels.h"
 #include "../components/LaidOutButton.h"
 #include "../components/Metrics.h"
-#include "../library/ArtworkStore.h"
 #include "../sources/Sources.h"
+#include "CardParts.h"
 #include "SavesText.h"
 
 namespace mira_gui {
@@ -51,17 +51,7 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
     : SheetCard(QString(), parent), id_(game.id) {
   setFixedWidth(620);
 
-  auto* cover = new QLabel(this);
-  cover->setFixedSize(kCover);
-  const auto show_cover = [this, cover, artwork, game] {
-    cover->setPixmap(artwork->Cover(game, kCover, devicePixelRatioF()));
-  };
-  show_cover();
-  connect(artwork, &ArtworkStore::CoverChanged, cover,
-          [show_cover, id = QString::fromStdString(game.id)](const QString& changed) {
-            if (changed == id) show_cover();
-          });
-  SetLeading(cover);
+  SetLeading(MakeCover(this, game, kCover, artwork));
 
   // The store's name from the game, so the line is whole before the saves arrive.
   const SourceInfo* store = FindSourceInfo(QString::fromStdString(game.source));
@@ -108,9 +98,7 @@ SavesConflictCard::SavesConflictCard(const GameSummary& game, ArtworkStore* artw
   skip->setToolTip("Start with the saves here and leave the cloud's as they are");
   connect(skip, &QPushButton::clicked, this, [this] { emit Chosen("skip"); });
   buttons->insertWidget(0, skip);
-  auto* cancel = new QPushButton("Cancel", this);
-  connect(cancel, &QPushButton::clicked, this, [this] { emit Chosen({}); });
-  buttons->addWidget(cancel);
+  AddCancel([this] { emit Chosen({}); });
 
   api::GetSavesAsync(this, id_, [this, place, keep, theirs](SavesResult result) {
     if (!result.ok || !result.cloud) return;

@@ -15,6 +15,7 @@
 #include "../library/ArtworkStore.h"
 #include "../sources/Sources.h"
 #include "../theme/Theme.h"
+#include "CardParts.h"
 
 namespace mira_gui {
 namespace {
@@ -79,22 +80,12 @@ QString RemoveGamesCard::ActionText(const std::vector<RemovalPlan>& plans) {
 
 RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<RemovalPlan> plans,
                                  ArtworkStore* artwork, QWidget* parent)
-    : SheetCard(QString(), parent), games_(std::move(games)), plans_(std::move(plans)) {
+    : LiveCard(QString(), parent), games_(std::move(games)), plans_(std::move(plans)) {
   setFixedWidth(520);
   const bool one = plans_.size() == 1;
 
   if (one) {
-    auto* cover = new QLabel(this);
-    cover->setFixedSize(kCover);
-    const auto show_cover = [this, cover, artwork] {
-      cover->setPixmap(artwork->Cover(games_.front(), kCover, devicePixelRatioF()));
-    };
-    show_cover();
-    connect(artwork, &ArtworkStore::CoverChanged, cover,
-            [show_cover, id = QString::fromStdString(games_.front().id)](const QString& changed) {
-              if (changed == id) show_cover();
-            });
-    SetLeading(cover);
+    SetLeading(MakeCover(this, games_.front(), kCover, artwork));
   } else {
     SetLeading(new CoverStack(games_, artwork, this));
   }
@@ -159,14 +150,20 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
     }
     if (plans_.size() > 6) SetScrollable();
   }
-  AddOutsideRow();
-  AddPrefixRow();
-  AddSavesRow();
+  const bool rest = one && !plans_.front().files_in_prefix.empty();
+  outside_ = AddSizedSwitch(
+      one ? "Delete its files" : "Delete files outside Mira's folders",
+      [](const RemovalPlan& plan) { return plan.kind == "outside"; }, &RemovalSize::files);
+  prefix_ = AddSizedSwitch(!one   ? "Delete their prefixes"
+                           : rest ? "Delete the rest of its prefix"
+                                  : "Delete its prefix",
+                           HasPrefixToDelete, &RemovalSize::prefix);
+  saves_ = AddSizedSwitch(
+      one ? "Delete its save backups" : "Delete their save backups",
+      [](const RemovalPlan& plan) { return !plan.saves.empty(); }, &RemovalSize::saves);
 
   QHBoxLayout* buttons_layout = ButtonRow();
-  auto* cancel = new QPushButton("Cancel", this);
-  connect(cancel, &QPushButton::clicked, this, &RemoveGamesCard::CloseRequested);
-  buttons_layout->addWidget(cancel);
+  auto* cancel = AddCancel([this] { emit CloseRequested(); });
   auto* confirm = new Button(action, ButtonKind::Secondary, this);
   // Red when it deletes anything; a plain remove only forgets the game.
   const bool deletes = std::ranges::any_of(plans_, DeletesFiles);
@@ -181,17 +178,6 @@ RemoveGamesCard::RemoveGamesCard(std::vector<GameSummary> games, std::vector<Rem
   cancel->setFocus();
 }
 
-void RemoveGamesCard::AddInfoRow(const QString& label, std::function<QString()> text) {
-  auto* row = new SettingRow(label, QString(), this);
-  // One line, cut short with the whole of it as the tooltip: the size leads, so it always shows.
-  auto* value = new ElidedLabel(text(), row);
-  SetTextStyle(value, text::kSubtle);
-  value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-  row->AddControl(value, 1);
-  AddRow(row);
-  refresh_.push_back([value, text = std::move(text)] { value->setText(text()); });
-}
-
 void RemoveGamesCard::AddGameRow(const QString& name, std::function<QString()> text) {
   auto* row = new SettingRow(QString(), QString(), this);
   row->Label()->hide();
@@ -200,99 +186,41 @@ void RemoveGamesCard::AddGameRow(const QString& name, std::function<QString()> t
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(12);
   layout->addWidget(new ElidedLabel(name, line), 1);
-  auto* value = MakeLabel(line, text(), text::kSubtle);
+  auto* value = MakeLabel(line, QString(), text::kSubtle);
   layout->addWidget(value);
   row->AddWideControl(line);
   AddRow(row);
-  refresh_.push_back([value, text = std::move(text)] { value->setText(text()); });
+  AddLive([value, text = std::move(text)] { value->setText(text()); });
 }
 
-void RemoveGamesCard::AddOutsideRow() {
-  std::vector<const RemovalPlan*> outside;
+Switch* RemoveGamesCard::AddSizedSwitch(const QString& label,
+                                        const std::function<bool(const RemovalPlan&)>& has,
+                                        std::uint64_t RemovalSize::* field) {
+  std::vector<const RemovalPlan*> with;
   for (const RemovalPlan& plan : plans_) {
-    if (plan.kind == "outside") outside.push_back(&plan);
+    if (has(plan)) with.push_back(&plan);
   }
-  if (outside.empty()) return;
-  const bool one = plans_.size() == 1;
-  const QString label = one ? "Delete its files" : "Delete files outside Mira's folders";
-  auto* row = new SettingRow(label, QString(), this);
-  auto* size = MakeLabel(row, QString(), text::kSubtle);
-  if (one) size->setToolTip(HomeRelative(QString::fromStdString(outside.front()->files)));
-  row->AddControl(size);
-  outside_ = new Switch(row);
-  outside_->setAccessibleName(label);
-  row->AddControl(outside_);
-  AddRow(row);
-  const auto text = [this, one, outside] {
-    if (!measured_) return QString("…");
-    qint64 total = 0;
-    for (const RemovalPlan* plan : outside) {
-      if (const auto it = sizes_.find(plan->id); it != sizes_.end())
-        total += static_cast<qint64>(it->second.files);
-    }
-    return one ? SizeText(total) : QString("%1 · %2").arg(outside.size()).arg(SizeText(total));
-  };
-  size->setText(text());
-  refresh_.push_back([size, text] { size->setText(text()); });
-}
-
-void RemoveGamesCard::AddPrefixRow() {
-  std::vector<const RemovalPlan*> with_prefix;
-  for (const RemovalPlan& plan : plans_) {
-    if (HasPrefixToDelete(plan)) with_prefix.push_back(&plan);
-  }
-  if (with_prefix.empty()) return;
-  const bool one = plans_.size() == 1;
-  const bool rest = one && !plans_.front().files_in_prefix.empty();
-  const QString label = !one   ? "Delete their prefixes"
-                        : rest ? "Delete the rest of its prefix"
-                               : "Delete its prefix";
+  if (with.empty()) return nullptr;
   auto* row = new SettingRow(label, QString(), this);
   auto* size = MakeLabel(row, QString(), text::kSubtle);
   row->AddControl(size);
-  prefix_ = new Switch(row);
-  prefix_->setAccessibleName(label);
-  row->AddControl(prefix_);
+  auto* toggle = new Switch(row);
+  toggle->setAccessibleName(label);
+  row->AddControl(toggle);
   AddRow(row);
-  const auto text = [this, one, with_prefix] {
+  const auto text = [this, with, field, one = plans_.size() == 1] {
     if (!measured_) return QString("…");
     qint64 total = 0;
-    for (const RemovalPlan* plan : with_prefix) {
+    for (const RemovalPlan* plan : with) {
       if (const auto it = sizes_.find(plan->id); it != sizes_.end())
-        total += static_cast<qint64>(it->second.prefix);
+        total += static_cast<qint64>(it->second.*field);
     }
-    return one ? SizeText(total) : QString("%1 · %2").arg(with_prefix.size()).arg(SizeText(total));
+    return one ? SizeText(total) : QString("%1 · %2").arg(with.size()).arg(SizeText(total));
   };
-  size->setText(text());
-  refresh_.push_back([size, text] { size->setText(text()); });
-}
-
-void RemoveGamesCard::AddSavesRow() {
-  std::vector<const RemovalPlan*> with_saves;
-  for (const RemovalPlan& plan : plans_) {
-    if (!plan.saves.empty()) with_saves.push_back(&plan);
-  }
-  if (with_saves.empty()) return;
-  const bool one = plans_.size() == 1;
-  const QString label = one ? "Delete its save backups" : "Delete their save backups";
-  auto* row = new SettingRow(label, QString(), this);
-  auto* size = MakeLabel(row, QString(), text::kSubtle);
-  row->AddControl(size);
-  saves_ = new Switch(row);
-  saves_->setAccessibleName(label);
-  row->AddControl(saves_);
-  AddRow(row);
-  const auto text = [this, one, with_saves] {
-    if (!measured_) return QString("…");
-    qint64 total = 0;
-    for (const RemovalPlan* plan : with_saves) {
-      if (const auto it = sizes_.find(plan->id); it != sizes_.end())
-        total += static_cast<qint64>(it->second.saves);
-    }
-    return one ? SizeText(total) : QString("%1 · %2").arg(with_saves.size()).arg(SizeText(total));
-  };
-  size->setText(text());
-  refresh_.push_back([size, text] { size->setText(text()); });
+  AddLive([size, text] { size->setText(text()); });
+  if (with.size() == 1 && plans_.size() == 1 && field == &RemovalSize::files)
+    size->setToolTip(HomeRelative(QString::fromStdString(with.front()->files)));
+  return toggle;
 }
 
 QString RemoveGamesCard::Size(const std::string& id, bool prefix) const {
@@ -305,7 +233,7 @@ QString RemoveGamesCard::Size(const std::string& id, bool prefix) const {
 void RemoveGamesCard::SetSizes(const std::map<std::string, RemovalSize>& sizes) {
   sizes_ = sizes;
   measured_ = true;
-  for (const auto& refresh : refresh_) refresh();
+  Refresh();
 }
 
 }  // namespace mira_gui

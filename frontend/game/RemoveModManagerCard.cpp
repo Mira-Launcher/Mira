@@ -1,7 +1,6 @@
 #include "RemoveModManagerCard.h"
 
 #include <QHBoxLayout>
-#include <QLabel>
 #include <QPushButton>
 #include <QStringList>
 
@@ -21,7 +20,7 @@ constexpr int kBadge = 40;
 
 RemoveModManagerCard::RemoveModManagerCard(const QString& game_name, const SourceInfo& manager,
                                            QWidget* parent)
-    : SheetCard(QString(), parent), manager_name_(manager.name), vortex_(manager.id == "vortex") {
+    : LiveCard(QString(), parent), manager_name_(manager.name), vortex_(manager.id == "vortex") {
   setFixedWidth(520);
   SetLeading(MakeSourceBadge(manager, kBadge, this));
   SetTitle("Remove " + manager_name_ + " from " + game_name);
@@ -60,9 +59,7 @@ RemoveModManagerCard::RemoveModManagerCard(const QString& game_name, const Sourc
   // Why Remove is off, in the same place whichever reason, so nothing moves when it appears.
   note_ = MakeLabel(this, QString(), text::kSubtle, /*wrap=*/false);
   buttons->insertWidget(0, note_, 1);
-  auto* cancel = new QPushButton("Cancel", this);
-  connect(cancel, &QPushButton::clicked, this, [this] { cards::Close(this); });
-  buttons->addWidget(cancel);
+  auto* cancel = AddCancel([this] { cards::Close(this); });
   confirm_ = new Button("Remove", ButtonKind::Danger, this);
   confirm_->setEnabled(false);
   connect(confirm_, &QPushButton::clicked, this, &RemoveModManagerCard::Confirmed);
@@ -72,25 +69,11 @@ RemoveModManagerCard::RemoveModManagerCard(const QString& game_name, const Sourc
 
 void RemoveModManagerCard::SetSummary(const ModManagerPurgeResult& summary) {
   summary_ = summary;
-  for (const auto& refresh : refresh_) refresh();
+  Refresh();
   confirm_->setEnabled(summary.ok && !summary.open);
   note_->setText(!summary.ok    ? QString("Couldn't check what it would delete")
                  : summary.open ? "Close " + manager_name_ + " first"
                                 : QString());
-}
-
-void RemoveModManagerCard::AddInfoRow(const QString& label, std::function<QString()> text,
-                                      std::function<QString()> tooltip) {
-  auto* row = new SettingRow(label, QString(), this);
-  auto* value = new ElidedLabel(text(), row);
-  SetTextStyle(value, text::kSubtle);
-  value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-  row->AddControl(value, 1);
-  AddRow(row);
-  refresh_.push_back([row, value, text = std::move(text), tooltip = std::move(tooltip)] {
-    value->setText(text());
-    if (tooltip) row->Label()->setToolTip(tooltip());
-  });
 }
 
 }  // namespace mira_gui

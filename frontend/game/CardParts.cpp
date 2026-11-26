@@ -13,19 +13,23 @@ constexpr QSize kCover(40, 60);
 
 }  // namespace
 
+QLabel* MakeCover(QWidget* parent, const GameSummary& game, QSize size, ArtworkStore* artwork) {
+  auto* cover = new QLabel(parent);
+  cover->setFixedSize(size);
+  const auto show = [cover, artwork, game, size] {
+    cover->setPixmap(artwork->Cover(game, size, cover->devicePixelRatioF()));
+  };
+  show();
+  QObject::connect(artwork, &ArtworkStore::CoverChanged, cover,
+                   [show, id = QString::fromStdString(game.id)](const QString& changed) {
+                     if (changed == id) show();
+                   });
+  return cover;
+}
+
 QLabel* AddGameCardHeading(SheetCard* card, const GameSummary& game, const QString& title,
                            ArtworkStore* artwork) {
-  auto* cover = new QLabel(card);
-  cover->setFixedSize(kCover);
-  const auto show_cover = [card, cover, artwork, game] {
-    cover->setPixmap(artwork->Cover(game, kCover, card->devicePixelRatioF()));
-  };
-  show_cover();
-  QObject::connect(artwork, &ArtworkStore::CoverChanged, cover,
-                   [show_cover, id = QString::fromStdString(game.id)](const QString& changed) {
-                     if (changed == id) show_cover();
-                   });
-  card->SetLeading(cover);
+  card->SetLeading(MakeCover(card, game, kCover, artwork));
   return card->SetHeading(title);
 }
 

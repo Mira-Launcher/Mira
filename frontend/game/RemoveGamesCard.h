@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../components/SheetCard.h"
 #include "../components/Switch.h"
+#include "LiveCard.h"
 
 namespace mira_gui {
 
@@ -18,7 +18,7 @@ class ArtworkStore;
 // /v1/games/removal), with one switch for their prefixes, off by default since saves live there,
 // and one for their save backups, off by default so a game added back finds them. An in-window
 // card over the library.
-class RemoveGamesCard : public SheetCard {
+class RemoveGamesCard : public LiveCard {
   Q_OBJECT
 
  public:
@@ -39,23 +39,18 @@ class RemoveGamesCard : public SheetCard {
   void CloseRequested();
 
  private:
-  // A row with a label and muted text on the right, which `text` fills again when sizes land.
-  void AddInfoRow(const QString& label, std::function<QString()> text);
-  // The same for one game of several: its name gives way to the text, which stays whole.
+  // An info row for one game of several: its name gives way to the text, which stays whole.
   void AddGameRow(const QString& name, std::function<QString()> text);
-  // The switch for files outside Mira's folders, off by default: they're the user's.
-  void AddOutsideRow();
-  // The prefix switch, when any game has a prefix that can go.
-  void AddPrefixRow();
-  // The save backups switch, when any game has backups.
-  void AddSavesRow();
+  // A switch, off by default, for what the games `has` picks lose, with their total `field` size;
+  // nullptr when none has any. Files outside Mira's folders, prefixes and save backups use it.
+  Switch* AddSizedSwitch(const QString& label, const std::function<bool(const RemovalPlan&)>& has,
+                         std::uint64_t RemovalSize::* field);
   QString Size(const std::string& id, bool prefix) const;
 
   std::vector<GameSummary> games_;
   std::vector<RemovalPlan> plans_;
   std::map<std::string, RemovalSize> sizes_;
   bool measured_ = false;
-  std::vector<std::function<void()>> refresh_;
   Switch* outside_ = nullptr;
   Switch* prefix_ = nullptr;
   Switch* saves_ = nullptr;

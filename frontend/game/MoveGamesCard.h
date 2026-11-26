@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "../client/Types.h"
-#include "../components/SheetCard.h"
+#include "LiveCard.h"
 
 class QPushButton;
 class QLabel;
@@ -17,7 +17,7 @@ namespace mira_gui {
 // /v1/games/relocation): for one game, where its files and prefix go (or why they stay); for
 // several, a row per game that opens to the same lines, with the games that have nothing to move
 // sharing one. An in-window card (cards::Show).
-class MoveGamesCard : public SheetCard {
+class MoveGamesCard : public LiveCard {
   Q_OBJECT
 
  public:
@@ -36,12 +36,12 @@ class MoveGamesCard : public SheetCard {
  private:
   // A game's two lines, files and prefix, under `parent`'s layout.
   void AddPartLines(QWidget* parent, const RelocationPlan& plan);
-  QString MovingSize(const RelocationPlan& plan) const;
+  // What `plan` moves, once measured.
+  qint64 MovingBytes(const RelocationPlan& plan) const;
 
   std::vector<RelocationPlan> plans_;
   std::map<std::string, RemovalSize> sizes_;
   bool measured_ = false;
-  std::vector<std::function<void()>> refresh_;
 };
 
 }  // namespace mira_gui
