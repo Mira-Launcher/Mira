@@ -201,9 +201,9 @@ TEST_CASE(
   mapping::AssignDottedKey(document, "scan.debounce_ms", json(1500));
   mapping::AssignDottedKey(document, "auto_setup", json(true));
   mapping::AssignDottedKey(document, "default_runner.windows", json("proton_umu:auto"));
-  mapping::AssignDottedKey(document, "default_runner.native", json("native:native"));
+  mapping::AssignDottedKey(document, "default_runner.web", json("browser:auto"));
   CHECK(document == json::parse(R"({"scan": {"debounce_ms": 1500}, "auto_setup": true,
-    "default_runner": {"windows": "proton_umu:auto", "native": "native:native"}})"));
+    "default_runner": {"windows": "proton_umu:auto", "web": "browser:auto"}})"));
 }
 
 TEST_CASE("ToApiError reads mirad's error envelope and a failure event alike") {

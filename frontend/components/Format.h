@@ -2,12 +2,16 @@
 
 #include <QString>
 #include <QStringList>
+#include <string>
+#include <vector>
 
 // How the GUI writes counts, sizes and paths, so every label says them alike.
 namespace mira_gui {
 
 // "a, b and c".
 QString JoinAnd(QStringList items);
+// "a, b, c", as a store lists developers or genres.
+QString JoinNames(const std::vector<std::string>& names);
 
 // "1 game", "3 games": `count` and `item`, plural unless it's one (`plural`, else `item` + "s").
 QString Counted(qsizetype count, const QString& item, const QString& plural = {});

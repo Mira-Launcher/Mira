@@ -6,6 +6,7 @@
 #include <QStyle>
 #include <QVBoxLayout>
 
+#include "../components/ActivationKey.h"
 #include "../components/Badge.h"
 #include "../components/Labels.h"
 
@@ -99,8 +100,7 @@ void SourceTile::mouseReleaseEvent(QMouseEvent* event) {
 
 void SourceTile::keyPressEvent(QKeyEvent* event) {
   const int key = event->key();
-  if (clickable_ && (key == Qt::Key_Return || key == Qt::Key_Enter || key == Qt::Key_Space))
-    return emit Clicked();
+  if (clickable_ && IsActivationKey(key)) return emit Clicked();
   QFrame::keyPressEvent(event);
 }
 

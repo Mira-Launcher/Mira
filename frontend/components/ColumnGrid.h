@@ -56,7 +56,7 @@ class ColumnGrid : public QLayout {
   QSize minimumSize() const override;
   void setGeometry(const QRect& rect) override;
 
-  static constexpr int kCardGap = 16;
+  static constexpr int kCardGap = 12;
 
  private:
   struct Entry {

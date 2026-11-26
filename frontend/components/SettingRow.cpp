@@ -6,6 +6,10 @@
 #include <QHBoxLayout>
 #include <QHelpEvent>
 #include <QLabel>
+#include <QLineEdit>
+#include <QResizeEvent>
+#include <QStyle>
+#include <QStyleOptionFrame>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -68,7 +72,7 @@ SettingRow::SettingRow(const QString& label, const QString& doc, QWidget* parent
   revert_ = new QToolButton(this);
   revert_->setObjectName("row_revert");
   revert_->setAutoRaise(true);
-  icons::Follow(revert_, icons::Glyph::Undo, &theme::Tokens::text_muted);
+  icons::Follow(revert_, icons::Glyph::Reset, &theme::Tokens::text_muted);
   revert_->setToolTip("Undo this change");
   revert_->setAccessibleName("Undo the change to " + label);
   KeepSpaceWhenHidden(revert_);
@@ -128,6 +132,34 @@ void SettingRow::AddAfterLabel(QWidget* widget) {
 
 namespace {
 constexpr const char* kControlLine = "control_below";
+// A FieldWithButtons' width beside its label, and how much of it its buttons take.
+constexpr const char* kBesideWidth = "beside_width";
+constexpr const char* kBesideButtons = "beside_buttons";
+// The narrowest a field beside its label gets before it goes under the label.
+constexpr int kLeastBesideField = 160;
+
+// The control's text field, if it has one (a line edit, or an editable combo box's).
+QLineEdit* TextField(QWidget* control) {
+  if (auto* edit = qobject_cast<QLineEdit*>(control)) return edit;
+  return control->findChild<QLineEdit*>();
+}
+
+// How wide `edit` must be to show all of its text, or its placeholder when empty.
+int WidthForText(const QLineEdit* edit) {
+  const QString text = edit->text().isEmpty() ? edit->placeholderText() : edit->text();
+  if (text.isEmpty()) return 0;
+  QStyleOptionFrame option;
+  option.initFrom(edit);
+  option.lineWidth = edit->hasFrame()
+                         ? edit->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, &option, edit)
+                         : 0;
+  const QMargins margins = edit->textMargins();
+  const QFontMetrics metrics = edit->fontMetrics();
+  // 4 for QLineEdit's own side margins, as its sizeHint counts them.
+  const QSize content(metrics.horizontalAdvance(text) + margins.left() + margins.right() + 4,
+                      metrics.height());
+  return edit->style()->sizeFromContents(QStyle::CT_LineEdit, &option, content, edit).width();
+}
 }  // namespace
 
 int SettingRow::LabelLeft() const {
@@ -145,7 +177,71 @@ QHBoxLayout* SettingRow::AddLineBelow(QWidget* widget, int left, int gap, int st
 }
 
 void SettingRow::AddControlBelow(QWidget* control) {
-  AddLineBelow(control, LabelLeft(), 4, 1)->setObjectName(kControlLine);
+  line_bottom_ = line_->contentsMargins().bottom();
+  movable_ = control;
+  movable_min_ = control->minimumWidth();
+  below_line_ = AddLineBelow(control, LabelLeft(), 4, 1);
+  below_line_->setObjectName(kControlLine);
+  // A field beside the label shows its whole text, so new text can move it under the label.
+  if (QLineEdit* field = TextField(control))
+    connect(field, &QLineEdit::textChanged, this, [this] { PlaceControl(); });
+  PlaceControl();
+}
+
+void SettingRow::resizeEvent(QResizeEvent* event) {
+  QWidget::resizeEvent(event);
+  PlaceControl();
+}
+
+void SettingRow::PlaceControl() {
+  if (movable_ == nullptr || width() == 0) return;
+  const int hint = std::max(movable_min_, movable_->sizeHint().width());
+  int full = std::max(hint, movable_->property(kBesideWidth).toInt());
+  int least = hint;
+  if (const QVariant buttons = movable_->property(kBesideButtons); buttons.isValid()) {
+    const QLineEdit* field = TextField(movable_);
+    const int text = field != nullptr ? WidthForText(field) : 0;
+    least = std::max(least, buttons.toInt() + std::max(kLeastBesideField, text));
+    full = std::max(full, least);
+  }
+  const QMargins margins = line_->contentsMargins();
+  const int spacing = line_->spacing();
+  // The line's widgets up to the label's end, each with the spacing after it (spacers add only
+  // their own width), then the revert button's kept space.
+  int used = margins.left() + margins.right();
+  const int label_at = line_->indexOf(label_);
+  for (int i = 0; i < label_end_; ++i) {
+    QLayoutItem* item = line_->itemAt(i);
+    QWidget* widget = item->widget();
+    if (widget == nullptr) {
+      used += item->sizeHint().width();
+      continue;
+    }
+    if (widget->isHidden() && !widget->sizePolicy().retainSizeWhenHidden()) continue;
+    used += (i == label_at ? label_->sizeHint().width() : item->sizeHint().width()) + spacing;
+  }
+  if (revert_->sizePolicy().retainSizeWhenHidden() || !revert_->isHidden())
+    used += revert_->sizeHint().width() + spacing;
+  const int room = width() - used;
+  const bool beside = room >= least;
+  if (beside) movable_->setFixedWidth(std::min(room, full));
+  if (beside == beside_) return;
+  beside_ = beside;
+  const QMargins line = line_->contentsMargins();
+  if (beside) {
+    below_line_->removeWidget(movable_);
+    line_->addWidget(movable_, 0, Qt::AlignVCenter);
+    line_->setContentsMargins(line.left(), line.top(), line.right(), line_bottom_);
+    below_margins_ = below_line_->contentsMargins();
+    below_line_->setContentsMargins(0, 0, 0, 0);  // empty, it adds no height
+  } else {
+    line_->removeWidget(movable_);
+    movable_->setMinimumWidth(movable_min_);
+    movable_->setMaximumWidth(QWIDGETSIZE_MAX);
+    below_line_->setContentsMargins(below_margins_);
+    below_line_->addWidget(movable_, 1);
+    line_->setContentsMargins(line.left(), line.top(), line.right(), 4);
+  }
 }
 
 void SettingRow::SetBelow(QWidget* widget) {
@@ -279,7 +375,14 @@ QWidget* FieldWithButtons(QWidget* field, const std::vector<QWidget*>& buttons) 
   field->setMinimumWidth(0);
   field->setMaximumWidth(QWIDGETSIZE_MAX);
   layout->addWidget(field, /*stretch=*/1);
-  for (QWidget* button : buttons) layout->addWidget(button);
+  // Beside its label, the field is as wide as a field without buttons.
+  int width = kFieldColumnWidth;
+  for (QWidget* button : buttons) {
+    layout->addWidget(button);
+    width += layout->spacing() + button->sizeHint().width();
+  }
+  group->setProperty(kBesideWidth, width);
+  group->setProperty(kBesideButtons, width - kFieldColumnWidth);
   return group;
 }
 

@@ -119,6 +119,9 @@ class SettingsPanel : public QWidget {
     bool saved = false;
   };
 
+  // What frontend.toml held when it was read, for a switch made after that (on a schema page).
+  std::optional<FrontendPrefs> shown_prefs_;
+
   // A number of seconds kept in milliseconds.
   struct PrefSeconds {
     QDoubleSpinBox* spin = nullptr;
@@ -172,7 +175,7 @@ class SettingsPanel : public QWidget {
   void ShowMiraFolders(const ConfigResult& config);
   void EditMiraFolders(const std::function<void(QStringList& folders, QStringList& roots)>& edit);
   void SaveMiraFolders(const QStringList& folders, const QStringList& roots);
-  void BuildSidebarPage();
+  void BuildSidebarCards();
   void BuildShortcutsPage();
   void BuildSchemaPages();
   // The rows a schema item opens to (a store, an emulator, a download) say what they are once the

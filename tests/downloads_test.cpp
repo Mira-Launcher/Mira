@@ -130,6 +130,28 @@ TEST_CASE("The same file from two hosts is one file with mirrors") {
   CHECK(merged[2].name == "other.bin");
 }
 
+TEST_CASE("folder settings left empty live in the default Mira folder, and every one is kept") {
+  test::TestEnv env("mira-folder-parts");
+  const fs::path home = paths::Home() / "Mira";
+  const fs::path drive = env.dir / "drive" / "Mira";
+  REQUIRE(env.config.Set("mira_folders", nlohmann::json::array({"~/Mira", drive.string()})));
+  REQUIRE(env.config.Set("default_mira_folder", drive.string()));
+  for (const char* key : {"prefix_root", "gog.install_root", "emulators.roms_root"})
+    REQUIRE(env.config.Reset(key));
+  CHECK(env.config.GetPath("prefix_root") == drive / "prefixes");
+  CHECK(env.config.GetPath("gog.install_root") == drive / "Games" / "GOG");
+  CHECK(env.config.GetPath("emulators.roms_root") == drive / "Roms");
+  // A GOG game installed while the home folder's Mira folder was the default is still GOG's.
+  const std::vector<fs::path> gog = config::PathsOf(env.config, "gog.install_root");
+  CHECK(std::ranges::contains(gog, home / "Games" / "GOG"));
+  CHECK(std::ranges::contains(gog, drive / "Games" / "GOG"));
+
+  const fs::path mine = env.dir / "my-gog";
+  REQUIRE(env.config.Set("gog.install_root", mine.string()));
+  CHECK(env.config.GetPath("gog.install_root") == mine);
+  CHECK(config::PathsOf(env.config, "gog.install_root") == std::vector{mine});
+}
+
 TEST_CASE(
     "Downloads guess a name, go to the default Mira folder, and drives are read from mounts") {
   test::TestEnv env("download-add");
@@ -137,10 +159,10 @@ TEST_CASE(
   const fs::path drive = env.dir / "drive" / "Mira";
   REQUIRE(env.config.Set("mira_folders", nlohmann::json::array({drive.string() + "/", "~/Mira"})));
   REQUIRE(env.config.Set("downloads.parallel", 0));  // nothing starts
-  CHECK(library::DefaultMiraFolder(env.config) == home);
+  CHECK(config::DefaultMiraFolder(env.config) == home);
   REQUIRE(env.config.Set("default_mira_folder", drive.string()));
-  CHECK(library::IsMiraFolder(env.config, drive));
-  CHECK(library::DefaultMiraFolder(env.config) == drive);
+  CHECK(config::IsMiraFolder(env.config, drive));
+  CHECK(config::DefaultMiraFolder(env.config) == drive);
 
   CHECK(GuessGameName("Some_Game.part01.rar") == "Some Game");
   CHECK(GuessGameName("Some.Game.7z.001") == "Some Game");

@@ -36,11 +36,4 @@ std::vector<Drive> GameDrives();
 // with library.auto_drives on. A drive whose folder the user removed isn't set up again.
 void SetUpDrives(config::Config& config, store::GameStore& games);
 
-// `path` is one of mira_folders, whatever its trailing slash or "~".
-bool IsMiraFolder(const config::Config& config, const std::filesystem::path& path);
-
-// Where downloads and installs go unless told otherwise: default_mira_folder, else the Mira folder
-// on the boot drive (in the home folder), else the first.
-std::filesystem::path DefaultMiraFolder(const config::Config& config);
-
 }  // namespace mira::library

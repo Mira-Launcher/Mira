@@ -905,7 +905,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
         !b["titles"].is_array()) {
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
     }
-    if (!s.config.GetBool("metadata.enabled")) return SendJson(res, {{"queued", 0}});
+    if (s.config.GetBool("metadata.disabled")) return SendJson(res, {{"queued", 0}});
 
     std::vector<model::Game> titles;
     for (const json& entry : b["titles"]) {

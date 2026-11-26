@@ -4,6 +4,8 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 
+#include "UnclippedLabelButton.h"
+
 namespace mira_gui {
 
 Segmented::Segmented(QWidget* parent) : QFrame(parent) {
@@ -23,7 +25,7 @@ Segmented::Segmented(const std::vector<std::pair<QString, QString>>& options, QW
 }
 
 QPushButton* Segmented::AddOption(const QString& value, const QString& label) {
-  auto* button = new QPushButton(label, this);
+  auto* button = new UnclippedLabelButton(label, this);
   button->setCheckable(true);
   button->setCursor(Qt::PointingHandCursor);
   button->setProperty("value", value);

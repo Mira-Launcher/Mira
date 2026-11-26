@@ -66,6 +66,7 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
   if (patch.working_dir) body["working_dir"] = *patch.working_dir;
   if (patch.runner_ref) body["runner_ref"] = *patch.runner_ref;
   if (patch.data_dir) body["data_dir"] = *patch.data_dir;
+  if (patch.install_path) body["install_path"] = *patch.install_path;
   if (patch.tags) body["tags"] = *patch.tags;
   if (patch.launch) body["launch"] = mapping::ToJson(*patch.launch);
 
@@ -514,26 +515,6 @@ void InstallGameAsync(QObject* context, const std::string& id, bool interactive,
 void GetInstallProgressAsync(QObject* context, const std::string& id,
                              std::function<void(InstallProgressResult)> callback) {
   async::Run(context, [id] { return GetInstallProgressSync(id); }, std::move(callback));
-}
-
-void RelocateGameAsync(QObject* context, const std::string& id, const std::string& install_path,
-                       const std::string& data_dir,
-                       std::function<void(GameDetailResult)> callback) {
-  json body = json::object();
-  if (!install_path.empty()) body["install_path"] = install_path;
-  if (!data_dir.empty()) body["data_dir"] = data_dir;
-  RunJob<GameDetailResult>(
-      context, "relocate",
-      [id, body](const std::string& query) {
-        return transport::PostJson("/v1/games/" + PercentEncode(id) + "/relocate" + query, body);
-      },
-      [id](GameDetailResult& result, const json& body) {
-        if (!body.is_object())
-          throw std::runtime_error(
-              transport::UnexpectedResponse("POST /v1/games/" + id + "/relocate"));
-        result.game = mapping::ToGameDetail(body);
-      },
-      std::move(callback));
 }
 
 void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, bool delete_files,

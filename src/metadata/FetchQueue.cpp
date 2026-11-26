@@ -17,7 +17,7 @@ FetchQueue::~FetchQueue() {
 
 void FetchQueue::Enqueue(const config::Config& config, api::EventBus& events, model::Game game,
                          bool force, bool announce, Done done) {
-  if (!force && !config.GetBool("metadata.enabled")) return;
+  if (!force && config.GetBool("metadata.disabled")) return;
   std::lock_guard lock(mutex_);
   const auto waiting = std::find_if(games_.begin(), games_.end(),
                                     [&game](const Job& job) { return job.game.id == game.id; });

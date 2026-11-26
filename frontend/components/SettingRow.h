@@ -28,8 +28,9 @@ class SettingRow : public QWidget {
   // A control that takes all the width the label leaves, e.g. a line of its own text, placed
   // right after the label.
   void AddWideControl(QWidget* control);
-  // On a line of its own under the label, starting where the label does: a control too wide to
-  // sit beside it, e.g. a path field with its buttons.
+  // Beside the label when the row has room for it (a FieldWithButtons' field as wide as a plain
+  // field's, or narrower down to 160 px, but never narrower than its text), else on a line of its
+  // own under the label, starting where the label does: e.g. a path field with its buttons.
   void AddControlBelow(QWidget* control);
   // Full width under the label, e.g. a folder list.
   void SetBelow(QWidget* widget);
@@ -63,8 +64,11 @@ class SettingRow : public QWidget {
 
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
+  void resizeEvent(QResizeEvent* event) override;
 
  private:
+  // Moves AddControlBelow's control beside the label or under it, for the row's width.
+  void PlaceControl();
   // Where the label starts inside the row's line.
   int LabelLeft() const;
   // A line under the label holding `widget`, `left` px in from the line's start, `gap` px below it.
@@ -81,6 +85,12 @@ class SettingRow : public QWidget {
   bool modified_ = false;
   bool overridden_ = false;
   QHBoxLayout* line_ = nullptr;  // dot, label, extras, stretch, revert, controls
+  QWidget* movable_ = nullptr;   // AddControlBelow's control
+  QHBoxLayout* below_line_ = nullptr;
+  int movable_min_ = 0;     // its own minimum width, put back when it goes under the label
+  int line_bottom_ = 0;     // the line's bottom margin with nothing under it
+  QMargins below_margins_;  // the line under the label's, while the control is there
+  bool beside_ = false;
   QVBoxLayout* outer_ = nullptr;
   int label_end_ = 0;  // where AddAfterLabel inserts
 };

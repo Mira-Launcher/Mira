@@ -15,6 +15,7 @@
 #include "Popover.h"
 #include "PopupCard.h"
 #include "SearchField.h"
+#include "UnclippedLabelButton.h"
 
 namespace mira_gui {
 
@@ -81,7 +82,7 @@ TabRow::TabRow(QWidget* parent) : QWidget(parent) {
 }
 
 void TabRow::AddTab(const QString& key, const QString& label) {
-  auto* button = new QPushButton(this);
+  auto* button = new UnclippedLabelButton(this);
   button->setCheckable(true);
   button->setFlat(true);
   button->setCursor(Qt::PointingHandCursor);
@@ -115,8 +116,12 @@ void TabRow::Select(const QString& key) {
   if (changed) emit CurrentChanged(key);
 }
 
+QString TabLabel(const QString& label, int count) {
+  return count < 0 ? label : QString("%1  %2").arg(label).arg(count);
+}
+
 void TabRow::Relabel(Tab& tab) {
-  tab.button->setText(tab.count < 0 ? tab.label : QString("%1  %2").arg(tab.label).arg(tab.count));
+  tab.button->setText(TabLabel(tab.label, tab.count));
   updateGeometry();
   Fit();
 }

@@ -1245,7 +1245,7 @@ QLabel#setup_link {
   font-weight: 600;
 }
 
-/* game/GameDetailsCard */
+/* game/StoreInfoPage */
 QLabel#screenshot {
   background: @surface_alt;
   border-radius: @radius_control;

@@ -155,6 +155,9 @@ class Services {
   void ReloadSettings();
   // The same for one game, after a change to just that game (also once it is deleted).
   void SyncDesktopEntry(const std::string& game_id);
+  // Fetches the game's art and store info again when what they're found by changed: its name, or
+  // which Steam or SteamGridDB game it is.
+  void RefetchIfIdentityChanged(const model::Game& before, const model::Game& after);
   // Puts a Steam game's picked art into Steam's own library (steam.sync_art), after a pick.
   void SyncSteamArt(const std::string& game_id);
   // Fetches metadata and art for games just added, which then get their tags from Steam.

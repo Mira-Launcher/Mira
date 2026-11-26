@@ -250,6 +250,7 @@ GameDetail ToGameDetail(const json& entry) {
   game.runner_config_json = entry.value("runner_config", json::object()).dump(2);
   game.env_json = entry.value("env", json::object()).dump(2);
   game.default_runner = entry.value("default_runner", std::string());
+  game.files_kept_by = entry.value("files_kept_by", std::string());
   if (const auto identity = entry.find("identity");
       identity != entry.end() && identity->is_object()) {
     game.identity.store = identity->value("store", std::string());

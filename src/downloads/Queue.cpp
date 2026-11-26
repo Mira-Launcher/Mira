@@ -712,14 +712,14 @@ Result<nlohmann::json> Queue::Add(const std::string& name, const std::vector<std
                                   const std::string& password, const std::string& folder) {
   if (links.empty()) return Err("invalid_links", "there are no links to download");
   if (auto valid = OnlyWebLinks(links); !valid) return std::unexpected(valid.error());
-  if (!folder.empty() && !library::IsMiraFolder(config_, folder))
+  if (!folder.empty() && !config::IsMiraFolder(config_, folder))
     return Err("invalid_folder", std::format("{} isn't one of the Mira folders", folder));
   Download download;
   download.id = NewId();
   download.name = name;
   // Fixed now, so a later change of the default doesn't strand what's half downloaded.
   download.folder =
-      (folder.empty() ? library::DefaultMiraFolder(config_) : paths::Expand(folder)).string();
+      (folder.empty() ? config::DefaultMiraFolder(config_) : paths::Expand(folder)).string();
   if (FolderName(name).empty()) {
     download.name = GuessGameName(CleanFileName("", links.front()));
     download.name_guessed = true;
@@ -926,8 +926,8 @@ void Queue::Save() {
 
 fs::path Queue::HomeOf(const Download& download) const {
   // One removed from the list since: the default instead.
-  if (library::IsMiraFolder(config_, download.folder)) return download.folder;
-  return library::DefaultMiraFolder(config_);
+  if (config::IsMiraFolder(config_, download.folder)) return download.folder;
+  return config::DefaultMiraFolder(config_);
 }
 
 fs::path Queue::WorkDir(const Download& download) const {

@@ -1,3 +1,5 @@
+#include "migrate/Metadata.h"
+
 #include <doctest.h>
 #include <httplib.h>
 #include <stb_image.h>
@@ -436,7 +438,7 @@ TEST_CASE("Enqueue skips when metadata is off unless forced; a failure is only m
   store::MetadataStore cache(dir);
   cache.Load();
   test::Isolate(config);
-  REQUIRE(config.Set("metadata.enabled", false).has_value());
+  REQUIRE(config.Set("metadata.disabled", true).has_value());
 
   const auto run = [&config, &cache](bool force) {
     api::EventBus events;
@@ -459,7 +461,7 @@ TEST_CASE("Enqueue skips when metadata is off unless forced; a failure is only m
   CHECK(forced[0].payload.value("id", std::string()) == "celeste");
   CHECK(forced[0].payload.value("code", std::string()) == "no_steamgriddb_key");
 
-  REQUIRE(config.Set("metadata.enabled", true).has_value());
+  REQUIRE(config.Set("metadata.disabled", false).has_value());
   const std::vector<model::Event> enabled = run(/*force=*/false);
   REQUIRE(enabled.size() == 1);
   CHECK(enabled[0].type == "game.metadata_failed");
@@ -690,4 +692,19 @@ TEST_CASE("A store's titles and its installed games link to their store pages") 
   CHECK(page("gog-7") == "https://www.gog.com/game/hollow_knight");
   CHECK(page("steam-620") == "https://store.steampowered.com/app/620");
   CHECK(page("own").empty());
+}
+
+TEST_CASE("Fetching turned off under the old setting's name stays off") {
+  test::TestEnv env("metadata-off-carried");
+  test::Touch(env.dir / "settings.toml", "[metadata]\nenabled = false\n");
+  env.config.Load();
+  REQUIRE_FALSE(env.config.GetBool("metadata.disabled"));
+  migrate::TurnMetadataOff(env.config);
+  CHECK(env.config.GetBool("metadata.disabled"));
+
+  test::TestEnv on("metadata-on-carried");
+  test::Touch(on.dir / "settings.toml", "[metadata]\nenabled = true\n");
+  on.config.Load();
+  migrate::TurnMetadataOff(on.config);
+  CHECK_FALSE(on.config.GetBool("metadata.disabled"));
 }

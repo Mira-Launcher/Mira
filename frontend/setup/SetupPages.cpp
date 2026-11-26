@@ -381,11 +381,12 @@ void WelcomePage::ChooseFolder(const QString& folder) {
   const std::vector<ConfigEdit> edits = {
       {"mira_folders", "an array of strings", Json(QStringList{folder}).toStdString()},
       {"library_roots", "an array of strings", Json(roots).toStdString()},
-      {"prefix_root", "a string", (folder + "/prefixes").toStdString()},
-      {"epic.install_root", "a string", (folder + "/Epic Games").toStdString()},
-      {"gog.install_root", "a string", (folder + "/GOG").toStdString()},
-      {"itch.install_root", "a string", (folder + "/itch.io").toStdString()},
-      {"amazon.install_root", "a string", (folder + "/Amazon Games").toStdString()},
+      // Empty puts prefixes and store installs in the default Mira folder, which is this one.
+      {"prefix_root", "a string", ""},
+      {"epic.install_root", "a string", ""},
+      {"gog.install_root", "a string", ""},
+      {"itch.install_root", "a string", ""},
+      {"amazon.install_root", "a string", ""},
       {"humble.download_root", "a string", (folder + "/Humble Bundle").toStdString()},
   };
   const QString before = folder_;

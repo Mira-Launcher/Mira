@@ -179,22 +179,4 @@ void SetUpDrives(config::Config& config, store::GameStore& games) {
     log::Warn("couldn't add the new drives' Mira folders: {}", saved.error().message);
 }
 
-bool IsMiraFolder(const config::Config& config, const fs::path& path) {
-  const fs::path expanded = paths::Expand(path.string());
-  return !path.empty() &&
-         std::ranges::any_of(config.GetPathArray("mira_folders"), [&](const fs::path& folder) {
-           return IsAtOrUnder(folder, expanded) && IsAtOrUnder(expanded, folder);
-         });
-}
-
-fs::path DefaultMiraFolder(const config::Config& config) {
-  const std::vector<fs::path> folders = config.GetPathArray("mira_folders");
-  const fs::path chosen = paths::Expand(config.GetString("default_mira_folder"));
-  if (IsMiraFolder(config, chosen)) return chosen;
-  const fs::path home = paths::Home();
-  for (const fs::path& folder : folders)
-    if (IsAtOrUnder(folder, home)) return folder;
-  return folders.empty() ? home / "Mira" : folders.front();
-}
-
 }  // namespace mira::library

@@ -45,7 +45,7 @@ constexpr int kColumnWidth = 340;  // the narrowest a column gets before the pag
 QWidget* Row(QWidget* parent, QHBoxLayout** layout) {
   auto* row = new QWidget(parent);
   *layout = new QHBoxLayout(row);
-  (*layout)->setContentsMargins(kLabelInset, 6, 12, 6);
+  (*layout)->setContentsMargins(kTextRowMargins);
   (*layout)->setSpacing(10);
   return row;
 }

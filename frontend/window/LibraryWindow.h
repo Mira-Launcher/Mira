@@ -131,9 +131,6 @@ class LibraryWindow : public QMainWindow,
   void changeEvent(QEvent* event) override;
   void showEvent(QShowEvent* event) override;
 
-  // Lists the library and scans it at once; the scan's changes arrive as
-  // events. `force_scan` is Refresh's: startup honours scan_on_startup.
-  void Reload(bool force_scan);
   // Ctrl+R and the refresh button: the scan, and every store's owned list asked again.
   void RefreshLibrary();
   // `done` runs once the new list is in the library.
@@ -279,7 +276,6 @@ class LibraryWindow : public QMainWindow,
   // Deletes the page, shown or still loading.
   void CloseTags();
   void OpenAbout();
-  void OpenGameDetailPage(const std::string& id);
   // A store or launcher's page, rebuilt fresh on each open.
   void OpenSource(const mira_gui::SourceInfo& source);
   // False while the page stays: its settings card's edits were kept, or are
@@ -296,11 +292,8 @@ class LibraryWindow : public QMainWindow,
   void ShowGame(const std::string& id);
   // "Installing… 1.2 GB" for a game mid-install, else empty.
   QString InstallText(const std::string& id) const;
-  // `announce` is false for the bulk path, where one toast covers the batch
-  // and per-game messages would be one notification per game.
-  void RefreshMetadata(const std::string& id, bool announce = true);
   void FetchMissingArtwork();
-  void ShowSteamGridDbNotice(bool asked_for, const mira_gui::ApiError& error);
+  void ShowSteamGridDbNotice(const mira_gui::ApiError& error);
   // Routes app/ErrorHelp's fix-it buttons to this window's pages.
   void InstallErrorNavigator();
   void UpdateTileCover(const QString& id);
@@ -397,9 +390,6 @@ class LibraryWindow : public QMainWindow,
   // doesn't flash a number that shifts the top bar.
   QTimer* activity_timer_ = nullptr;
   int activity_shown_ = 0;
-  // Games the user explicitly asked to refresh: a metadata failure for one
-  // of these is worth a toast; the dozens from an automatic scan are not.
-  std::set<std::string> awaiting_metadata_;
   bool steamgriddb_notice_shown_ = false;
   // Set by a refresh fetching missing art: its fetches were asked for, so a
   // missing SteamGridDB key is worth reporting.
@@ -413,7 +403,6 @@ class LibraryWindow : public QMainWindow,
   static constexpr int kMaxRowsTileWidth = 400;
   static int MaxTileWidth(bool rows) { return rows ? kMaxRowsTileWidth : kMaxTileWidth; }
   static constexpr int kDefaultSourceTileWidth = 150;  // smaller: a source page holds two grids
-  bool scan_on_startup_ = true;
   std::string
       applied_prefs_;  // the frontend table (minus window layout) last applied from config.changed
   // Keyed by "<id>@<tile width>". A generated cover is cheap but not free,

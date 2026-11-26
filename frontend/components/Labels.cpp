@@ -59,8 +59,11 @@ WrapWhenNarrowLabel::WrapWhenNarrowLabel(const QString& text, QWidget* parent)
 
 QSize WrapWhenNarrowLabel::sizeHint() const {
   const QMargins margins = contentsMargins();
-  const int width =
-      fontMetrics().horizontalAdvance(text()) + 2 * margin() + margins.left() + margins.right() + 1;
+  // Measured as QLabel lays out wrapped text: horizontalAdvance can come out a pixel short of
+  // that, and the label then wraps its last word at its own width.
+  const int text_width =
+      fontMetrics().boundingRect(QRect(0, 0, 100000, 1000), Qt::TextWordWrap, text()).width();
+  const int width = text_width + 2 * margin() + margins.left() + margins.right() + 1;
   return {width, heightForWidth(width)};
 }
 

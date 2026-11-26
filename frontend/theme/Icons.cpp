@@ -345,13 +345,16 @@ void PaintGlyph(QPainter& painter, Glyph glyph, const QColor& color) {
       painter.drawLine(QPointF(3.0, 8.0), QPointF(13.0, 8.0));
       painter.drawPolyline(QPolygonF({QPointF(7.0, 4.0), QPointF(3.0, 8.0), QPointF(7.0, 12.0)}));
       return;
-    case Glyph::Undo: {
-      // A counter-clockwise arc with its arrowhead at the start.
+    case Glyph::Reset: {
+      // A circle drawn counter-clockwise from the right, nearly closed, ending in a corner
+      // arrowhead at its lower right that points on around.
+      const QRectF circle(2.7, 2.7, 10.6, 10.6);
       QPainterPath arc;
-      arc.arcMoveTo(QRectF(3.0, 3.0, 10.0, 10.0), 160.0);
-      arc.arcTo(QRectF(3.0, 3.0, 10.0, 10.0), 160.0, 250.0);
+      arc.arcMoveTo(circle, 7.0);
+      arc.arcTo(circle, 7.0, 331.0);
       painter.drawPath(arc);
-      painter.drawPolyline(QPolygonF({QPointF(2.6, 3.8), QPointF(3.2, 6.8), QPointF(6.2, 6.0)}));
+      painter.drawPolyline(
+          QPolygonF({QPointF(13.3, 13.3), QPointF(13.3, 10.0), QPointF(10.0, 10.0)}));
       return;
     }
     case Glyph::Eye:

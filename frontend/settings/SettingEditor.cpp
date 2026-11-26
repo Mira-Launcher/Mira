@@ -143,7 +143,11 @@ SettingRow* SettingEditor::Build(QWidget* parent, const QString& doc) {
     row->AddControl(spin);
   } else if (entry.is_runner_ref) {
     combo = new FlatCombo(row);
-    combo->addItem("Default runner", QString());  // the runners come later (FillRunnerCombo)
+    // The runners come later (FillRunnerCombo).
+    if (entry.default_display == "auto")
+      combo->addItem("Auto (best available)", "auto");
+    else
+      combo->addItem("Default runner", QString());
     row->AddControl(combo);
   } else if (entry.type == "an array of strings" && !entry.choices.empty()) {
     chips = new ChipGroup(row);
@@ -370,7 +374,8 @@ void FillRunnerCombo(QComboBox* combo, const RunnersResult& runners,
   const QString current = RunnerRef(combo);
   combo->blockSignals(true);
   combo->clear();
-  combo->addItem("Default runner", QString());
+  // A default runner setting is the default itself, so it offers Auto in its place.
+  if (entry.default_display != "auto") combo->addItem("Default runner", QString());
   if (entry.runner_kinds.empty() || entry.default_display == "auto")
     combo->addItem("Auto (best available)", "auto");
   if (runners.ok) {

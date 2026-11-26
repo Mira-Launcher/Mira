@@ -32,6 +32,7 @@
 #include "migrate/EarlySchema.h"
 #include "migrate/GameEnv.h"
 #include "migrate/Legacy.h"
+#include "migrate/Metadata.h"
 #include "migrate/Sources.h"
 #include "runner/AntiCheat.h"
 #include "runner/RefMigration.h"
@@ -124,6 +125,7 @@ int main(int argc, char** argv) {
   if (games.SourcesNew())
     mira::migrate::ImportSourceState(config, games);  // temporary; see migrate/Sources.h
   mira::migrate::MoveGameEnv(config, games);          // temporary; see migrate/GameEnv.h
+  mira::migrate::TurnMetadataOff(config);             // temporary; see migrate/Metadata.h
   config.OnValidText([&games](const std::string& text) { games.KeepSettingsSnapshot(text); });
   if (const std::string level = config.GetString("log.level"); level == "debug") {
     mira::log::SetLevel(mira::log::Level::Debug);
@@ -153,7 +155,7 @@ int main(int argc, char** argv) {
     mira::metadata::FitCachedArt(config, games.Metadata(),
                                  [&games](const std::string& id) { return !games.Find(id); });
     mira::metadata::PruneOrphanArt(config, games.Metadata());
-    if (!config.GetBool("metadata.enabled")) return;
+    if (config.GetBool("metadata.disabled")) return;
     std::vector<mira::model::Game> stale;
     for (mira::model::Game& game : games.All()) {
       if (!games.Metadata().Has(game.id)) continue;

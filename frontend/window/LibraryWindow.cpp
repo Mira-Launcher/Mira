@@ -68,7 +68,6 @@
 #include "../downloads/LinkDownloads.h"
 #include "../downloads/PasswordPopup.h"
 #include "../game/GameCard.h"
-#include "../game/GameDetailsCard.h"
 #include "../game/GameSetupCard.h"
 #include "../game/InstallerCards.h"
 #include "../game/RemoveGamesCard.h"
@@ -186,9 +185,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
        .launch = [this](const std::string& id,
                         const std::string& option) { LaunchGame(id, option); },
        .open_settings = [this](const std::string& id) { OpenGameDialog(id); },
-       .open_details = [this](const std::string& id) { OpenGameDetailPage(id); },
        .offer_setup = [this](const std::string& id) { OpenGameSetup(id); },
-       .refresh_metadata = [this](const std::string& id) { RefreshMetadata(id); },
        .remove = [this](const std::vector<std::string>& ids) { AskRemove(ids); },
        .upsert = [this](const std::vector<mira_gui::GameSummary>& games) { UpsertGames(games); }});
 
@@ -393,7 +390,7 @@ LibraryWindow::LibraryWindow(const mira_gui::FrontendPrefs& prefs, QWidget* pare
   qApp->installEventFilter(new mira_gui::FocusDropper(this));
 
   sidebar_->RefreshSources();
-  Reload(/*force_scan=*/false);
+  RefreshGames();  // mirad's watcher keeps the library current, so opening scans nothing
 }
 
 void LibraryWindow::BuildShortcuts() {
@@ -550,7 +547,6 @@ void LibraryWindow::BuildShortcuts() {
 }
 
 void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
-  scan_on_startup_ = prefs.scan_on_startup.value_or(true);
   controller_->ApplyPrefs(prefs);
   sidebar_->ApplyPrefs(prefs);
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
@@ -905,10 +901,6 @@ void LibraryWindow::OpenAbout() {
   mira_gui::cards::Show(this, new mira_gui::AboutCard());
 }
 
-void LibraryWindow::OpenGameDetailPage(const std::string& id) {
-  mira_gui::GameDetailsCard::Open(this, id, library_, artwork_, [this, id] { ToggleRunning(id); });
-}
-
 mira_gui::Sidebar* LibraryWindow::BuildSidebar(const mira_gui::FrontendPrefs& prefs) {
   using mira_gui::Sidebar;
   auto* sidebar = new Sidebar(library_, artwork_, update_checker_, prefs, this);
@@ -1224,7 +1216,7 @@ void LibraryWindow::InstallErrorNavigator() {
     if (self->daemon_supervisor_ == nullptr) {
       self->daemon_supervisor_ = new mira_gui::DaemonSupervisor(self);
       connect(self->daemon_supervisor_, &mira_gui::DaemonSupervisor::Ready, self,
-              [self] { self->Reload(/*force_scan=*/false); });
+              [self] { self->RefreshGames(); });
       connect(self->daemon_supervisor_, &mira_gui::DaemonSupervisor::Failed, self,
               [self](const QString& error) {
                 mira_gui::notify::FailedWithHint(
@@ -1241,11 +1233,11 @@ void LibraryWindow::InstallErrorNavigator() {
   mira_gui::error_help::SetNavigator(std::move(nav));
 }
 
-void LibraryWindow::ShowSteamGridDbNotice(bool asked_for, const mira_gui::ApiError& error) {
-  // Only when the user actually asked for art: a background fetch after a
-  // scan hitting this would otherwise nag on every launch. Once per session,
-  // however many games report it. mirad's hint and fix say what to do.
-  if (!asked_for || steamgriddb_notice_shown_) return;
+void LibraryWindow::ShowSteamGridDbNotice(const mira_gui::ApiError& error) {
+  // Only while a refresh asked for art: a background fetch after a scan hitting this would
+  // otherwise nag on every launch. Once per session, however many games report it. mirad's hint
+  // and fix say what to do.
+  if (!artwork_fetch_requested_ || steamgriddb_notice_shown_) return;
   steamgriddb_notice_shown_ = true;
   mira_gui::notify::FailedRequest(this, "No cover art without a SteamGridDB API key", error);
 }
@@ -1254,31 +1246,6 @@ void LibraryWindow::FetchMissingArtwork() {
   // Asked for, so a missing SteamGridDB key is worth saying (ShowSteamGridDbNotice).
   artwork_fetch_requested_ = true;
   mira_gui::actions::FetchMissingArtwork(this, [this] { artwork_fetch_requested_ = false; });
-}
-
-void LibraryWindow::RefreshMetadata(const std::string& id, bool announce) {
-  mira_gui::api::RefreshMetadataAsync(
-      this, id, announce, [this, id, announce](mira_gui::MetadataRefreshResult result) {
-        if (!result.ok) {
-          if (announce) {
-            mira_gui::notify::FailedRequest(this, "Could not refresh metadata", result.error);
-          }
-          return;
-        }
-        // 202: fetch runs on the daemon, reports back as an event. Remembered
-        // so ShowSteamGridDbNotice knows this game was asked about.
-        awaiting_metadata_.insert(id);
-      });
-}
-
-void LibraryWindow::Reload(bool force_scan) {
-  RefreshGames();
-  // mirad's own watcher keeps the library current while it runs, so
-  // skipping the startup scan costs nothing except a library that
-  // changed while mirad was stopped.
-  if (force_scan || scan_on_startup_) {
-    mira_gui::api::ScanLibraryAsync(this, [](mira_gui::ScanResult) {});
-  }
 }
 
 void LibraryWindow::RefreshLibrary() {
@@ -1749,8 +1716,6 @@ void LibraryWindow::OpenGameDialog(const std::string& id) {
   SizeGameEditCard(game_card_);
   connect(game_card_, &mira_gui::GameCard::CloseRequested, this, &LibraryWindow::CloseGameEdit);
   connect(game_card_, &mira_gui::GameCard::PlayClicked, this, [this, id] { ToggleRunning(id); });
-  connect(game_card_, &mira_gui::GameCard::DetailsRequested, this,
-          [this, id] { OpenGameDetailPage(id); });
   connect(game_card_, &mira_gui::GameCard::TagFilterRequested, this, [this](const QString& tag) {
     if (!LeaveOverlays()) return;  // a dirty card was kept open
     if (source_page_ != nullptr) CloseSource();
@@ -1968,9 +1933,9 @@ QWidget* LibraryWindow::BuildSettingsPage() {
   settings_panel_->SetHeader(header);
 
   settings_panel_->AddSectionAction(
-      "Library", "Moving games", "Move games into Mira's folders",
-      "Moves each game's files into the library folder and its prefix into the prefix folder. "
-      "Changing those folders does not move anything until you run this.",
+      "Library", "Folders", "Move games into Mira's folders",
+      "Moves each game's files and its prefix into the default Mira folder's Games and prefixes "
+      "folders. Changing the folders above doesn't move anything until you run this.",
       "Move games…", [this] {
         mira_gui::actions::RelocateLibrary(this, [this](const std::string& id) {
           const mira_gui::GameSummary* game = FindGame(id);
@@ -1978,14 +1943,14 @@ QWidget* LibraryWindow::BuildSettingsPage() {
         });
       });
   settings_panel_->AddSectionAction(
-      "Desktop entries", "Menu entries", "Regenerate desktop entries",
-      "Rewrites Mira's desktop entries now, so changes to the desktop entry settings apply "
-      "without waiting for the next library change.",
+      "Application menu", "Menu entries", "Regenerate menu entries",
+      "Rewrites Mira's application menu entries now, so changes to these settings apply without "
+      "waiting for the next library change.",
       "Regenerate", [this] { mira_gui::actions::SyncDesktopEntries(this); });
-  settings_panel_->AddSectionAction(
-      "Desktop entries", "Menu entries", "Remove all desktop entries",
-      "Turns off desktop entries and deletes every one Mira generated.", "Remove…",
-      [this] { mira_gui::actions::RemoveAllDesktopEntries(this); });
+  settings_panel_->AddSectionAction("Application menu", "Menu entries", "Remove all menu entries",
+                                    "Turns off menu entries and deletes every one Mira made.",
+                                    "Remove…",
+                                    [this] { mira_gui::actions::RemoveAllDesktopEntries(this); });
   return page;
 }
 
@@ -2213,15 +2178,9 @@ void LibraryWindow::OpenSource(const mira_gui::SourceInfo& source) {
     CloseSource();
     sidebar_->ForgetSource(id);
   });
-  // Same rule as the grid's double-click: only a ready game has anything to launch.
   connect(source_page_, &mira_gui::SourcePage::GameMenuRequested, this,
-          [this](const QString& id, const QPoint& pos, const QString& update_ref) {
-            mira_gui::SourcePage* page = source_page_;
-            menus_->ShowGameMenu(id.toStdString(), pos, [page, update_ref](QMenu& menu) {
-              if (update_ref.isEmpty() || page == nullptr) return;
-              QObject::connect(menu.addAction("Update"), &QAction::triggered, page,
-                               [page, update_ref] { page->UpdateTitle(update_ref); });
-            });
+          [this](const QString& id, const QPoint& pos) {
+            menus_->ShowGameMenu(id.toStdString(), pos);
           });
   connect(source_page_, &mira_gui::SourcePage::BatchMenuRequested, this,
           [this](const QStringList& ids, const QPoint& pos) {
@@ -2642,14 +2601,12 @@ void LibraryWindow::HandleGameEvent(const std::string& type, const std::string& 
     // transient: no SteamGridDB key means every non-Steam game keeps its
     // placeholder forever.
     if (event.code == "no_steamgriddb_key") {
-      const bool asked_for = awaiting_metadata_.erase(event.id) > 0 || artwork_fetch_requested_;
-      ShowSteamGridDbNotice(asked_for, event.error);
+      ShowSteamGridDbNotice(event.error);
       return;
     }
 
     // Everything else mirad already reports as a `notification` event when
     // the fetch was announced.
-    awaiting_metadata_.erase(event.id);
     return;
   }
 

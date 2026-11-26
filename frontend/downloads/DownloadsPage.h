@@ -17,7 +17,7 @@ class Card;
 
 // Every download and install, as a page of the window like Runners: what needs the user, what's
 // running, what waits, and what finished, each in a card of its own. The speed limit and the rest
-// live in Settings › Downloads, one click away.
+// live in Settings › Downloads and installers, one click away.
 class DownloadsPage : public QWidget {
   Q_OBJECT
 

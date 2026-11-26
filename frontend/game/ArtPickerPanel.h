@@ -33,7 +33,7 @@ namespace mira_gui {
 class Chip;
 
 class FlowLayout;
-class TabRow;
+class TabGrid;
 
 // A grid of one art slot's candidates ("cover", "hero", "logo" or "icon";
 // art_candidates in GET .../metadata), shown as previews mirad caches for it
@@ -185,7 +185,7 @@ class ArtPickerPanel : public QWidget {
                  const QPixmap& image);
 
   QWidget* controls_ = nullptr;
-  TabRow* slots_ = nullptr;  // one tab per slot, each with its count once known
+  TabGrid* slots_ = nullptr;  // one tab per slot, each with its count once known
   FlowLayout* chips_layout_ = nullptr;
   QButtonGroup* chips_ = nullptr;
   QWidget* match_row_ = nullptr;

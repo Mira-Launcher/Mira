@@ -57,7 +57,7 @@ bool WaitUntil(const std::function<bool()>& done,
 // metadata, umu or Steam Web API lookups, every folder Mira uses (library,
 // prefixes, store installs, runners, menu entries, Steam, Lutris, Heroic) next to the
 // settings file, and Windows games run natively instead of through the
-// machine's Wine. A test of metadata turns `metadata.enabled` back on itself.
+// machine's Wine. A test of metadata turns `metadata.disabled` back off itself.
 void Isolate(config::Config& config);
 
 // Puts `dir` first on PATH for its lifetime, so stand-ins there shadow real tools.

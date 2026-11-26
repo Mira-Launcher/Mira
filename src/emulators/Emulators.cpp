@@ -744,6 +744,11 @@ fs::path RomDir(const config::Config& config, const Emulator& emulator) {
 
 std::vector<fs::path> GameRoots(const config::Config& config, const Emulator& emulator) {
   std::vector<fs::path> roots = {RomDir(config, emulator)};
+  // Its folder in the other Mira folders, from while one of them was the default.
+  for (const fs::path& base : config::PathsOf(config, "emulators.roms_root")) {
+    if (const fs::path dir = base / emulator.name; !std::ranges::contains(roots, dir))
+      roots.push_back(dir);
+  }
   for (const fs::path& dir :
        config.GetPathArray(std::format("emulators.{}.game_dirs", emulator.id))) {
     if (!std::ranges::contains(roots, dir)) roots.push_back(dir.lexically_normal());
@@ -1271,7 +1276,7 @@ ExistingGames FindExisting(const config::Config& config, const store::GameStore&
   ExistingGames existing;
   // Other emulators' folders too: their games stay theirs.
   std::vector<fs::path> roots = GameRoots(config, emulator);
-  roots.push_back(config.GetPath("emulators.roms_root"));
+  std::ranges::move(config::PathsOf(config, "emulators.roms_root"), std::back_inserter(roots));
   for (const fs::path& dir : ListedDirs(emulator)) {
     std::error_code ec;
     const bool known = std::ranges::any_of(roots, [&](const fs::path& root) {

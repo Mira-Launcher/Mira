@@ -45,7 +45,7 @@
 #include "../components/FlowLayout.h"
 #include "../components/Scrolling.h"
 #include "../components/SearchField.h"
-#include "../components/TabRow.h"
+#include "../components/TabGrid.h"
 #include "../components/Text.h"
 #include "../theme/Theme.h"
 #include "HeroBackdrop.h"
@@ -269,7 +269,8 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
   bar_layout->setSpacing(8);
   auto* filter_layout = new QVBoxLayout();
   filter_layout->setSpacing(8);
-  slots_ = new TabRow(bar);
+  // Two by two: in the side panel a row of four leaves two under More.
+  slots_ = new TabGrid(2, bar);
   slots_->setObjectName("picker_tabs");
   slots_->AddTab("cover", "Covers");
   if (!title_) {
@@ -278,7 +279,7 @@ ArtPickerPanel::ArtPickerPanel(std::string game_id, QWidget* parent, bool title)
     slots_->AddTab("icon", "Icons");
   }
   // A pick stays, and stays previewed, while another tab is open.
-  connect(slots_, &TabRow::CurrentChanged, this,
+  connect(slots_, &TabGrid::CurrentChanged, this,
           [this](const QString& slot) { Open(slot.toStdString()); });
   rows->addWidget(slots_);
   rows->addLayout(filter_layout);

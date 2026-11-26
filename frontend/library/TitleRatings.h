@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QString>
 #include <array>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -42,6 +43,8 @@ inline constexpr std::array<const char*, 7> kProtonDbFilterTiers = {
 // A title's tier as one of kProtonDbFilterTiers.
 std::string ProtonDbFilterTier(const std::string& tier);
 QString ProtonDbTierName(const std::string& filter_tier);
+// ProtonDB's color for a tier it rates, none for one it hasn't rated yet.
+std::optional<QColor> ProtonDbTierChipColor(const std::string& tier);
 
 // What the not-installed filters let through: each set empty for any, else one of its values.
 struct TitleFilter {

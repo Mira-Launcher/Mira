@@ -57,8 +57,10 @@ Changes a game. Game fields and setting overrides go to separate endpoints:
 
 | Flag | Endpoint |
 |---|---|
-| `--name`, `--exe`, `--args`, `--runner kind:name`, `--data-dir`, `--tag NAME`, `--untag NAME` | `PATCH /v1/games/{id}` |
+| `--name`, `--exe`, `--args`, `--runner kind:name`, `--data-dir`, `--install-path`, `--tag NAME`, `--untag NAME` | `PATCH /v1/games/{id}` |
 | `--override dotted.key=value`, `--unset dotted.key`, `--env KEY=VALUE` | `PATCH /v1/games/{id}/config` |
+
+`--install-path` points the game at the folder its files were moved to, moving nothing (`mira relocate` moves them).
 
 `--env` sets a variable in the game's `launch.env` list, which starts from Settings' list the first time; `--unset launch.env` puts the game back on Settings' list.
 

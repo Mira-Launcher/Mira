@@ -69,8 +69,9 @@ GamePanel::GamePanel(ArtworkStore* artwork, QWidget* parent) : QWidget(parent) {
   buttons_ = new QBoxLayout(QBoxLayout::LeftToRight);
   auto* buttons = buttons_;
   buttons->setSpacing(8);
-  details_ = new QPushButton("Game details…", this);
+  details_ = new QPushButton("Store info…", this);
   art_ = new QPushButton("Change art…", this);
+  details_->setCheckable(true);
   art_->setCheckable(true);
   buttons->addWidget(details_, 1);
   buttons->addWidget(art_, 1);
@@ -151,7 +152,7 @@ GamePanel::GamePanel(ArtworkStore* artwork, QWidget* parent) : QWidget(parent) {
 
 void GamePanel::resizeEvent(QResizeEvent* event) {
   QWidget::resizeEvent(event);
-  // Game details and Change art side by side while both labels fit, else one above the other.
+  // Store info and Change art side by side while both labels fit, else one above the other.
   const int room = width() - 2 * kPad;
   const bool fit =
       details_->sizeHint().width() + art_->sizeHint().width() + buttons_->spacing() <= room;

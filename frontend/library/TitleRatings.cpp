@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "GamePresentation.h"
+
 namespace mira_gui {
 
 ReviewBucket ReviewBucketOf(const std::string& score_description) {
@@ -57,6 +59,11 @@ std::string ProtonDbFilterTier(const std::string& tier) {
   const bool listed = std::ranges::any_of(kProtonDbFilterTiers,
                                           [&tier](const char* known) { return tier == known; });
   return listed ? tier : std::string();
+}
+
+std::optional<QColor> ProtonDbTierChipColor(const std::string& tier) {
+  if (ProtonDbFilterTier(tier).empty()) return std::nullopt;
+  return ProtonDbTierColor(tier);
 }
 
 QString ProtonDbTierName(const std::string& filter_tier) {

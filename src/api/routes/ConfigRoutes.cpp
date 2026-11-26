@@ -132,6 +132,7 @@ void RegisterConfigRoutes(Router& http, Services& s) {
       if (!entry.keywords.empty()) entries.back()["keywords"] = entry.keywords;
       if (entry.group_collapsed) entries.back()["group_collapsed"] = true;
       if (entry.group_resettable) entries.back()["group_resettable"] = true;
+      if (entry.config_only) entries.back()["config_only"] = true;
       if (!entry.source.empty()) entries.back()["source"] = entry.source;
       if (entry.path != config::PathKind::None) {
         entries.back()["path"] = entry.path == config::PathKind::Folder ? "folder" : "file";
