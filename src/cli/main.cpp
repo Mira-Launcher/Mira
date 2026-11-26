@@ -1510,13 +1510,14 @@ int CmdSaves(int argc, char** argv) {
   if (what == "remote") return CmdSavesRemote(argc - 1, argv + 1);
   const bool update = what == "manifest" && argc == 2 && std::string_view(argv[1]) == "--update";
   const bool game = argc == 1 && what != "manifest" && what != "search" && !what.empty();
-  if (!game && !((what == "manifest" && (argc == 1 || update)) ||
-                 ((what == "search" || what == "backup") && argc == 2) ||
-                 ((what == "restore" || what == "delete" || what == "pin" || what == "unpin" ||
-                   what == "cloud") &&
-                  argc == 3) ||
-                 (what == "folder" && argc == 4 &&
-                  (std::string_view(argv[2]) == "add" || std::string_view(argv[2]) == "remove")))) {
+  if (!game &&
+      !((what == "manifest" && (argc == 1 || update)) ||
+        ((what == "search" || what == "backup") && argc == 2) ||
+        ((what == "restore" || what == "delete" || what == "pin" || what == "unpin" ||
+          what == "cloud") &&
+         argc == 3) ||
+        (what == "folder" && (argc == 4 || (argc == 5 && std::string_view(argv[2]) == "add")) &&
+         (std::string_view(argv[2]) == "add" || std::string_view(argv[2]) == "remove")))) {
     std::fprintf(
         stderr,
         "usage: mira saves <id>\n"
@@ -1527,8 +1528,9 @@ int CmdSaves(int argc, char** argv) {
         "  puts a backup's files back, after backing up what's there.\n"
         "usage: mira saves delete <id> <backup>\n"
         "  deletes one backup.\n"
-        "usage: mira saves folder <id> add|remove <path>\n"
-        "  adds a file or folder the game keeps saves in, or takes one out by its pattern.\n"
+        "usage: mira saves folder <id> add <path> [<name pattern>] | remove <pattern>\n"
+        "  adds a file or folder the game keeps saves in (only its files matching the pattern,\n"
+        "  such as *.sav, when given), or takes one out by its pattern.\n"
         "usage: mira saves pin|unpin <id> <backup>\n"
         "  keeps a backup however many newer ones are taken, or lets it go again.\n"
         "usage: mira saves cloud <id> check|sync|download|upload\n"
@@ -1631,8 +1633,10 @@ int CmdSaves(int argc, char** argv) {
     const bool add = std::string_view(argv[2]) == "add";
     const std::string path =
         add ? std::filesystem::absolute(argv[3]).lexically_normal().string() : std::string(argv[3]);
-    auto res = client.Post(std::format("/v1/games/{}/saves/folders", Seg(argv[1])),
-                           json{{add ? "add" : "remove", path}}.dump(), "application/json");
+    json body = {{add ? "add" : "remove", path}};
+    if (argc == 5) body["matching"] = argv[4];
+    auto res = client.Post(std::format("/v1/games/{}/saves/folders", Seg(argv[1])), body.dump(),
+                           "application/json");
     if (!Ok(res)) {
       PrintError(res);
       return 1;
@@ -2418,7 +2422,7 @@ void PrintUsage() {
       "  saves <id>             where a game keeps its saves, and its backups\n"
       "  saves backup <id>      back up a game's saves now\n"
       "  saves restore|delete <id> <backup>   put a backup's files back, or delete it\n"
-      "  saves folder <id> add|remove <path>   a folder the game keeps saves in\n"
+      "  saves folder <id> add|remove <path> [<pattern>]   a folder the game keeps saves in\n"
       "  saves pin|unpin <id> <backup>   keep a backup past saves.keep, or let it go\n"
       "  saves cloud <id> check|sync|download|upload   a GOG or Epic game's cloud saves\n"
       "  saves manifest [--update] | search <name>   the list of where games keep saves\n"

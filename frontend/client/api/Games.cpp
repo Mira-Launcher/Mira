@@ -438,13 +438,15 @@ void PinSaveBackupAsync(QObject* context, const std::string& id, const std::stri
 
 void ChangeSaveFolderAsync(QObject* context, const std::string& id, bool add,
                            const std::string& folder,
-                           std::function<void(GameActionResult)> callback) {
+                           std::function<void(GameActionResult)> callback,
+                           const std::string& matching) {
   async::Run(
       context,
-      [id, add, folder] {
+      [id, add, folder, matching] {
+        json body = {{add ? "add" : "remove", folder}};
+        if (!matching.empty()) body["matching"] = matching;
         const transport::Reply reply =
-            transport::PostJson("/v1/games/" + PercentEncode(id) + "/saves/folders",
-                                json{{add ? "add" : "remove", folder}});
+            transport::PostJson("/v1/games/" + PercentEncode(id) + "/saves/folders", body);
         return GameActionResult{reply.ok, reply.error};
       },
       std::move(callback));

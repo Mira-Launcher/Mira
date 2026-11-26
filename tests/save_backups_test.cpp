@@ -280,6 +280,20 @@ TEST_CASE("A save folder added by path is kept against the game's folder") {
         json::array({"<base>/Game [[]GOTY]/Saves[?]"}));
   folders({{"remove", "<base>/Game [[]GOTY]/Saves[?]"}});
   CHECK_FALSE(server.games().Find("saver")->overrides.contains("saves.extra_paths"));
+  // Only some files in a folder: its name escaped, the pattern for their names kept as a pattern.
+  test::Touch(saver.folder / "Save [1]/slot1.rvdata2", "one");
+  test::Touch(saver.folder / "Save [1]/slot2.rvdata2", "two");
+  test::Touch(saver.folder / "Save [1]/Game.ini", "settings");
+  CHECK(folders({{"add", (saver.folder / "Save [1]").string()}, {"matching", "*.rvdata2"}})
+            .second["extra_paths"] == json::array({"<base>/Save [[]1]/*.rvdata2"}));
+  const json typed = saver.Saves()["locations"];
+  const auto rvdata = std::ranges::find(typed, json("<base>/Save [[]1]/*.rvdata2"),
+                                        [](const json& location) { return location["pattern"]; });
+  REQUIRE(rvdata != typed.end());
+  CHECK((*rvdata)["files"] == 2);
+  folders({{"remove", "<base>/Save [[]1]/*.rvdata2"}});
+  CHECK(folders({{"add", "/a"}, {"matching", "../*.sav"}}).first == 400);
+  CHECK(folders({{"remove", "/a"}, {"matching", "*.sav"}}).first == 400);
   CHECK(folders({{"add", "/a"}, {"remove", "/b"}}).first == 400);
   CHECK(folders(json::object()).first == 400);
 }

@@ -4,6 +4,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -16,6 +17,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <array>
+#include <utility>
 
 #include "../app/Notify.h"
 #include "../client/JsonMapping.h"
@@ -283,7 +285,7 @@ void SavesPage::FillWhere() {
     line->addWidget(text, 1);
     if (location.extra) {
       QPushButton* remove = TextButton(row, "Remove", /*muted=*/true);
-      remove->setToolTip("Stop backing up this folder. Its files stay where they are.");
+      remove->setToolTip("Stop backing up these saves. Their files stay where they are.");
       remove->setEnabled(!Busy());
       connect(remove, &QPushButton::clicked, this,
               [this, pattern = location.pattern] { RemoveFolder(pattern); });
@@ -291,17 +293,40 @@ void SavesPage::FillWhere() {
     }
     where_->AddRow(row);
   }
-  // Where to look for what the list doesn't know: the game's prefix or its folder.
-  const std::string& look_in =
-      !saves_.prefix_folder.empty() ? saves_.prefix_folder : saves_.install_folder;
-  if (!look_in.empty()) {
-    QWidget* row = Row(where_, &line);
-    // The buttons' text on the other rows' edge, less their padding (base.qss).
-    line->setContentsMargins(kLabelInset - 10, 6, 12, 6);
+  const std::string& look_in = LookIn();
+  if (!look_in.empty() && !picked_.isEmpty()) {
+    // Files of one type picked in one folder: just those, or every file of that type there.
+    const QFileInfo first(picked_.front());
+    QWidget* row = TextButtonRow(&line);
+    QPushButton* these = TextButton(
+        row, picked_.size() == 1 ? QString("Add this file") : QString("Add these files"));
+    these->setToolTip(picked_.join('\n'));
+    connect(these, &QPushButton::clicked, this, [this] { AddPicked(/*every_of_type=*/false); });
+    QPushButton* every = TextButton(row, QString("Add every .%1 file").arg(first.suffix()));
+    every->setToolTip(QString("Back up every .%1 file in %2, also ones made later")
+                          .arg(first.suffix(), first.absolutePath()));
+    connect(every, &QPushButton::clicked, this, [this] { AddPicked(/*every_of_type=*/true); });
+    QPushButton* cancel = TextButton(row, "Cancel", /*muted=*/true);
+    connect(cancel, &QPushButton::clicked, this, [this] {
+      picked_.clear();
+      FillWhere();
+    });
+    for (QPushButton* button : {these, every, cancel}) {
+      button->setEnabled(!Busy());
+      line->addWidget(button);
+    }
+    line->addStretch(1);
+    where_->AddRow(row);
+  } else if (!look_in.empty()) {
+    QWidget* row = TextButtonRow(&line);
     QPushButton* add = TextButton(row, "Add a folder…");
     add->setToolTip("Back up another folder of this game's saves too");
     add->setEnabled(!Busy());
     connect(add, &QPushButton::clicked, this, &SavesPage::AddFolder);
+    QPushButton* add_files = TextButton(row, "Add files…");
+    add_files->setToolTip("Back up only some files of this game's saves");
+    add_files->setEnabled(!Busy());
+    connect(add_files, &QPushButton::clicked, this, &SavesPage::AddFiles);
     QPushButton* open =
         TextButton(row, saves_.prefix_folder.empty() ? "Open game folder" : "Open prefix",
                    /*muted=*/true);
@@ -311,6 +336,7 @@ void SavesPage::FillWhere() {
       QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(look_in)));
     });
     line->addWidget(add);
+    line->addWidget(add_files);
     line->addWidget(open);
     line->addStretch(1);
     where_->AddRow(row);
@@ -512,9 +538,20 @@ void SavesPage::Pin(const SaveSnapshot& snapshot) {
       });
 }
 
+// Where to look for what the list doesn't know: the game's prefix or its folder.
+const std::string& SavesPage::LookIn() const {
+  return !saves_.prefix_folder.empty() ? saves_.prefix_folder : saves_.install_folder;
+}
+
+// A row of text buttons, their text on the other rows' edge less their padding (base.qss).
+QWidget* SavesPage::TextButtonRow(QHBoxLayout** line) {
+  QWidget* row = Row(where_, line);
+  (*line)->setContentsMargins(kLabelInset - 10, 6, 12, 6);
+  return row;
+}
+
 void SavesPage::AddFolder() {
-  const std::string& start =
-      !saves_.prefix_folder.empty() ? saves_.prefix_folder : saves_.install_folder;
+  const std::string& start = LookIn();
   const QString folder = QFileDialog::getExistingDirectory(this, "Folder with this game's saves",
                                                            QString::fromStdString(start));
   if (folder.isEmpty()) return;
@@ -524,6 +561,43 @@ void SavesPage::AddFolder() {
                                  notify::FailedRequest(this, "Could not add the folder",
                                                        result.error);
                              });
+}
+
+void SavesPage::AddFiles() {
+  const std::string& start = LookIn();
+  const QStringList files =
+      QFileDialog::getOpenFileNames(this, "This game's save files", QString::fromStdString(start));
+  if (files.isEmpty()) return;
+  const QFileInfo first(files.front());
+  const bool one_type =
+      !first.suffix().isEmpty() && std::ranges::all_of(files, [&](const QString& file) {
+        const QFileInfo info(file);
+        return info.absolutePath() == first.absolutePath() &&
+               info.suffix().compare(first.suffix(), Qt::CaseInsensitive) == 0;
+      });
+  picked_ = files;
+  if (one_type)
+    FillWhere();
+  else
+    AddPicked(/*every_of_type=*/false);
+}
+
+void SavesPage::AddPicked(bool every_of_type) {
+  const QStringList files = std::exchange(picked_, {});
+  const auto failed = [this](GameActionResult result) {
+    if (!result.ok) notify::FailedRequest(this, "Could not add the files", result.error);
+  };
+  if (every_of_type && !files.isEmpty()) {
+    const QFileInfo first(files.front());
+    api::ChangeSaveFolderAsync(this, id_, /*add=*/true,
+                               QDir::cleanPath(first.absolutePath()).toStdString(), failed,
+                               "*." + first.suffix().toStdString());
+  } else {
+    for (const QString& file : files)
+      api::ChangeSaveFolderAsync(this, id_, /*add=*/true, QDir::cleanPath(file).toStdString(),
+                                 failed);
+  }
+  FillWhere();
 }
 
 void SavesPage::RemoveFolder(const std::string& pattern) {

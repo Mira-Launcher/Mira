@@ -182,8 +182,8 @@ Battle.net (`battlenet`), Ubisoft Connect (`ubisoft`), the EA app (`ea`) and Mic
 ### `mira saves restore <id> <backup>` / `delete <id> <backup>`
 `POST /v1/games/{id}/saves/restore` (waiting for the job) / `DELETE /v1/games/{id}/saves/{backup}`. `restore` puts a backup's files back after backing up what's there, and prints the command that undoes it. `delete` deletes one backup.
 
-### `mira saves folder <id> add|remove <path>`
-`POST /v1/games/{id}/saves/folders`. `add` adds a file or folder the game keeps saves in that Mira doesn't know about (a relative path is taken from the current folder); `remove` takes one out by its pattern, as `mira saves <id>` lists it. Prints the game's list after the change.
+### `mira saves folder <id> add <path> [<name pattern>]` / `remove <pattern>`
+`POST /v1/games/{id}/saves/folders`. `add` adds a file or folder the game keeps saves in that Mira doesn't know about (a relative path is taken from the current folder), or with a name pattern (`'*.rvdata2'`) only the folder's files matching it; `remove` takes one out by its pattern, as `mira saves <id>` lists it. Prints the game's list after the change.
 
 ### `mira saves pin <id> <backup>` / `unpin <id> <backup>`
 `PATCH /v1/games/{id}/saves/{backup}`. A pinned backup is kept however many newer ones are taken, and doesn't count toward `saves.keep`; `unpin` lets it go with the rest. The game's backups list marks pinned ones.
