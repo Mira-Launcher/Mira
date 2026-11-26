@@ -204,6 +204,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
     const json& b = *body;
     if (const auto problem = library::GamePatchProblem(b))
       return SendError(res, 400, "invalid_body", *problem);
+    const bool body_drop_prefix = b.value("drop_prefix", false);
 
     // A new install_path points the game at where its files were moved outside Mira; nothing moves.
     if (b.contains("install_path")) {
@@ -250,6 +251,11 @@ void RegisterGameRoutes(Router& http, Services& s) {
     s.SyncDesktopEntry(id);
     SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
     if (provision) s.ProvisionLater(*result);
+    // Turned native, with its prefix asked to go: its saves are backed up from it first.
+    if (before && body_drop_prefix && before->platform == model::Platform::Windows &&
+        result->platform == model::Platform::Native && !before->data_dir.empty() &&
+        before->source != "steam" && !before->runner_ref.starts_with("steam:"))
+      s.DropPrefixLater(*before);
     if (before) s.RefetchIfIdentityChanged(*before, *result);
     // A new folder too: a game sorted by a link needs its link pointed at it.
     if (before &&

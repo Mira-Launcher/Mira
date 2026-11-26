@@ -42,6 +42,12 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
              (IsWebPage(game.exe_path) || game.platform == model::Platform::Web)) {
     // A page picked as what starts it, or something else picked in a page's place.
     game.platform = PlatformOfFile(game.exe_path);
+  } else if (patch.contains("exe_path") && !game.exe_path.empty() &&
+             !game.runner_ref.starts_with("steam:") &&
+             (game.platform == model::Platform::Windows ||
+              game.platform == model::Platform::Native)) {
+    // A Linux program picked for a Windows game makes it native, and an .exe the other way.
+    game.platform = PlatformOfFile(game.exe_path);
   }
   if (patch.contains("working_dir") && patch["working_dir"].is_string()) {
     game.working_dir = patch["working_dir"];
@@ -52,6 +58,10 @@ model::Game ParseGamePatch(const model::Game& base, const json& patch) {
   } else if ((game.platform == model::Platform::Web) != game.runner_ref.starts_with("browser:") &&
              !game.runner_ref.empty()) {
     // Turned into a web game or out of one: a browser runs only web games, and only a browser them.
+    game.runner_ref.clear();
+  } else if (game.platform != base.platform && !game.runner_ref.starts_with("steam:")) {
+    // Wine or Proton runs only Windows games, so a game turned native (or back) takes the
+    // platform's default runner.
     game.runner_ref.clear();
   }
   if (patch.contains("data_dir") && patch["data_dir"].is_string()) {
@@ -118,6 +128,8 @@ std::optional<std::string> GamePatchProblem(const json& patch) {
     return "\"env\" must be an object or null";
   if (patch.contains("reviewed") && !patch["reviewed"].is_boolean())
     return "\"reviewed\" must be true or false";
+  if (patch.contains("drop_prefix") && !patch["drop_prefix"].is_boolean())
+    return "\"drop_prefix\" must be true or false";
   if (patch.contains("launch")) {
     if (auto problem = LaunchProblem(patch["launch"])) return problem;
   }

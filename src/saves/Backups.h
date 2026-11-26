@@ -22,6 +22,8 @@ inline constexpr std::string_view kAfterPlay = "after_play";
 inline constexpr std::string_view kManual = "manual";
 inline constexpr std::string_view kBeforeRestore = "before_restore";
 inline constexpr std::string_view kBeforeCloudDownload = "before_cloud_download";
+// Taken from a game's prefix as it turned native, before the prefix was deleted; pinned.
+inline constexpr std::string_view kBeforeNative = "before_native";
 
 struct SnapshotFile {
   std::string root;  // a logical root (Roots)

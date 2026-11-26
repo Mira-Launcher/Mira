@@ -632,6 +632,8 @@ struct GamePatch {
   // plain list the way env's null-removes-a-key convention gives it one.
   std::optional<std::vector<std::string>> tags;
   std::optional<GameLaunch> launch;  // replaces the whole set
+  // With a Windows game turned native: its saves are backed up from its prefix, then it's deleted.
+  bool drop_prefix = false;
 };
 
 struct PatchGameResult {

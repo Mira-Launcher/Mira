@@ -498,3 +498,83 @@ TEST_CASE("A restore waits for the game to stop, and lands in the game's current
                                          json{{"snapshot", wine}}.dump(), "application/json"));
   CHECK(job["error"]["code"] == "saves_unplaceable");
 }
+
+TEST_CASE(
+    "A game turned native keeps its prefix's saves in a pinned backup, then loses the prefix") {
+  test::LiveServer server(test::TempDir("saves-turned-native"));
+  const fs::path dir = server.config().File().parent_path();
+  SaverGame saver(server);
+  test::Touch(dir / "endpoints" / "save-locations.yaml", R"yaml(---
+"Ported":
+  files:
+    "<winAppData>/Ported/*.sav":
+      tags:
+        - save
+)yaml");
+  REQUIRE(test::AwaitJob(saver.client, saver.client.Post("/v1/saves/manifest/update"))["state"] ==
+          "finished");
+  const fs::path prefixes = server.config().GetPath("prefix_root");
+  const fs::path folder = dir / "games/ported";
+  test::Touch(folder / "Ported.exe", "MZ");
+  test::Touch(folder / "ported.x86_64", "#!/bin/sh\n", /*executable=*/true);
+  const auto add = [&](const std::string& id, const fs::path& prefix) {
+    model::Game game;
+    game.id = id;
+    game.name = id == "ported" ? "Ported" : "Ported Too";
+    game.source = "manual";
+    game.platform = model::Platform::Windows;
+    game.status = model::GameStatus::Ready;
+    game.install_path = folder.string();
+    game.exe_path = "Ported.exe";
+    game.runner_ref = "wine:system";
+    game.data_dir = prefix.string();
+    fs::create_directories(prefix / "drive_c");
+    REQUIRE(server.games().Upsert(game).has_value());
+  };
+  add("ported", prefixes / "ported");
+  test::Touch(library::WindowsUserDir(prefixes / "ported") / "AppData/Roaming/Ported/slot1.sav",
+              "progress");
+  // The `nth` delete job of the game to end, as its job.finished or job.failed event.
+  const auto ended = [&](const std::string& id, std::size_t nth) -> json {
+    std::vector<json> done;
+    REQUIRE(test::WaitUntil([&] {
+      done.clear();
+      for (const model::Event& event : server.events().Since(0))
+        if ((event.type == "job.finished" || event.type == "job.failed") &&
+            event.payload.value("kind", "") == "delete" && event.payload.value("target", "") == id)
+          done.push_back(event.payload);
+      return done.size() >= nth;
+    }));
+    return done[nth - 1];
+  };
+  const auto pick = [&](const std::string& id, const json& patch) {
+    auto res = saver.client.Patch("/v1/games/" + id, patch.dump(), "application/json");
+    REQUIRE(res);
+    REQUIRE(res->status == 200);
+    return json::parse(res->body);
+  };
+
+  // Its Linux program picked: native, on the native runner, and the prefix goes after a backup.
+  const json turned = pick("ported", {{"exe_path", "ported.x86_64"}, {"drop_prefix", true}});
+  CHECK(turned["platform"] == "native");
+  CHECK(turned["runner_ref"] == "");
+  CHECK(ended("ported", 1)["result"]["dropped"] == true);
+  CHECK_FALSE(fs::exists(prefixes / "ported"));
+  CHECK(server.games().Find("ported")->data_dir.empty());
+  const json snapshots = GetJson(saver.client, "/v1/games/ported/saves")["snapshots"];
+  REQUIRE(snapshots.size() == 1);
+  CHECK(snapshots[0]["reason"] == "before_native");
+  CHECK(snapshots[0]["pinned"] == true);
+  CHECK(snapshots[0]["files"] == 1);
+
+  // Without drop_prefix, or sharing its prefix with another game, the prefix stays.
+  add("ported", prefixes / "shared");
+  add("ported-too", prefixes / "shared");
+  pick("ported", {{"exe_path", "ported.x86_64"}, {"drop_prefix", true}});
+  CHECK(ended("ported", 2)["error"]["code"] == "shared_prefix");
+  CHECK(fs::is_directory(prefixes / "shared"));
+  add("ported-too", prefixes / "own");
+  CHECK(pick("ported-too", {{"exe_path", "ported.x86_64"}})["platform"] == "native");
+  CHECK(fs::is_directory(prefixes / "own"));
+  CHECK(server.games().Find("ported-too")->data_dir == (prefixes / "own").string());
+}

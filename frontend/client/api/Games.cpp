@@ -69,6 +69,7 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
   if (patch.install_path) body["install_path"] = *patch.install_path;
   if (patch.tags) body["tags"] = *patch.tags;
   if (patch.launch) body["launch"] = mapping::ToJson(*patch.launch);
+  if (patch.drop_prefix) body["drop_prefix"] = true;
 
   const auto parse_object = [&](const std::string& text, const char* field,
                                 const char* message) -> bool {

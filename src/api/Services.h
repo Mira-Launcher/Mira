@@ -201,6 +201,10 @@ class Services {
   // Sets up a Windows game's prefix as a job: it can take minutes (umu fetches its runtime the
   // first time). The caller stores the game `setting_up` first; game.updated says how it went.
   void ProvisionLater(const model::Game& game);
+  // A game just turned native (`windows` is its record from before): backs up its saves from the
+  // prefix, pinned, then deletes the prefix and clears its data_dir, as a job. A failed backup
+  // keeps the prefix; so does a Steam game's or a shared one.
+  void DropPrefixLater(const model::Game& windows);
   // Claims a game for `purpose` ("launched", "moved", "deleted") until the result is dropped,
   // so it can't launch while its files change, or change while it launches or runs.
   Result<proc::ProcessSupervisor::Reservation> Claim(const std::string& game_id,
