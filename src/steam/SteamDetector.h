@@ -18,7 +18,7 @@ struct SteamApp {
   std::string appid;
   std::string name;
   std::filesystem::path install_dir;      // absolute
-  bool is_native = false;                 // no compatdata dir -> a native Linux Steam game
+  bool is_native = false;                 // no Proton prefix in compatdata: a native Linux game
   std::filesystem::path compat_data_dir;  // <library>/steamapps/compatdata/<appid>; empty if native
   std::filesystem::path proton_path;      // the "proton" script Steam actually used for this app;
                                       // empty if it couldn't be resolved (e.g. never launched yet)

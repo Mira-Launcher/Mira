@@ -56,6 +56,10 @@ TEST_CASE("A Steam scan adds games from every library but Valve's tools, and kee
   // Native: no compatdata.
   WriteManifest(steam, "570", "Dota 2", "dota 2 beta");
   fs::create_directories(steam / "steamapps" / "common" / "dota 2 beta");
+  // Native too: Steam left an empty compatdata folder, with no prefix in it.
+  WriteManifest(steam, "1030300", "Hollow Knight Silksong", "Hollow Knight Silksong");
+  fs::create_directories(steam / "steamapps" / "common" / "Hollow Knight Silksong");
+  fs::create_directories(steam / "steamapps" / "compatdata" / "1030300");
   // Windows, in the second library: Steam made it a prefix.
   WriteManifest(second, "1145360", "Hades", "Hades");
   fs::create_directories(second / "steamapps" / "common" / "Hades");
@@ -73,13 +77,14 @@ TEST_CASE("A Steam scan adds games from every library but Valve's tools, and kee
 
   const json first = AwaitJob(client, client.Post("/v1/steam/scan"));
   REQUIRE(first["state"] == "finished");
-  CHECK(first["result"]["added"] == 2);
-  CHECK(server.games().All().size() == 2);
+  CHECK(first["result"]["added"] == 3);
+  CHECK(server.games().All().size() == 3);
 
   const json dota = GetJson(client, "/v1/games/steam-570");
   CHECK(dota["runner_ref"] == "steam:570");
   CHECK(dota["platform"] == "native");
   CHECK(dota["status"] == "ready");
+  CHECK(GetJson(client, "/v1/games/steam-1030300")["platform"] == "native");
   const json hades = GetJson(client, "/v1/games/steam-1145360");
   CHECK(hades["platform"] == "windows");
   CHECK(hades["install_path"] == (second / "steamapps" / "common" / "Hades").string());
@@ -89,7 +94,7 @@ TEST_CASE("A Steam scan adds games from every library but Valve's tools, and kee
                        "application/json"));
   const json again = AwaitJob(client, client.Post("/v1/steam/scan"));
   CHECK(again["result"]["added"] == 0);
-  CHECK(again["result"]["updated"] == 0);  // Steam says nothing new about either
+  CHECK(again["result"]["updated"] == 0);  // Steam says nothing new about any of them
   const json kept = GetJson(client, "/v1/games/steam-570");
   CHECK(kept["tags"] == json::array({"favorite"}));
   CHECK(kept["args"] == "-novid");

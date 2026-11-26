@@ -462,6 +462,10 @@ TEST_CASE("SteamLaunchAppId reads Steam's reaper wrapper and nothing else") {
   CHECK(parse("/usr/bin/python3", args).empty());
   CHECK(parse("/home/u/.local/share/Steam/ubuntu12_32/reaper", std::string("--\0AppId=5\0", 11))
             .empty());
+  // Installing or uninstalling runs Steam's script evaluator through the wrapper: not play.
+  const std::string script =
+      std::string("SteamLaunch\0AppId=2225070\0Install=1\0--\0/x/proton\0", 49);
+  CHECK(parse("/home/u/.local/share/Steam/steamrt64/reaper", script).empty());
 }
 
 TEST_CASE(

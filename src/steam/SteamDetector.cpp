@@ -226,7 +226,10 @@ std::vector<SteamApp> ListApps(const fs::path& steam_root) {
       if (LooksLikeSteamTooling(app.install_dir)) continue;
 
       app.compat_data_dir = steamapps / "compatdata" / app.appid;
-      app.is_native = !fs::is_directory(app.compat_data_dir, ec);
+      // Steam also leaves an empty compatdata folder for some native games; only a prefix in it
+      // (pfx, or Proton's version file) means the game runs through Proton.
+      app.is_native = !fs::is_directory(app.compat_data_dir / "pfx", ec) &&
+                      !fs::exists(app.compat_data_dir / "version", ec);
       if (!app.is_native) {
         if (auto info = ResolveProtonCompatInfo(app.compat_data_dir)) {
           app.proton_path = info->proton_path;
