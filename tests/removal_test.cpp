@@ -331,3 +331,40 @@ TEST_CASE("The removal plan says what each kind of game loses, and how much") {
   CHECK(deleted["state"] == "finished");
   CHECK_FALSE(fs::exists(prefixes / "cuphead"));
 }
+
+TEST_CASE("Deleting files leaves a Heroic game's, and takes a GOG game's outside Mira's folders") {
+  LiveServer server(TempDir("removal-heroic"));
+  const fs::path home = TempDir("removal-heroic-home");
+  const test::EnvVar home_var("HOME", home.c_str());
+  const fs::path folder = home / "Games" / "Heroic" / "Hades";
+  Touch(folder / "Hades.exe");
+  model::Game game;
+  game.id = "heroic-hades";
+  game.name = "Hades";
+  game.source = "heroic";
+  game.install_path = folder.string();
+  game.exe_path = "Hades.exe";
+  REQUIRE(server.games().Upsert(game).has_value());
+
+  httplib::Client client = server.Client();
+  auto res = client.Post("/v1/games/removal", R"({"ids": ["heroic-hades"]})", "application/json");
+  REQUIRE(res != nullptr);
+  CHECK(json::parse(res->body)[0]["kind"] == "external");
+  AwaitJob(client, client.Delete("/v1/games/heroic-hades?delete_files=true"));
+  CHECK(fs::exists(folder / "Hades.exe"));
+
+  // A GOG game imported from outside gog.install_root is Mira's to delete.
+  const fs::path imported = home / "Old games" / "Gwent";
+  Touch(imported / "Gwent.exe");
+  game.id = "gog-1";
+  game.source = "gog";
+  game.source_ref = "1";
+  game.install_path = imported.string();
+  game.exe_path = "Gwent.exe";
+  REQUIRE(server.games().Upsert(game).has_value());
+  res = client.Post("/v1/games/removal", R"({"ids": ["gog-1"]})", "application/json");
+  REQUIRE(res != nullptr);
+  CHECK(json::parse(res->body)[0]["kind"] == "store");
+  AwaitJob(client, client.Delete("/v1/games/gog-1?delete_files=true"));
+  CHECK_FALSE(fs::exists(imported));
+}

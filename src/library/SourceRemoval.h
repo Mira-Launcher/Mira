@@ -78,7 +78,7 @@ Result<void> DeleteInside(const std::string& target,
 // folder loses just the AppImage, and a program the game only runs (see
 // RunsExternalProgram) is left alone.
 // With `outside`, also the game's own folder outside them, when PlanGameRemoval would call it
-// "outside": only ever when the user asked.
+// "outside" or "store": only ever when the user asked.
 Result<void> DeleteGameFiles(const config::Config& config, const model::Game& game,
                              std::span<const model::Game> library, bool outside = false);
 

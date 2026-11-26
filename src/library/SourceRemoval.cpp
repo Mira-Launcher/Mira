@@ -233,6 +233,12 @@ Result<void> DeleteGameFiles(const config::Config& config, const model::Game& ga
     return UninstallItch(config, game.source_ref);
   const Result<OwnFiles> files = FilesToDelete(config, game, library);
   if (!files) return std::unexpected(files.error());
+  // Only what the plan calls the game's own, or its store's (a GOG game imported from elsewhere):
+  // another app's files (Heroic's, Lutris's) stay.
+  if (outside) {
+    const std::string kind = PlanGameRemoval(config, game, library).kind;
+    outside = kind == "outside" || kind == "store";
+  }
   for (const fs::path& path : files->paths) {
     std::vector<fs::path> roots = files->roots;
     if (outside && !paths::IsWithin(path, roots) && DeletableOutside(config, path))
