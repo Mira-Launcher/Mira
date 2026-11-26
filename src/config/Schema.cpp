@@ -983,6 +983,42 @@ Schema::Schema() {
          .keywords = "cloud sync timeout offline",
          .unit = "s"});
 
+  s.Add({.key = "saves.remote",
+         .label = "Sync saves with your own remote",
+         .type = Type::Bool,
+         .default_value = true,
+         .scope = Scope::PerGame,
+         .doc = "When a remote is connected, sync saves with it when a game starts and closes. "
+                "Games whose store's cloud keeps their saves are left to it.",
+         .keywords = "cloud sync remote nas onedrive dropbox webdav ssh s3"});
+
+  s.Add({.key = "saves.remote_key",
+         .label = "Folder name on the remote",
+         .type = Type::String,
+         .default_value = "",
+         .scope = Scope::GameOnly,
+         .doc = "The game's folder on your remote, when the same game is named differently on "
+                "another computer. Empty lets Mira name it.",
+         .keywords = "cloud sync remote folder"});
+
+  s.Add({.key = "saves.remote_keep",
+         .label = "Versions kept on the remote",
+         .type = Type::Int,
+         .default_value = 5,
+         .doc = "How many versions of each game's saves stay on the remote. Versions in a "
+                "conflict are always kept.",
+         .constraint = Range(1, 100),
+         .keywords = "cloud sync remote history"});
+
+  s.Add({.key = "saves.rclone_bin",
+         .label = "rclone binary",
+         .type = Type::String,
+         .default_value = "",
+         .doc = "Path to the rclone binary. Empty uses the copy Mira downloaded, then the one on "
+                "your PATH.",
+         .path = PathKind::File,
+         .keywords = "cloud sync rclone"});
+
   s.Group("Where saves are", Sections::Fold::Collapsed);
 
   s.Add({.key = "saves.manifest_url",

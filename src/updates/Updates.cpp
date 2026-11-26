@@ -26,6 +26,7 @@
 #include "runner/ProtonRunner.h"
 #include "runner/RunnerUpdates.h"
 #include "runner/Winetricks.h"
+#include "saves/remote/Rclone.h"
 
 #ifndef MIRA_VERSION
 #define MIRA_VERSION "0"
@@ -347,6 +348,10 @@ std::vector<Update> FindUpdates(config::Config& config, bool refresh) {
   }
   checks.push_back(std::async(std::launch::async, [&config] {
     return ToolUpdate(config, "umu", "umu", "umu", runner::UmuRunPath());
+  }));
+  checks.push_back(std::async(std::launch::async, [&config] {
+    return ToolUpdate(config, "rclone", "rclone", "rclone",
+                      saves::remote::DetectRclone(config).path);
   }));
   checks.push_back(std::async(std::launch::async, WinetricksUpdate, std::cref(config), refresh));
   for (const modmanagers::ModManager& manager : modmanagers::All()) {

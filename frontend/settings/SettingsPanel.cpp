@@ -48,6 +48,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "AppearancePreviews.h"
+#include "SaveRemoteCards.h"
 #include "SettingsNav.h"
 
 namespace mira_gui {
@@ -234,6 +235,12 @@ void SettingsPanel::BuildSchemaPages() {
     pages_[category] = page;
     // Which sources the sidebar shows, and in what order, sits with the sources themselves.
     if (category == "Sources" && sources_card_ != nullptr) page->AddWidget(sources_card_);
+    if (category == "Saves") {
+      auto* sync = new SaveRemoteCard(page);
+      page->AddWidget(sync);
+      nav_->RegisterRow(sync, "save sync remote onedrive dropbox nas webdav ssh s3");
+      connect(sync, &SaveRemoteCard::Rearranged, this, [this] { nav_->RearrangePages(); });
+    }
     if (category == "Library") {
       AddMiraFoldersCard(page);
       removed_card_ = page->AddCard("Removed games");

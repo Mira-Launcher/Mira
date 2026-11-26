@@ -15,6 +15,7 @@
 #include "runner/RunnerRegistry.h"
 #include "runner/RunnerUpdates.h"
 #include "runner/Winetricks.h"
+#include "saves/remote/Rclone.h"
 
 namespace mira::api {
 namespace {
@@ -160,7 +161,8 @@ void RegisterRunnerRoutes(Router& http, Services& s) {
         }));
   });
 
-  http.Post(R"(/v1/runners/tools/(umu|winetricks)/setup)", [&s](const Request& req, Response& res) {
+  http.Post(R"(/v1/runners/tools/(umu|winetricks|rclone)/setup)", [&s](const Request& req,
+                                                                       Response& res) {
     const std::string id = req.matches[1];
     s.StartJob(
         req, res, "setup", id, "Setting up " + id,
@@ -178,6 +180,8 @@ void RegisterRunnerRoutes(Router& http, Services& s) {
                        !path) {
               installed = std::unexpected(path.error());
             }
+          } else if (id == "rclone") {
+            installed = saves::remote::InstallRclone(s.config);
           } else {
             installed = runner::InstallWinetricks();
           }

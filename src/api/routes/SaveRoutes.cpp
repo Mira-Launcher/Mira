@@ -8,6 +8,8 @@
 #include "saves/Manifest.h"
 #include "saves/Resolve.h"
 #include "saves/Saves.h"
+#include "saves/remote/Connect.h"
+#include "saves/remote/RemoteSync.h"
 
 namespace mira::api {
 namespace {
@@ -19,13 +21,117 @@ constexpr int kSearchLimit = 50;
 
 }  // namespace
 
+// {values} as strings; nullopt when any isn't one.
+std::optional<std::map<std::string, std::string>> Strings(const json& values) {
+  std::map<std::string, std::string> out;
+  if (!values.is_object()) return std::nullopt;
+  for (const auto& [key, value] : values.items()) {
+    if (!value.is_string()) return std::nullopt;
+    out[key] = value.get<std::string>();
+  }
+  return out;
+}
+
+void RegisterRemoteRoutes(Router& http, Services& s) {
+  http.Get("/v1/saves/remote",
+           [&s](const Request&, Response& res) { SendJson(res, s.RemoteState()); });
+
+  // The body holds secrets: never logged or answered.
+  http.Put(R"(/v1/saves/remote/(primary|mirror))", [&s](const Request& req, Response& res) {
+    constexpr std::string_view kShape =
+        R"({"provider": "...", "name": "...", "folder"?: "...", "ca_file"?: "...", "host_keys"?: "...", "values"?: {"<setting>": "..."}})";
+    const auto body = BodyObject(req, res, kShape);
+    if (!body) return;
+    const auto values = Strings(body->value("values", json::object()));
+    if (!values) return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    const std::string slot = req.matches[1];
+    saves::remote::RemoteRequest request{.slot = slot,
+                                         .provider = core::JsonString(*body, "provider"),
+                                         .name = core::JsonString(*body, "name"),
+                                         .folder = core::JsonString(*body, "folder"),
+                                         .ca_file = core::JsonString(*body, "ca_file"),
+                                         .values = *values};
+    if (slot == "mirror" && !saves::remote::FindRemote(s.config, "primary"))
+      return SendError(res, 409, "remote_none", "Connect a remote before a mirror.");
+    const std::string host_keys = core::JsonString(*body, "host_keys");
+    s.StartJob(req, res, "saves", "remote-" + slot, "Connecting to " + request.name,
+               [&s, slot, request = std::move(request),
+                host_keys](JobRegistry::Progress& progress) -> Result<json> {
+                 auto connected = saves::remote::Connect(
+                     s.config, request, host_keys, [&](const std::string& url) {
+                       s.events.Publish("saves.remote_sign_in", {{"slot", slot}, {"url", url}});
+                       progress.Report(0, 1, "Sign in at " + url);
+                     });
+                 if (!connected) return std::unexpected(connected.error());
+                 s.events.Publish("saves.remote_changed", json::object());
+                 return s.RemoteState();
+               });
+  });
+
+  http.Delete(R"(/v1/saves/remote/(primary|mirror))", [&s](const Request& req, Response& res) {
+    const std::string slot = req.matches[1];
+    // The mirror only copies what the primary has.
+    std::vector<std::string> slots = {slot};
+    if (slot == "primary") slots.insert(slots.begin(), "mirror");
+    for (const std::string& each : slots) {
+      if (auto gone = saves::remote::Disconnect(s.config, each); !gone)
+        return SendError(res, 500, gone.error());
+      if (auto gone = s.games.ForgetRemoteSyncs(each); !gone)
+        return SendError(res, 500, gone.error());
+    }
+    s.events.Publish("saves.remote_changed", json::object());
+    SendJson(res, s.RemoteState());
+  });
+
+  http.Post(R"(/v1/saves/remote/(primary|mirror)/test)", [&s](const Request& req, Response& res) {
+    const auto info = saves::remote::FindRemote(s.config, req.matches[1].str());
+    if (!info) return SendError(res, 409, "remote_none", "No remote is connected.");
+    s.StartJob(
+        req, res, "saves", "remote-" + info->slot, "Checking " + info->name,
+        [&s, info = *info](JobRegistry::Progress&) -> Result<json> {
+          if (auto ok = saves::remote::Probe(s.config, saves::remote::RemoteFor(s.config, info));
+              !ok)
+            return std::unexpected(ok.error());
+          return json::object();
+        });
+  });
+
+  http.Post("/v1/saves/remote/sync", [&s](const Request& req, Response& res) {
+    if (!saves::remote::FindRemote(s.config, "primary"))
+      return SendError(res, 409, "remote_none", "No remote is connected.");
+    s.StartJob(
+        req, res, "saves", "remote", "Syncing saves",
+        [&s](JobRegistry::Progress& progress) { return s.SyncAllRemote(progress); }, &s.saves);
+  });
+
+  http.Post("/v1/saves/remote/host-keys", [&s](const Request& req, Response& res) {
+    const auto body = BodyObject(req, res, R"({"host": "...", "port"?: "22"})");
+    if (!body) return;
+    const std::string host = core::JsonString(*body, "host");
+    const std::string port = core::JsonString(*body, "port");
+    s.StartJob(
+        req, res, "saves", "remote-host", "Checking " + host,
+        [host, port](JobRegistry::Progress&) { return saves::remote::ScanHost(host, port); });
+  });
+
+  http.Post("/v1/saves/remote/ssh-key", [&s](const Request&, Response& res) {
+    auto key = saves::remote::SshKey(s.config);
+    if (!key) return SendError(res, 409, key.error());
+    SendJson(res, *key);
+  });
+}
+
 void RegisterSaveRoutes(Router& http, Services& s) {
+  RegisterRemoteRoutes(http, s);
   // Answers from the index and the disk, never the network; fetches the list when it's due.
   http.Get(R"(/v1/games/([^/]+)/saves)", [&s](const Request& req, Response& res) {
     const auto game = s.games.Find(req.matches[1]);
     if (!game) return SendError(res, 404, "game_not_found", "no such game");
     s.CheckSaveManifest();
     json answer = saves::Overview(s.config, s.games.Metadata(), s.games, *game);
+    if (s.RemoteEligible(*game))
+      answer["cloud"] = saves::remote::RemoteOverview(
+          s.config, s.games, *game, saves::SurveyFor(s.config, s.games.Metadata(), *game));
     answer["doing"] = s.SavesDoing(game->id);
     SendJson(res, answer);
   });
@@ -70,7 +176,7 @@ void RegisterSaveRoutes(Router& http, Services& s) {
     const auto action = kActions.find(body->value("action", std::string()));
     if (action == kActions.end())
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
-    if (saves::CloudFor(*game) == nullptr)
+    if (saves::CloudFor(*game) == nullptr && !s.RemoteEligible(*game))
       return SendError(res, 409, "cloud_unsupported",
                        std::format("{} has no cloud saves Mira syncs.", game->name));
     s.StartJob(

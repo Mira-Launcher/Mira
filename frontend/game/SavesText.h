@@ -37,4 +37,11 @@ QString StatusNote(const SavesResult& saves);
 // cloud", ...
 QString CloudState(const CloudSaves& cloud);
 
+// Where the other saves are: "in GOG's cloud", or "on topless" for the user's own remote.
+QString Place(const CloudSaves& cloud);
+// The choice of the other side's saves: "Use the cloud's", "Use laptop's".
+QString UseTheirs(const CloudSaves& cloud);
+// What keeping this computer's does to the other side.
+QString KeepEffect(const CloudSaves& cloud);
+
 }  // namespace mira_gui::saves_text

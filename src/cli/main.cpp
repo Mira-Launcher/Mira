@@ -190,7 +190,8 @@ std::string Seg(std::string_view text) {
 // A long request's reply is 202 {job}: waits for that job (docs/api.md, Jobs)
 // and fills `result` with what it returned. Prints why and returns false if
 // the request or the job failed.
-bool AwaitJob(httplib::Client& client, const httplib::Result& res, json& result) {
+bool AwaitJob(httplib::Client& client, const httplib::Result& res, json& result,
+              const std::function<void(const json& state)>& on_state = {}) {
   if (!Ok(res)) {
     PrintError(res);
     return false;
@@ -209,6 +210,7 @@ bool AwaitJob(httplib::Client& client, const httplib::Result& res, json& result)
       return false;
     }
     const json state = json::parse(job->body, nullptr, false);
+    if (on_state) on_state(state);
     const std::string done = state.value("state", std::string());
     if (done == "finished") {
       result = state.value("result", json::object());
@@ -465,12 +467,13 @@ int CmdRunners(int argc, char** argv) {
   if (sub == "updates") return CmdRunnersUpdates();
   if (sub == "update") return CmdRunnersUpdate(argc - 1, argv + 1);
   if (sub == "tools") return CmdRunnersTools(argc - 1, argv + 1);
-  std::fprintf(stderr,
-               "usage: mira runners [sources [KIND] | catalog [--kind K] [--source ID] |\n"
-               "                     download --kind K --tag TAG [--source ID] | updates | update "
-               "<kind:name> |\n"
-               "                     tools [install umu|winetricks] | schema <kind> | remove "
-               "<kind:name>]\n");
+  std::fprintf(
+      stderr,
+      "usage: mira runners [sources [KIND] | catalog [--kind K] [--source ID] |\n"
+      "                     download --kind K --tag TAG [--source ID] | updates | update "
+      "<kind:name> |\n"
+      "                     tools [install umu|winetricks|rclone] | schema <kind> | remove "
+      "<kind:name>]\n");
   return 2;
 }
 
@@ -1357,8 +1360,154 @@ int CmdAchievements(int argc, char** argv) {
   return 0;
 }
 
+int CmdSavesRemote(int argc, char** argv) {
+  const std::string_view what = argc > 0 ? argv[0] : "status";
+  std::string slot = "primary";
+  std::map<std::string, std::string> options;
+  bool ok = true;
+  for (int i = 1; i < argc && ok; ++i) {
+    const std::string_view arg = argv[i];
+    if (arg == "--mirror")
+      slot = "mirror";
+    else if (arg == "--password" || arg == "--secret-access-key")
+      ok = false;  // arguments are public: these are asked for
+    else if (what == "connect" && arg.starts_with("--") && i + 1 < argc)
+      options[std::string(arg.substr(2))] = argv[++i];
+    else if (what == "connect" && !options.contains("provider"))
+      options["provider"] = arg;
+    else
+      ok = false;
+  }
+  if (!ok || (what == "connect" && !options.contains("provider")) ||
+      (what != "connect" && what != "status" && what != "test" && what != "sync" &&
+       what != "disconnect")) {
+    std::fprintf(stderr,
+                 "usage: mira saves remote [status]\n"
+                 "usage: mira saves remote connect <provider> [--mirror] [--name <name>]\n"
+                 "           [--folder <folder>] [--ca-file <file>] [--<setting> <value>]...\n"
+                 "  onedrive, dropbox: signs in with a browser.\n"
+                 "  webdav: --url, --user. sftp: --host, --port, --user, --key-file.\n"
+                 "  s3: --endpoint, --region, --access-key-id; --folder starts with the bucket.\n"
+                 "  The password or secret is asked for. sftp with no --key-file and an empty\n"
+                 "  password uses a key Mira makes.\n"
+                 "usage: mira saves remote test|disconnect [--mirror]\n"
+                 "usage: mira saves remote sync\n"
+                 "  syncs every game now.\n");
+    return 2;
+  }
+  auto client = Connect();
+  json result;
+  if (what == "connect") {
+    const auto take = [&](const char* name) {
+      auto found = options.extract(name);
+      return found ? found.mapped() : std::string();
+    };
+    const std::string provider = take("provider");
+    const std::string name = take("name");
+    json body = {{"provider", provider},
+                 {"name", name.empty() ? provider : name},
+                 {"folder", take("folder")}};
+    if (const std::string file = take("ca-file"); !file.empty())
+      body["ca_file"] = std::filesystem::absolute(file).lexically_normal().string();
+    json values = json::object();
+    for (const auto& [option, given] : options) {
+      std::string key = option;
+      std::string value = given;
+      std::ranges::replace(key, '-', '_');
+      if (key == "key_file") value = std::filesystem::absolute(value).lexically_normal().string();
+      values[key] = value;
+    }
+    if (provider == "webdav") values["password"] = ReadSecret("password: ");
+    if (provider == "s3") values["secret_access_key"] = ReadSecret("secret access key: ");
+    if (provider == "sftp") {
+      if (!values.contains("key_file")) {
+        if (const std::string password = ReadSecret("password (empty to use a key): ");
+            !password.empty()) {
+          values["password"] = password;
+        } else {
+          auto key = client.Post("/v1/saves/remote/ssh-key");
+          if (!Ok(key)) {
+            PrintError(key);
+            return 1;
+          }
+          const json made = json::parse(key->body, nullptr, false);
+          values["key_file"] = made.value("path", std::string());
+          std::printf("add this key to the server's authorized_keys:\n%s\n",
+                      made.value("public", std::string()).c_str());
+        }
+      }
+      json host = {{"host", values.value("host", std::string())},
+                   {"port", values.value("port", std::string())}};
+      json keys;
+      if (!AwaitJob(client,
+                    client.Post("/v1/saves/remote/host-keys", host.dump(), "application/json"),
+                    keys))
+        return 1;
+      std::printf("the server's fingerprints:\n");
+      for (const json& print : keys.value("fingerprints", json::array()))
+        std::printf("  %s\n", print.get<std::string>().c_str());
+      std::fputs("trust this server? [y/N] ", stdout);
+      std::fflush(stdout);
+      std::string answer;
+      std::getline(std::cin, answer);
+      if (answer != "y" && answer != "Y") return 1;
+      body["host_keys"] = keys.value("host_keys", std::string());
+    }
+    body["values"] = std::move(values);
+    auto started = client.Put("/v1/saves/remote/" + slot, body.dump(), "application/json");
+    std::string shown;
+    if (!AwaitJob(client, started, result, [&](const json& state) {
+          const std::string message =
+              state.value("progress", json::object()).value("message", std::string());
+          if (message.empty() || message == shown) return;
+          shown = message;
+          std::printf("%s\n", message.c_str());
+          std::fflush(stdout);
+        }))
+      return 1;
+    std::puts("connected");
+    return 0;
+  }
+  if (what == "test") {
+    if (!AwaitJob(client, client.Post(std::format("/v1/saves/remote/{}/test", slot)), result))
+      return 1;
+    std::puts("reached and written to");
+    return 0;
+  }
+  if (what == "sync") {
+    if (!AwaitJob(client, client.Post("/v1/saves/remote/sync"), result)) return 1;
+    std::printf("%d synced\n", result.value("synced", 0));
+    const json failed = result.value("failed", json::array());
+    for (const json& game : failed)
+      std::printf("  %s: %s\n", game.value("id", std::string()).c_str(),
+                  game.value("code", std::string()).c_str());
+    return failed.empty() ? 0 : 1;
+  }
+  auto res = what == "disconnect" ? client.Delete("/v1/saves/remote/" + slot)
+                                  : client.Get("/v1/saves/remote");
+  if (!Ok(res)) {
+    PrintError(res);
+    return 1;
+  }
+  const json state = json::parse(res->body, nullptr, false);
+  for (const char* each : {"primary", "mirror"}) {
+    const json info = state.value(each, json());
+    if (info.is_object())
+      std::printf("%s: %s (%s)\n", each, info.value("name", std::string()).c_str(),
+                  info.value("provider", std::string()).c_str());
+    else
+      std::printf("%s: not connected\n", each);
+  }
+  for (const json& game : state.value("pending", json::array()))
+    std::printf("  %s: %s %s\n", game.value("id", std::string()).c_str(),
+                game.value("state", std::string()).c_str(),
+                game.value("error", std::string()).c_str());
+  return 0;
+}
+
 int CmdSaves(int argc, char** argv) {
   const std::string_view what = argc > 0 ? argv[0] : "";
+  if (what == "remote") return CmdSavesRemote(argc - 1, argv + 1);
   const bool update = what == "manifest" && argc == 2 && std::string_view(argv[1]) == "--update";
   const bool game = argc == 1 && what != "manifest" && what != "search" && !what.empty();
   if (!game && !((what == "manifest" && (argc == 1 || update)) ||
@@ -1383,8 +1532,11 @@ int CmdSaves(int argc, char** argv) {
         "usage: mira saves pin|unpin <id> <backup>\n"
         "  keeps a backup however many newer ones are taken, or lets it go again.\n"
         "usage: mira saves cloud <id> check|sync|download|upload\n"
-        "  a GOG or Epic game's cloud saves: compare, sync the way they're behind, or\n"
+        "  a game's cloud saves, its store's or your remote's: compare, sync the way they're "
+        "behind, or\n"
         "  replace one side with the other (backing up first).\n"
+        "usage: mira saves remote ...\n"
+        "  your own remote for saves; mira saves remote help lists its commands.\n"
         "usage: mira saves manifest [--update]\n"
         "  where the list of save locations comes from and when it was checked;\n"
         "  --update checks it now.\n"
@@ -2221,7 +2373,7 @@ void PrintUsage() {
       "  runners catalog [--kind K] [--source ID] list downloadable versions\n"
       "  runners download --kind K --tag TAG [--source ID]   download and install one\n"
       "  runners updates | update <kind:name>     list or install newer builds\n"
-      "  runners tools [install umu|winetricks]   check or install runner helpers\n"
+      "  runners tools [install umu|winetricks|rclone]   check or install runner helpers\n"
       "  launch <id> [--saves keep_local|use_cloud|skip]\n"
       "                         launch a game (or hand it to Steam for a\n"
       "                         Steam game, depending on steam.launch_mode);\n"

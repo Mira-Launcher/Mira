@@ -829,7 +829,8 @@ void BigScreenWindow::ShowSaves(const Item& item) {
     std::vector<std::pair<QString, std::function<void()>>> entries;
     if (saves.cloud && saves.cloud->state == "conflict") {
       entries.push_back({"Keep this computer's", [this, item] { SyncSaves(item, "upload"); }});
-      entries.push_back({"Use the cloud's", [this, item] { SyncSaves(item, "download"); }});
+      entries.push_back(
+          {saves_text::UseTheirs(*saves.cloud), [this, item] { SyncSaves(item, "download"); }});
     } else if (saves.cloud && saves.cloud->state != "unsupported" && saves.cloud->state != "off") {
       entries.push_back({"Sync now", [this, item] { SyncSaves(item, "sync"); }});
     }
@@ -840,7 +841,7 @@ void BigScreenWindow::ShowSaves(const Item& item) {
           {QString("Backups (%1)").arg(saves.snapshots.size()),
            [this, item, snapshots = saves.snapshots] { ShowBackups(item, snapshots); }});
     }
-    if (entries.empty() || saves.status == "off") {
+    if (entries.empty() || (saves.status == "off" && !saves.cloud)) {
       return Toast(saves.status == "steam_cloud"     ? "Steam keeps " + item.name + "'s saves"
                    : saves.status == "registry_only" ? item.name + " saves in the Windows registry"
                    : saves.status == "off" ? "Backing up " + item.name + "'s saves is off"
@@ -956,7 +957,7 @@ void BigScreenWindow::ChooseSaves(const std::string& id,
   const GameSummary* game = services_.library->Find(id);
   const QString name = game != nullptr ? QString::fromStdString(game->name) : QString("the game");
   ShowMenu(QString("Which saves should %1 start with?").arg(name),
-           {{"Use the cloud's", [chosen] { chosen("use_cloud"); }},
+           {{"Use the other saves", [chosen] { chosen("use_cloud"); }},
             {"Keep this computer's", [chosen] { chosen("keep_local"); }},
             {"Play without syncing", [chosen] { chosen("skip"); }}});
   menu_->on_dismiss = [chosen] { chosen({}); };

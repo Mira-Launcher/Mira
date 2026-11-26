@@ -33,6 +33,7 @@
 #include "proc/ProcessSupervisor.h"
 #include "runner/Downloader.h"
 #include "saves/Cloud.h"
+#include "saves/remote/RemoteSync.h"
 #include "store/GameStore.h"
 
 namespace httplib {
@@ -265,6 +266,16 @@ class Services {
   Result<nlohmann::json> RestoreSaves(const std::string& id, const std::string& snapshot);
   // SyncCloud holding the game's claim.
   Result<nlohmann::json> SyncCloudSaves(const std::string& id, saves::CloudAction action);
+  // Whether `game`'s saves may be synced with the user's own remote: one is connected and no
+  // store's cloud keeps them.
+  bool RemoteEligible(const model::Game& game) const;
+  // RemoteEligible, and not turned off for the game.
+  bool RemoteSyncs(const model::Game& game) const;
+  // The connected remotes and the uploads they're owed, without hidden games while those are
+  // locked: {primary, mirror, rclone, pending}.
+  nlohmann::json RemoteState();
+  // Syncs every game RemoteSyncs, reporting each: {synced, failed}. A game in use is left out.
+  Result<nlohmann::json> SyncAllRemote(JobRegistry::Progress& progress);
   // What's being done with a game's saves now: "backing_up", "restoring", "syncing", or "".
   std::string SavesDoing(const std::string& id);
   // Blocks until nothing is being done with the game's saves, so a launch right after a session
@@ -315,12 +326,23 @@ class Services {
     Services& services_;
     std::string id_;
   };
-  // saves::RunCloud, with a before_cloud_download snapshot before anything local is overwritten,
-  // once `before_download` agreed. Publishes game.saves_changed when done.
+  // saves::RunCloud, or RunRemote when RemoteEligible, with a before_cloud_download snapshot before
+  // anything local is overwritten, once `before_download` agreed. Publishes game.saves_changed when
+  // done.
   Result<nlohmann::json> SyncCloud(const model::Game& game, saves::CloudAction action,
                                    const std::function<Result<void>()>& before_download);
   // Whether `game`'s saves are synced with its store's cloud, as far as is known without asking.
   bool CloudSyncs(const model::Game& game) const;
+  // Copies the game's saves to the mirror, on the saves lane.
+  void MirrorSaves(const std::string& id);
+  // This computer as the remote's revisions name it, made up on first use.
+  saves::remote::Device RemoteDevice();
+  // Notes that `game`'s saves are owed to the remote, so a failed upload is tried again.
+  void OweRemote(const model::Game& game);
+  // One notification per outage that saves wait to be uploaded.
+  void NoteRemote(const model::Game& game, const Result<nlohmann::json>& synced);
+  // Every 15 minutes, and first at startup: tries the uploads still owed, on the saves lane.
+  void RetryRemoteSyncs();
   // SavesBeforeLaunch's sync, stopped after saves.cloud_timeout_s unless it's downloading.
   Result<void> SyncBeforeLaunch(const model::Game& game, std::string_view choice);
   // The after-play backup, keeping its failure for the game's saves.
@@ -358,6 +380,9 @@ class Services {
   // Each game's SavesWork and what it does, newest last.
   std::map<std::string, std::vector<std::pair<const SavesWork*, std::string>>> saves_doing_;
   std::condition_variable saves_done_;  // a game's saves_doing_ emptied
+  std::mutex remote_mutex_;
+  bool remote_failing_ = false;  // an outage the user was told of
+  std::chrono::steady_clock::time_point remote_retry_at_{};
   std::mutex exit_files_mutex_;
   std::map<std::string, std::vector<std::filesystem::path>> exit_files_;
 

@@ -21,10 +21,12 @@ std::string PercentEncode(const std::string& text);
 // Starts a job (docs/api.md#jobs) and hands its outcome to `callback` as an
 // R, with `fill` reading the job's result. `start` sends the request with
 // `query` ("?job=<token>") appended, so the waiter is listening before the 202.
+// Returns the job, for jobs::Cancel.
 template <typename R>
-void RunJob(QObject* context, const std::string& kind,
-            std::function<transport::Reply(const std::string&)> start,
-            std::function<void(R&, const nlohmann::json&)> fill, std::function<void(R)> callback) {
+std::string RunJob(QObject* context, const std::string& kind,
+                   std::function<transport::Reply(const std::string&)> start,
+                   std::function<void(R&, const nlohmann::json&)> fill,
+                   std::function<void(R)> callback) {
   const std::string token = jobs::NewToken(kind);
   jobs::Await(context, token, [fill, callback](jobs::Outcome outcome) {
     R result;
@@ -53,6 +55,7 @@ void RunJob(QObject* context, const std::string& kind,
         result.error = reply.error;
         callback(std::move(result));
       }));
+  return token;
 }
 
 // The JSON shape an endpoint promises for its body.

@@ -79,6 +79,16 @@ std::string Shorten(std::string_view path, const Roots& roots);
 // dosdevices is never entered. Files outside every logical root are left out.
 Location Find(std::string_view location, const Roots& roots);
 
+// The part of `path` that `location` spells out, before any wildcard, by pattern alone, so also
+// for files not there yet. Empty when `location` doesn't cover `path` or
+// isn't read (too broad, unknown placeholder).
+std::filesystem::path CoveredBy(std::string_view location, const Roots& roots,
+                                const std::filesystem::path& path);
+
+// `path` with each missing component replaced by an existing one of the same name in another
+// case, as Windows would find it.
+std::filesystem::path Folded(const std::filesystem::path& path);
+
 // The file locations of a list entry ({files, registry, cloud}) that apply to this game, by their
 // `when`: its system (Wine and Proton count as windows), and its store when that's known.
 std::vector<std::string> FileLocations(const nlohmann::json& entry, const Roots& roots);

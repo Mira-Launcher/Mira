@@ -437,7 +437,9 @@ struct SaveSnapshot {
 
 // GET /v1/games/{id}/saves' `cloud`, for a GOG or Epic game.
 struct CloudSaves {
-  std::string store;  // its name, "GOG" or "Epic"
+  std::string store;    // its name, "GOG", "Epic", or the user's own remote's
+  bool remote = false;  // the user's own remote, not a store's cloud
+  std::string device;   // whose saves the remote's newest are
   // "synced", "local_newer", "cloud_newer", "conflict", "unknown", "unsupported" or "off"
   std::string state;
   std::string reason;  // why it's unsupported

@@ -42,6 +42,23 @@ struct CloudSync {
   std::int64_t checked_at = 0;    // unix seconds
 };
 
+// One game's state with the user's own remote, per slot.
+struct RemoteSync {
+  std::string slot;  // "primary" or "mirror"
+  std::string remote_id{};
+  std::string key{};
+  std::string base{};             // the revision last in sync with; "" for none
+  std::string base_files = "[]";  // that revision's files as JSON
+  std::string local_marker{};
+  std::string state{};
+  bool pending = false;         // an upload is waiting
+  std::int64_t checked_at = 0;  // unix seconds
+  std::int64_t synced_at = 0;   // unix seconds
+  std::string error{};          // the last failure's code
+  std::string other_device{};   // whose the remote's newest saves were at the last check
+  std::int64_t other_at = 0;    // and when they were taken, unix seconds
+};
+
 // A source's place in Mira: whether it's set up, on, in the sidebar and where.
 struct SourceState {
   std::string id;
@@ -198,6 +215,13 @@ class GameStore {
   // `forget`.
   std::vector<CloudSync> CloudSyncs(const std::string& id) const;
   Result<void> SetCloudSync(const std::string& id, const CloudSync& state);
+
+  // Remote save state per slot, kept on a plain removal and dropped with `forget`.
+  std::optional<RemoteSync> RemoteSyncOf(const std::string& id, const std::string& slot) const;
+  Result<void> SetRemoteSync(const std::string& id, const RemoteSync& state);
+  // Game ids with an upload pending in `slot`, ordered by id.
+  std::vector<std::string> PendingRemoteSyncs(const std::string& slot) const;
+  Result<void> ForgetRemoteSyncs(const std::string& slot);
 
   // A value stored outside settings.toml, which clients can read; "" when unset. Setting "" removes
   // it.

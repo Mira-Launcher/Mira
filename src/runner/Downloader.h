@@ -120,11 +120,12 @@ void ForgetCachedReleases();
 // layout is never assumed, just searched); anything else is installed as
 // the bare file directly, renamed to `binary_name`. Verifies
 // asset.checksum_url first if the release has one, same as
-// DownloadAndInstall.
+// DownloadAndInstall. With require_digest, an asset with no digest fails with checksum_missing.
 Result<std::filesystem::path> InstallToolBinary(const config::Config& config,
                                                 const std::string& tool_name,
                                                 const ReleaseAsset& asset,
-                                                const std::string& binary_name);
+                                                const std::string& binary_name,
+                                                bool require_digest = false);
 
 struct InstalledTool {
   std::string tag;

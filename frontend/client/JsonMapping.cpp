@@ -176,6 +176,8 @@ SavesResult ToSaves(const json& entry) {
   if (entry.contains("cloud") && entry["cloud"].is_object()) {
     const json& cloud = entry["cloud"];
     saves.cloud = CloudSaves{.store = Str(cloud, "store"),
+                             .remote = Str(cloud, "kind") == "remote",
+                             .device = Str(cloud, "device"),
                              .state = Str(cloud, "state"),
                              .reason = Str(cloud, "reason"),
                              .synced_at = int64(cloud, "synced_at"),

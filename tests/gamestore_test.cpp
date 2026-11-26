@@ -361,3 +361,54 @@ TEST_CASE("concurrent updates all save, and the file ends with every change") {
     CHECK(found->tags == std::vector<std::string>{"favorite"});
   }
 }
+
+TEST_CASE("remote save state round-trips per slot and is kept on a removal unless forgotten") {
+  store::GameStore store(TempFile("games-remote-sync.db"));
+  store.Load();
+  REQUIRE(store.Upsert(MakeGame("celeste", "Celeste")).has_value());
+  REQUIRE(store.Upsert(MakeGame("hades", "Hades")).has_value());
+  const store::RemoteSync primary{.slot = "primary",
+                                  .remote_id = "remote-1",
+                                  .key = "key",
+                                  .base = "rev-1",
+                                  .base_files = R"([{"path":"save.dat"}])",
+                                  .local_marker = "marker",
+                                  .state = "synced",
+                                  .pending = true,
+                                  .checked_at = 10,
+                                  .synced_at = 20,
+                                  .error = "failed"};
+  REQUIRE(store.SetRemoteSync("celeste", primary).has_value());
+  REQUIRE(store.SetRemoteSync("celeste", {.slot = "mirror", .state = "synced"}).has_value());
+  REQUIRE(store.SetRemoteSync("hades", primary).has_value());
+
+  const auto read = store.RemoteSyncOf("celeste", "primary");
+  REQUIRE(read.has_value());
+  CHECK(read->remote_id == "remote-1");
+  CHECK(read->key == "key");
+  CHECK(read->base == "rev-1");
+  CHECK(read->base_files == R"([{"path":"save.dat"}])");
+  CHECK(read->local_marker == "marker");
+  CHECK(read->state == "synced");
+  CHECK(read->pending);
+  CHECK(read->checked_at == 10);
+  CHECK(read->synced_at == 20);
+  CHECK(read->error == "failed");
+  CHECK_FALSE(store.RemoteSyncOf("celeste", "unknown").has_value());
+
+  CHECK(store.PendingRemoteSyncs("primary") == std::vector<std::string>{"celeste", "hades"});
+  store::RemoteSync done = primary;
+  done.pending = false;
+  REQUIRE(store.SetRemoteSync("celeste", done).has_value());
+  CHECK(store.PendingRemoteSyncs("primary") == std::vector<std::string>{"hades"});
+  CHECK_FALSE(store.RemoteSyncOf("celeste", "primary")->pending);
+
+  REQUIRE(store.Remove("celeste").has_value());
+  CHECK(store.RemoteSyncOf("celeste", "primary").has_value());
+  REQUIRE(store.Remove("hades", /*forget=*/true).has_value());
+  CHECK_FALSE(store.RemoteSyncOf("hades", "primary").has_value());
+
+  REQUIRE(store.ForgetRemoteSyncs("primary").has_value());
+  CHECK_FALSE(store.RemoteSyncOf("celeste", "primary").has_value());
+  CHECK(store.RemoteSyncOf("celeste", "mirror").has_value());
+}

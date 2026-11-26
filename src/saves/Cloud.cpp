@@ -42,30 +42,6 @@ std::string Literal(std::string_view glob) {
   return out;
 }
 
-// `path` with each missing component replaced by an existing one of the same name in another
-// case, as Windows would find it.
-fs::path Folded(const fs::path& path) {
-  fs::path out = "/";
-  bool found = true;
-  for (const fs::path& part : path.relative_path()) {
-    std::error_code ec;
-    if (found && !fs::exists(out / part, ec)) {
-      found = false;
-      const std::string lower = strings::ToLower(part.string());
-      for (const fs::path& entry : paths::ListDir(out)) {
-        if (strings::ToLower(entry.filename().string()) == lower) {
-          out = entry;
-          found = true;
-          break;
-        }
-      }
-      if (found) continue;
-    }
-    out /= part;
-  }
-  return out;
-}
-
 std::string_view Pressing(std::span<const std::string> states) {
   for (const std::string_view state : {kConflict, kCloudNewer, kLocalNewer, kUnknown})
     if (std::ranges::contains(states, state)) return state;

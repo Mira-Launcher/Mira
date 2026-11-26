@@ -29,8 +29,7 @@ QString Reason(const std::string& reason) {
 
 QString Summary(const SavesResult& saves, const QDateTime& now) {
   if (saves.cloud && saves.cloud->state == "conflict")
-    return QString("Saves changed here and in %1's cloud")
-        .arg(QString::fromStdString(saves.cloud->store));
+    return "Saves changed here and " + Place(*saves.cloud);
   if (saves.last_error) return "The last backup failed";
   if (saves.status == "kept" && !saves.snapshots.empty()) {
     const SaveSnapshot& last = saves.snapshots.front();
@@ -85,17 +84,35 @@ QString StatusNote(const SavesResult& saves) {
   return {};
 }
 
+QString Place(const CloudSaves& cloud) {
+  const QString store = QString::fromStdString(cloud.store);
+  return cloud.remote ? "on " + store : QString("in %1's cloud").arg(store);
+}
+
+QString UseTheirs(const CloudSaves& cloud) {
+  if (!cloud.remote) return "Use the cloud's";
+  return QString("Use %1's")
+      .arg(QString::fromStdString(cloud.device.empty() ? cloud.store : cloud.device));
+}
+
+QString KeepEffect(const CloudSaves& cloud) {
+  return cloud.remote ? "Becomes the newest on " + QString::fromStdString(cloud.store)
+                      : QString("Uploads them over the cloud's");
+}
+
 QString CloudState(const CloudSaves& cloud) {
   const QString store = QString::fromStdString(cloud.store);
-  if (cloud.state == "synced") return QString("In sync with %1's cloud").arg(store);
-  if (cloud.state == "local_newer") return QString("Newer here than in %1's cloud").arg(store);
-  if (cloud.state == "cloud_newer") return QString("Newer in %1's cloud").arg(store);
-  if (cloud.state == "conflict") return QString("Changed here and in %1's cloud").arg(store);
+  const QString with = cloud.remote ? store : store + "'s cloud";
+  if (cloud.state == "synced") return "In sync with " + with;
+  if (cloud.state == "local_newer")
+    return cloud.remote ? "Waiting to upload to " + store : "Newer here than in " + with;
+  if (cloud.state == "cloud_newer") return "Newer " + Place(cloud);
+  if (cloud.state == "conflict") return "Changed here and " + Place(cloud);
   if (cloud.state == "unsupported")
     return cloud.reason.empty() ? QString("%1 keeps no cloud saves for this game").arg(store)
                                 : QString::fromStdString(cloud.reason);
-  if (cloud.state == "off") return QString("Not synced with %1's cloud").arg(store);
-  return QString("Not checked with %1's cloud yet").arg(store);
+  if (cloud.state == "off") return "Not synced with " + with;
+  return QString("Not checked with %1 yet").arg(with);
 }
 
 }  // namespace mira_gui::saves_text
