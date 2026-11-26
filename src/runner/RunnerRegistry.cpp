@@ -181,11 +181,7 @@ Result<RunnerRegistry::Resolved> RunnerRegistry::Resolve(const std::string& runn
   if (colon == std::string::npos) {
     return Err("invalid_runner_ref", std::format("\"{}\" is not \"kind:name\"", runner_ref));
   }
-  std::string kind = runner_ref.substr(0, colon);
-  // umu used to be modelled as its own runner kind. It's the mechanism
-  // Proton runs through, not a runner. Accept the old spelling so a
-  // games.toml written before the rename keeps resolving.
-  if (kind == "proton_umu") kind = "proton";
+  const std::string kind = runner_ref.substr(0, colon);
   const std::string name = runner_ref.substr(colon + 1);
 
   const auto runner_it = runners_.find(kind);
@@ -234,8 +230,7 @@ Result<RunnerRegistry::Resolved> RunnerRegistry::Resolve(const std::string& runn
 std::optional<model::RunnerBuild> RunnerRegistry::StandIn(const std::string& runner_ref) const {
   const auto colon = runner_ref.find(':');
   if (colon == std::string::npos) return std::nullopt;
-  std::string kind = runner_ref.substr(0, colon);
-  if (kind == "proton_umu") kind = "proton";
+  const std::string kind = runner_ref.substr(0, colon);
   const std::string name = runner_ref.substr(colon + 1);
   const IRunner* runner = FindByKind(kind);
   if (runner == nullptr || !runner->UsesBuilds() || name == "auto" || name == "latest")

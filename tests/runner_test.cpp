@@ -227,29 +227,7 @@ TEST_CASE("ResolveRef expands \"auto\" to a real installed windows runner, not n
   CHECK(runner::PickAuto(config, {vanilla, tkg}).name == tkg.name);
 }
 
-TEST_CASE("the old proton_umu: runner_ref spelling still resolves after the rename") {
-  // umu was briefly modelled as its own runner kind; it's the mechanism
-  // Proton runs through, not a runner. A games.toml written before the
-  // rename must keep working.
-  test::TestEnv env("legacy-ref");
-  config::Config& config = env.config;
-  const fs::path runners = test::TempDir("legacy-ref-runners");
-  fs::create_directories(runners / "Fake-Proton-1");
-  std::ofstream(runners / "Fake-Proton-1" / "proton").close();
-  std::ofstream(runners / "Fake-Proton-1" / "toolmanifest.vdf").close();
-  std::ofstream(runners / "Fake-Proton-1" / "version") << "1700000000 Fake-Proton-1";
-  REQUIRE(config.Set("runner_search_paths", nlohmann::json::array({runners.string()})));
-  REQUIRE(config.Set("runner_scan_common_dirs", false));
-  runner::RunnerRegistry registry(config);
-
-  auto legacy = registry.Resolve("proton_umu:latest");
-  REQUIRE(legacy.has_value());
-  CHECK(legacy->runner->kind() == "proton");
-}
-
-TEST_CASE(
-    "A Proton build Steam updates in place keeps its reference across updates, and old ones move "
-    "to it") {
+TEST_CASE("A Proton build Steam updates in place keeps its reference across updates") {
   test::TestEnv env("in-place-runner");
   REQUIRE(env.config.Set("runner_scan_common_dirs", false));
   // Steam's own Proton lives in steamapps/common and is replaced by each update.
@@ -266,27 +244,10 @@ TEST_CASE(
   install(common / "Proton 11.0", "proton-11.0-3-x86_64");
   install(tools / "GE-Proton10-4", "GE-Proton10-4");
 
-  model::Game pinned;
-  pinned.id = "pinned";
-  pinned.runner_ref = "proton:proton-11.0-2c-x86_64";  // the release before Steam's update
-  pinned.overrides = {{"launchers.runner", "proton:proton-11.0-2c-x86_64"}};
-  model::Game ge;
-  ge.id = "ge";
-  ge.runner_ref = "proton:GE-Proton10-4";
-  REQUIRE(env.games.Upsert(pinned).has_value());
-  REQUIRE(env.games.Upsert(ge).has_value());
-  REQUIRE(env.config.Set("gog.runner", "proton:proton-11.0-2c-x86_64"));
-
-  CHECK(runner::MigrateInPlaceRefs(env.config, env.games) == 2);
-  CHECK(env.games.Find("pinned")->runner_ref == "proton:Proton 11.0");
-  CHECK(env.games.Find("pinned")->overrides["launchers.runner"] == "proton:Proton 11.0");
-  CHECK(env.games.Find("ge")->runner_ref == "proton:GE-Proton10-4");
-  CHECK(env.config.GetString("gog.runner") == "proton:Proton 11.0");
-
-  // The next update changes the release inside, not the reference.
+  // An update changes the release inside, not the reference.
   install(common / "Proton 11.0", "proton-11.0-4-x86_64");
   const runner::RunnerRegistry registry(env.config);
-  const auto resolved = registry.Resolve(env.games.Find("pinned")->runner_ref);
+  const auto resolved = registry.Resolve("proton:Proton 11.0");
   REQUIRE(resolved.has_value());
   CHECK(resolved->build->release == "proton-11.0-4-x86_64");
 }
@@ -353,36 +314,6 @@ TEST_CASE("Steam's Proton is found in a library on another drive") {
 
   const runner::RunnerRegistry registry(env.config);
   CHECK(registry.Resolve("proton:Proton 9.0").has_value());
-}
-
-TEST_CASE("An old Proton reference moves only to the build of its own version") {
-  test::TestEnv env("in-place-runner-versions");
-  REQUIRE(env.config.Set("runner_scan_common_dirs", false));
-  const fs::path common = env.dir / "steamapps" / "common";
-  REQUIRE(env.config.Set("runner_search_paths", nlohmann::json::array({common.string()})));
-  const auto install = [](const fs::path& dir, const std::string& release) {
-    fs::create_directories(dir);
-    std::ofstream(dir / "proton").close();
-    std::ofstream(dir / "toolmanifest.vdf").close();
-    std::ofstream(dir / "version") << "1700000000 " << release;
-  };
-  const auto game = [&](const std::string& id, const std::string& ref) {
-    model::Game g;
-    g.id = id;
-    g.runner_ref = ref;
-    REQUIRE(env.games.Upsert(g).has_value());
-  };
-  install(common / "Proton 8.0", "proton-8.0-5-x86_64");
-  install(common / "Proton 9.0", "proton-9.0-3-x86_64");
-  install(common / "proton-cachyos-slr", "cachyos-11.0-20261005-slr");
-  game("nine", "proton:proton-9.0-2-x86_64");
-  game("seven", "proton:proton-7.0-6-x86_64");          // Proton 7.0 is gone
-  game("cachyos", "proton:cachyos-10.0-20260703-slr");  // the package moved to 11
-
-  runner::MigrateInPlaceRefs(env.config, env.games);
-  CHECK(env.games.Find("nine")->runner_ref == "proton:Proton 9.0");
-  CHECK(env.games.Find("seven")->runner_ref == "proton:proton-7.0-6-x86_64");
-  CHECK(env.games.Find("cachyos")->runner_ref == "proton:proton-cachyos-slr");
 }
 
 TEST_CASE(

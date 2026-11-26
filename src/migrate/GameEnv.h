@@ -11,7 +11,7 @@ namespace mira::migrate {
 // same variables), keeping in `env` only what its store or launcher needs (Amazon's SDK paths,
 // Battle.net's DLL overrides). Does nothing once every game is moved.
 //
-// Temporary: delete a release or two after one list shipped.
+// Temporary: shipped in 0.18.0 (2026-11-06); delete after 2026-12-06 (docs/backend.md).
 void MoveGameEnv(const config::Config& config, store::GameStore& games);
 
 }  // namespace mira::migrate

@@ -29,11 +29,8 @@
 #include "library/Scanner.h"
 #include "library/Watcher.h"
 #include "metadata/MetadataFetcher.h"
-#include "migrate/EarlySchema.h"
 #include "migrate/GameEnv.h"
-#include "migrate/Legacy.h"
 #include "migrate/Metadata.h"
-#include "migrate/Sources.h"
 #include "runner/AntiCheat.h"
 #include "runner/RefMigration.h"
 #include "runner/UmuDatabase.h"
@@ -110,22 +107,16 @@ int main(int argc, char** argv) {
 
   // The library opens first: it keeps the last settings.toml that loaded, for Config to fall back
   // to.
-  const auto cache_db = mira::paths::DatabaseFile().parent_path() / "cache.db";
-  // Temporary; see migrate/EarlySchema.h.
-  mira::migrate::RepairEarlySchemas(mira::paths::DatabaseFile(), cache_db);
   mira::store::GameStore games(mira::paths::DatabaseFile());
   games.Load();
-  mira::migrate::ImportLegacyFiles(games);  // temporary; see migrate/Legacy.h
 
   mira::config::Config config(mira::paths::SettingsFile());
   config.UseUiStateStore([&games] { return games.UiState(); },
                          [&games](const nlohmann::json& state) { (void)games.KeepUiState(state); });
   config.Load(games.SettingsSnapshot());
   if (const std::string text = config.LoadedText(); !text.empty()) games.KeepSettingsSnapshot(text);
-  if (games.SourcesNew())
-    mira::migrate::ImportSourceState(config, games);  // temporary; see migrate/Sources.h
-  mira::migrate::MoveGameEnv(config, games);          // temporary; see migrate/GameEnv.h
-  mira::migrate::TurnMetadataOff(config);             // temporary; see migrate/Metadata.h
+  mira::migrate::MoveGameEnv(config, games);  // temporary; see migrate/GameEnv.h
+  mira::migrate::TurnMetadataOff(config);     // temporary; see migrate/Metadata.h
   config.OnValidText([&games](const std::string& text) { games.KeepSettingsSnapshot(text); });
   if (const std::string level = config.GetString("log.level"); level == "debug") {
     mira::log::SetLevel(mira::log::Level::Debug);
@@ -147,7 +138,6 @@ int main(int argc, char** argv) {
   // before Serve() so a re-adopted still-running game is already tracked by
   // the time the very first client request arrives.
   services.ReconcileSessions();
-  mira::runner::MigrateInPlaceRefs(config, games);
   mira::runner::RepointRemovedBuilds(config, games);
   // Left over if the last GUI never got to clear them (killed, or crashed).
   mira::metadata::ClearCandidateThumbs(config);

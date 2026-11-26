@@ -113,8 +113,6 @@ class GameStore {
   // and backs it up to <file>.bak; a damaged file is set aside and the backup
   // used.
   void Load();
-  // The sources table was made by this Load, so the old settings still say what's set up.
-  bool SourcesNew() const { return sources_new_; }
 
   // The text of the last settings.toml that loaded cleanly, empty if none:
   // what Config::Load falls back to when the file is broken.
@@ -272,7 +270,6 @@ class GameStore {
   // The database couldn't be opened: refuse changes rather than lose the library. Guarded by
   // mutex_.
   bool read_only_ = false;
-  bool sources_new_ = false;  // set by Load
   std::atomic<std::uint64_t> revision_{0};
 };
 

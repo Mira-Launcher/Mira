@@ -587,9 +587,7 @@ Result<void> MetadataStore::WriteLocked(const std::string& id, const json& info)
   if (auto done = upsert->Bind(1, id).Bind(2, text).Bind(3, model::NowSeconds()).Run(); !done)
     return done;
 
-  auto clear = db_.Prepare("DELETE FROM artwork WHERE id = ?");
-  if (!clear) return std::unexpected(clear.error());
-  if (auto done = clear->Bind(1, id).Run(); !done) return done;
+  if (auto done = db_.Run("DELETE FROM artwork WHERE id = ?", id); !done) return done;
   json versions = json::object();
   for (const auto& [slot, key] : kSlots) {
     if (!info.contains(key)) continue;
