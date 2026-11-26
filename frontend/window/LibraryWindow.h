@@ -134,7 +134,8 @@ class LibraryWindow : public QMainWindow,
   // Ctrl+R and the refresh button: the scan, and every store's owned list asked again.
   void RefreshLibrary();
   // `done` runs once the new list is in the library.
-  void RefreshGames(std::function<void()> done = {});
+  // `done` runs once a list lands (a failed one leaves it for the next); `failed` when one fails.
+  void RefreshGames(std::function<void()> done = {}, std::function<void()> failed = {});
   void ConnectionChanged(bool connected);
 
   // After any change to library_: the footer, an open card, Runners.
@@ -368,13 +369,15 @@ class LibraryWindow : public QMainWindow,
   mira_gui::DaemonSupervisor* daemon_supervisor_ = nullptr;  // "Start mirad" from a failure
   bool mirad_reachable_ = true;  // as of the last request or event connection, for the footer
   int refreshing_ = 0;           // parts of a refresh still running
+  int refresh_round_ = 0;        // which refresh those parts are of
   bool stream_dropped_ = false;  // the event stream lost mirad; its return resyncs the list
   // Bumped per RefreshGames, so an older reply landing late can't undo a newer one.
   int games_request_ = 0;
   std::vector<std::function<void()>>
-      refresh_done_;                    // RefreshGames callbacks waiting on the latest reply
-  QTimer* save_prefs_timer_ = nullptr;  // see ScheduleSavePrefs
-  bool zoom_sync_queued_ = false;       // see SyncZoomSoon
+      refresh_done_;  // RefreshGames callbacks waiting on the latest reply
+  std::vector<std::function<void()>> refresh_failed_;  // and those to run if it fails
+  QTimer* save_prefs_timer_ = nullptr;                 // see ScheduleSavePrefs
+  bool zoom_sync_queued_ = false;                      // see SyncZoomSoon
   mira_gui::DownloadsPanel* downloads_panel_ = nullptr;
   mira_gui::UpdateChecker* update_checker_ = nullptr;
   mira_gui::RunnerUpdater* runner_updater_ = nullptr;

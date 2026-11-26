@@ -1281,16 +1281,25 @@ void LibraryWindow::RefreshLibrary() {
   // refresh that finds nothing still shows it ran.
   if (refreshing_ > 0) return;
   refreshing_ = 4;
+  const int round = ++refresh_round_;
   top_bar_->SetRefreshing(true);
   const QPointer<LibraryWindow> self(this);
-  const auto part_done = [self] {
-    if (self && --self->refreshing_ == 0) self->top_bar_->SetRefreshing(false);
+  const auto part_done = [self, round] {
+    if (self && self->refresh_round_ == round && --self->refreshing_ == 0)
+      self->top_bar_->SetRefreshing(false);
+  };
+  // A list that fails (mirad gone) ends the refresh: its parts would wait on the next one.
+  const auto give_up = [self, round] {
+    if (!self || self->refresh_round_ != round) return;
+    ++self->refresh_round_;
+    self->refreshing_ = 0;
+    self->top_bar_->SetRefreshing(false);
   };
   QTimer::singleShot(800, this, part_done);
-  mira_gui::api::ScanLibraryAsync(this, [this, part_done](mira_gui::ScanResult) {
-    RefreshGames(part_done);  // with what the scan found
+  mira_gui::api::ScanLibraryAsync(this, [this, part_done, give_up](mira_gui::ScanResult) {
+    RefreshGames(part_done, give_up);  // with what the scan found
   });
-  RefreshGames(part_done);
+  RefreshGames(part_done, give_up);
   update_checker_->Check(/*refresh=*/true, part_done);
   owned_titles_->Refresh(/*fresh=*/true);  // the stores asked now, not their lists from earlier
   // mirad fetches art on its own only for a game it just found, so one that failed stays bare
@@ -1298,17 +1307,20 @@ void LibraryWindow::RefreshLibrary() {
   FetchMissingArtwork();
 }
 
-void LibraryWindow::RefreshGames(std::function<void()> done) {
+void LibraryWindow::RefreshGames(std::function<void()> done, std::function<void()> failed) {
   // Hidden games included (unless they're locked), so Ctrl+H is a client-side filter switch, not a
   // round trip.
   const int request = ++games_request_;
   // Kept until a refresh lands, so a newer one superseding this still runs it.
   if (done) refresh_done_.push_back(std::move(done));
+  if (failed) refresh_failed_.push_back(std::move(failed));
   mira_gui::api::ListAllGamesAsync(this, [this, request](mira_gui::GamesResult result) {
     if (request != games_request_) return;  // a newer refresh is on its way
     mirad_reachable_ = result.ok;
+    const auto failing = std::exchange(refresh_failed_, {});
     if (!result.ok) {
       mira_gui::notify::FailedRequest(this, "Could not list games", result.error);
+      for (const auto& failed : failing) failed();
       return;  // what's shown stays, and the callbacks wait for the next refresh
     }
     const auto waiting = std::exchange(refresh_done_, {});

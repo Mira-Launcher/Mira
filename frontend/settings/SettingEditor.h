@@ -3,6 +3,7 @@
 #include <QString>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "../client/Types.h"
 
@@ -57,6 +58,11 @@ struct SettingEditor {
 // Wires two lists of paired choices (paired_key): turning one of `first`'s on or off does the same
 // to its pair in `second`, and `second`'s choices that need their pair are greyed out without it.
 void PairChoices(const SettingEditor& first, const SettingEditor& second);
+
+// Saves the editors that changed, calling `answered` once for each request sent; returns how many
+// that is. Each takes what it sent as its `original` once saved.
+int SaveChanged(QObject* context, std::vector<SettingEditor>& editors,
+                const std::function<void(const PatchConfigResult&)>& answered);
 
 // Refills a runner combo for `entry`: Auto, then every installed build, or only the builds of its
 // runner_kinds; keeps the combo's value.

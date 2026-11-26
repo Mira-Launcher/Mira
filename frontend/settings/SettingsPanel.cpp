@@ -15,6 +15,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QStorageInfo>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -247,10 +248,18 @@ void SettingsPanel::BuildSchemaPages() {
       removed_card_ = page->AddCard("Removed games");
       removed_card_->hide();  // until it's known to have any
       ShowRemovedGames();
-      connect(EventHub::Instance(), &EventHub::Received, this,
-              [this](const std::string& type, const std::string&, bool live) {
-                if (live && (type == "game.removed" || type == "games.removed")) ShowRemovedGames();
-              });
+      // Once for a burst (a scan adding many games): the list measures every kept prefix.
+      auto* reload = new QTimer(removed_card_);
+      reload->setSingleShot(true);
+      reload->setInterval(500);
+      connect(reload, &QTimer::timeout, this, &SettingsPanel::ShowRemovedGames);
+      connect(
+          EventHub::Instance(), &EventHub::Received, reload,
+          [reload](const std::string& type, const std::string&, bool live) {
+            // A removed game that comes back (a scan, Add back) leaves the list too.
+            if (live && (type == "game.removed" || type == "games.removed" || type == "game.added"))
+              reload->start();
+          });
     }
     Card* card = nullptr;
     ExpanderRow* expander = nullptr;
@@ -631,40 +640,16 @@ void SettingsPanel::Save() {
     emit PrefsSaved(prefs);
   }
 
-  // A setting put back to its default is removed from settings.toml rather than
-  // written out, so it follows the default if that changes later.
-  std::vector<ConfigEdit> edits;
-  std::vector<size_t> edited;
-  std::vector<size_t> resets;
-  for (size_t i = 0; i < fields_.size(); ++i) {
-    const SettingEditor& field = fields_[i];
-    if (field.row == nullptr || !field.Changed()) continue;
-    if (field.IsDefault()) {
-      resets.push_back(i);
-    } else {
-      edits.push_back({field.entry.key, field.entry.type, field.Text()});
-      edited.push_back(i);
-    }
-  }
-  // The display settings count too, so Save doesn't report done (and close) before they fail.
-  saves_pending_ =
-      (edits.empty() ? 0 : 1) + static_cast<int>(resets.size()) + (prefs_to_save ? 1 : 0);
-  if (saves_pending_ == 0) {
-    FinishSave(true, {});
-    return;
-  }
-  // What was sent: an edit typed while the save runs is still unsaved after it.
-  std::vector<std::string> sent(fields_.size());
-  for (size_t i = 0; i < fields_.size(); ++i) sent[i] = fields_[i].Text();
-  const auto done = [this, sent](bool ok, const std::string& error,
-                                 const std::vector<size_t>& indices) {
-    if (ok) {
-      for (const size_t i : indices) fields_[i].original = sent[i];
-    } else if (save_error_.isEmpty()) {
-      save_error_ = error.empty() ? QString("Could not save") : QString::fromStdString(error);
+  const auto done = [this](const PatchConfigResult& result, const QString& what = {}) {
+    if (!result.ok && save_error_.isEmpty()) {
+      const std::string& error = result.error;
+      save_error_ =
+          error.empty() ? QString("Could not save") : what + QString::fromStdString(error);
     }
     if (--saves_pending_ == 0) FinishSave(save_error_.isEmpty(), save_error_);
   };
+  // The display settings count too, so Save doesn't report done (and close) before they fail.
+  saves_pending_ = prefs_to_save ? 1 : 0;
   if (prefs_to_save) {
     const bool start_on_login = prefs_to_save->start_on_login.value_or(false);
     api::SaveFrontendPrefsAsync(
@@ -672,20 +657,11 @@ void SettingsPanel::Save() {
           if (result.ok && !bigscreen::ApplyStartOnLogin(start_on_login)) {
             notify::Warn(this, "Could not change Mira's login entry in ~/.config/autostart.");
           }
-          done(result.ok,
-               result.error.message.empty() ? "" : "Display settings: " + result.error.message, {});
+          done(result, "Display settings: ");
         });
   }
-  if (!edits.empty()) {
-    api::PatchConfigAsync(this, edits, [done, edited](PatchConfigResult result) {
-      done(result.ok, result.error, edited);
-    });
-  }
-  for (const size_t i : resets) {
-    api::ResetConfigKeyAsync(this, fields_[i].entry.key, [done, i](PatchConfigResult result) {
-      done(result.ok, result.error, {i});
-    });
-  }
+  saves_pending_ += SaveChanged(this, fields_, done);
+  if (saves_pending_ == 0) FinishSave(true, {});
 }
 
 void SettingsPanel::FinishSave(bool ok, const QString& error) {

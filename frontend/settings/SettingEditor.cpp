@@ -356,6 +356,41 @@ void PairChoices(const SettingEditor& first, const SettingEditor& second) {
   to->SetPairValues(from->Values());
 }
 
+int SaveChanged(QObject* context, std::vector<SettingEditor>& editors,
+                const std::function<void(const PatchConfigResult&)>& answered) {
+  // Saved as sent: an edit typed while the save runs is still unsaved after it.
+  using Sent = std::pair<size_t, std::string>;
+  const auto done = [&editors, answered](const std::vector<Sent>& sent) {
+    return [&editors, answered, sent](const PatchConfigResult& result) {
+      if (result.ok) {
+        for (const auto& [i, text] : sent) editors[i].original = text;
+      }
+      answered(result);
+    };
+  };
+  int requests = 0;
+  std::vector<ConfigEdit> edits;
+  std::vector<Sent> edited;
+  for (size_t i = 0; i < editors.size(); ++i) {
+    const SettingEditor& editor = editors[i];
+    if (editor.row == nullptr || !editor.Changed()) continue;
+    // One put back to its default is removed from settings.toml rather than written out, so it
+    // follows the default if that changes later.
+    if (editor.IsDefault()) {
+      api::ResetConfigKeyAsync(context, editor.entry.key, done({{i, editor.Text()}}));
+      ++requests;
+    } else {
+      edits.push_back({editor.entry.key, editor.entry.type, editor.Text()});
+      edited.emplace_back(i, editor.Text());
+    }
+  }
+  if (!edits.empty()) {
+    api::PatchConfigAsync(context, edits, done(edited));
+    ++requests;
+  }
+  return requests;
+}
+
 void SelectOrKeep(QComboBox* combo, const QString& value) {
   int index = combo->findData(value);
   if (index < 0) {
