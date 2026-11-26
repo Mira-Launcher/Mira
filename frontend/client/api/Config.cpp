@@ -176,6 +176,7 @@ void FillFrontendPrefs(FrontendPrefsResult& result, const json& body) {
   read_bool("big_screen_large_text", result.prefs.big_screen_large_text);
   read_bool("big_screen_at_start", result.prefs.big_screen_at_start);
   read_bool("start_on_login", result.prefs.start_on_login);
+  read_bool("close_to_tray", result.prefs.close_to_tray);
   read_bool("big_screen_sounds", result.prefs.big_screen_sounds);
   read_string("big_screen_rumble", result.prefs.big_screen_rumble);
   read_bool("big_screen_swap_confirm", result.prefs.big_screen_swap_confirm);
@@ -267,6 +268,7 @@ PatchConfigResult SaveFrontendPrefsSync(const FrontendPrefs& prefs) {
   if (prefs.big_screen_large_text) table["big_screen_large_text"] = *prefs.big_screen_large_text;
   if (prefs.big_screen_at_start) table["big_screen_at_start"] = *prefs.big_screen_at_start;
   if (prefs.start_on_login) table["start_on_login"] = *prefs.start_on_login;
+  if (prefs.close_to_tray) table["close_to_tray"] = *prefs.close_to_tray;
   if (prefs.big_screen_sounds) table["big_screen_sounds"] = *prefs.big_screen_sounds;
   if (prefs.big_screen_rumble) table["big_screen_rumble"] = *prefs.big_screen_rumble;
   if (prefs.big_screen_swap_confirm)

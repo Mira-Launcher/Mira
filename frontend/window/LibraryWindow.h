@@ -323,6 +323,7 @@ class LibraryWindow : public QMainWindow,
   QElapsedTimer last_row_click_;
   bool drag_select_ = true;
   bool double_click_play_ = true;
+  bool close_to_tray_ = true;
   // Source pages' own tile widths, unless tile_size_synced_.
   std::map<std::string, int> source_tile_widths_;
   // The tag picker's and hidden mode's (see PageTileWidth), likewise.

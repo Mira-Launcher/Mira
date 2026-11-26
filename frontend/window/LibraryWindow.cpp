@@ -552,6 +552,7 @@ void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
   drag_select_ = prefs.drag_select.value_or(true);
   double_click_play_ = prefs.double_click_play.value_or(true);
+  close_to_tray_ = prefs.close_to_tray.value_or(true);
   mira_gui::system::SetCopyCommands(prefs.copy_commands.value_or(false));
   if (source_page_ != nullptr) source_page_->SetDragSelectEnabled(drag_select_);
   UpdateLibraryNavActive();  // the slider follows tile_size_synced_
@@ -743,6 +744,12 @@ void LibraryWindow::QuitOrClose() {
 void LibraryWindow::closeEvent(QCloseEvent* event) {
   // Only for the window Attach() made the tray's; a secondary window
   // closes for real either way, since nothing would bring it back.
+  if (mira_gui::tray::IsManaged(this) && !mira_gui::tray::Quitting() && !close_to_tray_) {
+    // Quits as the tray's Quit does, which closes this window again to ask what quitting asks.
+    event->ignore();
+    QTimer::singleShot(0, this, [] { mira_gui::tray::RequestQuit(); });
+    return;
+  }
   if (mira_gui::tray::IsManaged(this) && !mira_gui::tray::Quitting()) {
     FlushPrefs(/*quitting=*/false);  // the process stays, so the save needn't freeze the window
     event->ignore();

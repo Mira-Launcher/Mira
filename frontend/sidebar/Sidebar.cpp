@@ -1017,7 +1017,9 @@ void Sidebar::RefreshGames() {
   FillSection(pinned_heading_, pinned_layout_, pinned, style_.pinned, /*recent=*/false,
               /*places=*/0, "Nothing currently pinned", pinned_signature_);
   FillSection(recent_heading_, recent_layout_, recent, style_.recent,
-              /*recent=*/true, style_.recent_count, QString(), recent_signature_);
+              /*recent=*/true, style_.recent_count,
+              style_.recent_count > 0 ? QString("Nothing played recently") : QString(),
+              recent_signature_);
 }
 
 void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
@@ -1033,7 +1035,11 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
     if (!recent || !style_.recent_when) return QString();
     return shelf ? FormatPlayedAgoShort(game.last_played_at) : FormatPlayedAgo(game.last_played_at);
   };
-  const int placeholders = std::max(0, places - static_cast<int>(games.size()));
+  // Empty places up to `places` show as faded sketches, so the section keeps its size while it
+  // fills; with nothing in it, its empty text says so instead.
+  const int placeholders = games.empty() && !empty_text.isEmpty()
+                               ? 0
+                               : std::max(0, places - static_cast<int>(games.size()));
   QString wanted =
       theme::Current().running.name() + sidebar::StyleKey(style) + QString::number(placeholders);
   for (const GameSummary* game : games) {
@@ -1062,7 +1068,6 @@ void Sidebar::FillSection(QWidget* heading, QVBoxLayout* layout,
     }
     delete item;
   }
-  // Empty places up to `places` show as faded sketches, so the section keeps its size.
   heading->setVisible(!games.empty() || placeholders > 0 || !empty_text.isEmpty());
   if (games.empty() && placeholders == 0 && !empty_text.isEmpty()) {
     QLabel* empty = MakeLabel(parent, empty_text, text::kDetail);

@@ -295,6 +295,9 @@ void SettingsPanel::BuildInterfacePage() {
             "Opens Mira in the tray when you log in, or in big screen if that's set to open at "
             "start.",
             "autostart login boot startup", &FrontendPrefs::start_on_login, false);
+  AddToggle(general, "Keep Mira in the tray when its window closes",
+            "Off, closing the window quits Mira, as Quit in the menu does.",
+            "tray close quit exit minimize dock background", &FrontendPrefs::close_to_tray, true);
   AddToggle(general, "Drag to select games",
             "Drag across the library to select several games at once", "rubber band multiple",
             &FrontendPrefs::drag_select, true);
