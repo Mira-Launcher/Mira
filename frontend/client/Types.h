@@ -480,13 +480,16 @@ struct SavesJobResult {
   std::string state;
 };
 
-// POST /v1/games/{id}/metadata/refresh: 202, so this says only that the
-// fetch was accepted. The outcome arrives as game.metadata_ready or
-// game.metadata_failed on the event stream (docs/api.md).
-struct MetadataRefreshResult {
+// A request whose reply says only whether it worked.
+struct ActionResult {
   bool ok = false;
   ApiError error;
 };
+
+// POST /v1/games/{id}/metadata/refresh: 202, so this says only that the
+// fetch was accepted. The outcome arrives as game.metadata_ready or
+// game.metadata_failed on the event stream (docs/api.md).
+using MetadataRefreshResult = ActionResult;
 
 // POST /v1/games/metadata/refresh and .../refresh-missing, jobs that finish
 // once every game's fetch has.
@@ -519,10 +522,7 @@ struct ArtworkSelectEvent {
 
 // POST /v1/games/{id}/artwork?type=: 202, so this is only "accepted", not
 // "done". The outcome is ArtworkSelectEvent on the event stream.
-struct ArtworkSelectResult {
-  bool ok = false;
-  ApiError error;
-};
+using ArtworkSelectResult = ActionResult;
 
 // A `notification` event: mirad's own decision that this is worth telling
 // the user about; the UI just renders it (see events::ParseNotification
@@ -535,10 +535,7 @@ struct NotificationEvent {
   ApiError error;           // the failure behind it, with its hint and fix; empty for none
 };
 
-struct StopResult {
-  bool ok = false;
-  ApiError error;
-};
+using StopResult = ActionResult;
 
 struct ScanResult {
   bool ok = false;
@@ -636,10 +633,7 @@ struct GamePatch {
   bool drop_prefix = false;
 };
 
-struct PatchGameResult {
-  bool ok = false;
-  ApiError error;
-};
+using PatchGameResult = ActionResult;
 
 // One GET /v1/config/schema entry (docs/api.md): every backend setting
 // declared exactly once in src/config/Schema.cpp, which is what lets a
@@ -727,10 +721,7 @@ struct ConfigEdit {
   std::string value;
 };
 
-struct PatchConfigResult {
-  bool ok = false;
-  ApiError error;
-};
+using PatchConfigResult = ActionResult;
 
 // One entry from GET /v1/runners (docs/api.md): an installed build of one
 // runner kind, discovered fresh on every call. `reference` is what a game's
@@ -785,10 +776,7 @@ struct GameConfigEdit {
   bool clear = false;
 };
 
-struct PatchGameConfigResult {
-  bool ok = false;
-  ApiError error;
-};
+using PatchGameConfigResult = ActionResult;
 
 // PATCH /v1/games: one request for many games.
 struct GamesPatch {
@@ -984,10 +972,7 @@ struct RunnerSchemaResult {
 
 // POST /v1/runners/download returns 202 immediately and reports progress on
 // the event stream, so "ok" here only means the download started.
-struct RunnerDownloadResult {
-  bool ok = false;
-  ApiError error;
-};
+using RunnerDownloadResult = ActionResult;
 
 // A `runners.download.started` / `.finished` / `.failed` payload.
 struct RunnerDownloadEvent {
@@ -1039,10 +1024,7 @@ struct HeroicImportResult {
 
 // POST /v1/games/{id}/run: an arbitrary executable inside this game's own
 // prefix, tracked like a normal launch.
-struct RunInPrefixResult {
-  bool ok = false;
-  ApiError error;
-};
+using RunInPrefixResult = ActionResult;
 
 // The user's answers on a setup card; what's unset keeps what mirad picked.
 struct SetupChoices {
@@ -1261,10 +1243,7 @@ struct InstallEvent {
 
 // POST /v1/games/{id}/relocate, /v1/games/{id}/install, and the like:
 // success only means mirad accepted or finished it.
-struct GameActionResult {
-  bool ok = false;
-  ApiError error;
-};
+using GameActionResult = ActionResult;
 
 // GET /v1/games/{id}/metadata/matches: SteamGridDB games whose art could
 // be this one's, best first.
@@ -1466,10 +1445,7 @@ struct DisplayResult {
 
 // POST /v1/games/{id}/tricks: 202, so this only means "accepted". The
 // outcome arrives as a tricks.started/.finished/.failed event.
-struct TricksResult {
-  bool ok = false;
-  ApiError error;
-};
+using TricksResult = ActionResult;
 
 // GET /v1/games/{id}/tricks: the verbs already in the game's prefix.
 struct InstalledTricksResult {
@@ -1487,10 +1463,7 @@ struct TricksEvent {
 };
 
 // DELETE /v1/runners/{kind}:{name}: synchronous, 200 on success.
-struct RunnerRemoveResult {
-  bool ok = false;
-  ApiError error;
-};
+using RunnerRemoveResult = ActionResult;
 
 // GET /v1/desktop-entries/candidates: an already-installed .desktop entry
 // (Flatpak or otherwise) that could become a game. `icon` is a theme icon
@@ -1519,10 +1492,7 @@ struct DesktopEntryImportResult {
 };
 
 // POST /v1/desktop-entries/sync: regenerates Mira's own desktop entries.
-struct DesktopEntrySyncResult {
-  bool ok = false;
-  ApiError error;
-};
+using DesktopEntrySyncResult = ActionResult;
 
 // GET /v1/stores/{id}/status. `tool` is
 // the helper mirad drives for that store (Legendary, gogdl, butler,
@@ -1562,10 +1532,7 @@ struct StoreStatusResult {
 
 // Setup, sign-in, sign-out, and the detached install/download kick-offs:
 // success only means mirad accepted it.
-struct StoreActionResult {
-  bool ok = false;
-  ApiError error;
-};
+using StoreActionResult = ActionResult;
 
 // One file of a link download (docs/api.md#downloads).
 struct DownloadFile {

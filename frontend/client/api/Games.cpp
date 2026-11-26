@@ -27,8 +27,7 @@ LaunchResult LaunchGameSync(const std::string& id, const std::string& option,
   if (!saves.empty()) body["saves"] = saves;
   const transport::Reply reply =
       body.empty() ? transport::Post(path) : transport::PostJson(path, body);
-  // `tracked` (docs/api.md): whether game.state events are coming for this
-  // launch. An older mirad only says `status`; with neither, assume so.
+  // `tracked` (docs/api.md): whether game.state events are coming for this launch.
   bool tracked = true;
   std::string warning;
   if (reply.body.is_object()) {
@@ -36,8 +35,6 @@ LaunchResult LaunchGameSync(const std::string& id, const std::string& option,
     warning = body.value("warning", std::string());
     if (body.contains("tracked") && body["tracked"].is_boolean()) {
       tracked = body["tracked"].get<bool>();
-    } else if (body.contains("status") && body["status"].is_string()) {
-      tracked = body["status"].get<std::string>() != "launched_via_steam";
     }
   }
   return {reply.ok, reply.error, tracked, warning};

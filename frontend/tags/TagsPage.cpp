@@ -53,12 +53,6 @@ QString FoldersMove(int count) {
   return count == 1 ? QString("1 game folder moves") : QString("%1 game folders move").arg(count);
 }
 
-SettingRow* NoteRow(QWidget* parent) {
-  auto* row = new SettingRow(QString(), {}, parent);
-  SetTextStyle(row->Label(), text::kSubtle);
-  return row;
-}
-
 QLabel* CountLabel(QWidget* parent) {
   auto* count = new QLabel(parent);
   SetTextStyle(count, text::kSubtle);
@@ -391,8 +385,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   more_space->setFixedWidth(more_width);
   mine_headings->AddControl(more_space);
   mine_->SetPinnedRow(mine_headings);
-  mine_note_ = NoteRow(mine_);
-  mine_note_->Label()->setText("No tags yet. Add one from Steam's, or a new one.");
+  mine_note_ = NoteRow("No tags yet. Add one from Steam's, or a new one.", mine_);
   mine_->AddRow(mine_note_);
   connect(mine_, &Card::RowsReordered, this, &TagsPage::FoldersReordered);
 
@@ -412,7 +405,7 @@ TagsPage::TagsPage(ArtworkStore* artwork, QWidget* parent) : QWidget(parent), ar
   connect(steam_search_, &QLineEdit::textChanged, this, &TagsPage::FilterSteam);
   steam_->AddHeaderWidget(steam_search_);
   steam_->SetScrollable();
-  steam_note_ = NoteRow(steam_);
+  steam_note_ = NoteRow(QString(), steam_);
   steam_->AddRow(steam_note_);
   steam_columns_ = new RowColumns(steam_);
   steam_->AddRow(steam_columns_);

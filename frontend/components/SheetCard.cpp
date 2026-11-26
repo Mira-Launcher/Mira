@@ -2,6 +2,7 @@
 
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -75,6 +76,13 @@ QHBoxLayout* SheetCard::ButtonRow() {
     AddFooterRow(row);
   }
   return buttons_;
+}
+
+QPushButton* SheetCard::AddCancel(const std::function<void()>& cancel) {
+  auto* button = new QPushButton("Cancel", this);
+  connect(button, &QPushButton::clicked, this, cancel);
+  ButtonRow()->addWidget(button);
+  return button;
 }
 
 }  // namespace mira_gui

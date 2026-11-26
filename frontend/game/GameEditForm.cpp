@@ -512,10 +512,6 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
   emit CardsChanged();
 }
 
-void GameEditForm::ResetScroll() {
-  scroll_->verticalScrollBar()->setValue(0);
-}
-
 void GameEditForm::Reload() {
   if (IsDirty()) {
     stale_ = true;

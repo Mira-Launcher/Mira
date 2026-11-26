@@ -17,7 +17,6 @@ class Dot : public QWidget {
   explicit Dot(Tone tone = Tone::Muted, QWidget* parent = nullptr, QWidget* line_of = nullptr);
 
   void SetTone(Tone tone);
-  Tone CurrentTone() const { return tone_; }
 
   QSize sizeHint() const override;
   QSize minimumSizeHint() const override { return sizeHint(); }

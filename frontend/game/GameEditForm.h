@@ -117,7 +117,6 @@ class GameEditForm : public QWidget {
   // POST /v1/games/{id}/detect: rebuilds the list of programs from the game's folder.
   void DetectExecutable();
   void ShowInstallPath();
-  void ResetScroll();
   void UpdateModified();
   mira_gui::GamePatch CurrentPatch() const;
 

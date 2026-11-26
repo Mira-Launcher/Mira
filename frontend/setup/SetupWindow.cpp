@@ -121,6 +121,13 @@ QFrame* SetupCard(QWidget* parent) {
   return card;
 }
 
+QVBoxLayout* SetupColumn(QWidget* card, const QMargins& margins, int spacing) {
+  auto* column = new QVBoxLayout(card);
+  column->setContentsMargins(margins);
+  column->setSpacing(spacing);
+  return column;
+}
+
 QWidget* SetupRow(QWidget* parent, const QString& label, const QString& doc, QWidget* control,
                   bool below, QWidget* after) {
   auto* row = new QWidget(parent);

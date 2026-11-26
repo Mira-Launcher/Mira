@@ -23,7 +23,6 @@ class SettingsPage : public QWidget {
   // places nothing flows its cards down one column and on into the next.
   void Place(QWidget* widget, int columns, int column);
   QString Title() const;
-  QLabel* TitleLabel() const { return title_; }
   // A small heading above the title, for the first page of a nav group.
   void SetGroupHeading(const QString& text);
   // Splits the cards into columns again from their current heights.

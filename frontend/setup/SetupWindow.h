@@ -64,6 +64,8 @@ QFrame* SetupCard(QWidget* parent);
 // Inside a setup card: around a list of rows, which pad themselves, and around anything else.
 inline constexpr QMargins kSetupListMargins{14, 4, 14, 4};
 inline constexpr QMargins kSetupCardMargins{16, 14, 16, 14};
+// The card's layout, top to bottom.
+QVBoxLayout* SetupColumn(QWidget* card, const QMargins& margins, int spacing = 0);
 // A setting in a setup card: its label, whose tooltip is `doc`, then `control` at the end of the
 // line or, with `below`, under it. `after` goes right after the label.
 QWidget* SetupRow(QWidget* parent, const QString& label, const QString& doc, QWidget* control,

@@ -67,7 +67,6 @@ class GamePicker : public QWidget {
   int TickedCount() const;
   QLineEdit* Search() const { return search_; }
   QPushButton* ApplyButton() const { return apply_; }
-  QWidget* HeaderBox() const { return header_box_; }
   QWidget* BarBox() const { return bar_; }
   ArtworkStore* Artwork() const { return artwork_; }
 

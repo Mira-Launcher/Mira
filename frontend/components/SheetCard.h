@@ -7,6 +7,7 @@
 
 class QHBoxLayout;
 class QLabel;
+class QPushButton;
 class QToolButton;
 
 namespace mira_gui {
@@ -30,6 +31,8 @@ class SheetCard : public Card {
   QLabel* ErrorLine();
   // The card's last row: buttons on the right, after a stretch.
   QHBoxLayout* ButtonRow();
+  // A "Cancel" button at the end of ButtonRow.
+  QPushButton* AddCancel(const std::function<void()>& cancel);
 
  private:
   QLabel* error_ = nullptr;

@@ -23,9 +23,6 @@ enum class Level { Info, Success, Warning, Error };
 // An unknown string reads as Info rather than as an error.
 Level LevelFromString(const QString& text);
 
-// The theme color a level reads as, for PopupDialog.
-QColor AccentFor(Level level);
-
 // --- Notifications -----------------------------------------------------------
 
 // Where an undelivered one goes: `what`, then its detail and hint joined, and the mirad error

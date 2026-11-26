@@ -176,8 +176,4 @@ Level LevelFromString(const QString& text) {
   return Level::Info;
 }
 
-QColor AccentFor(Level level) {
-  return ToneColor(ToneOf(level));
-}
-
 }  // namespace mira_gui::notify
