@@ -5,7 +5,7 @@
 namespace mira::itch {
 
 // Catalog via butlerd's Fetch.ProfileOwnedKeys; Install/Update wrap
-// ItchInstaller.
+// itch::InstallTitle.
 class ItchSource : public library::ILibrarySource {
  public:
   std::string Name() const override { return "itch"; }

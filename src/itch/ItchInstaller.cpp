@@ -12,16 +12,11 @@
 #include "itch/ItchImporter.h"
 
 namespace mira::itch {
-namespace {
 using nlohmann::json;
 
-}  // namespace
-
-ItchInstaller::ItchInstaller(config::Config& config, store::GameStore& games, api::EventBus& events)
-    : config_(config), games_(games), events_(events) {}
-
-Result<void> ItchInstaller::Run(const std::string& game_id) {
-  if (auto ready = CheckReady(config_); !ready) return ready;
+Result<void> InstallTitle(config::Config& config, store::GameStore& games, api::EventBus& events,
+                          const std::string& game_id) {
+  if (auto ready = CheckReady(config); !ready) return ready;
   std::int64_t numeric_id = 0;
   const auto [end, parsed] =
       std::from_chars(game_id.data(), game_id.data() + game_id.size(), numeric_id);
@@ -29,16 +24,16 @@ Result<void> ItchInstaller::Run(const std::string& game_id) {
     return Err("invalid_ref", "an itch.io game id is a number");
   }
 
-  const Result<std::int64_t> profile_id = CurrentProfileId(config_);
+  const Result<std::int64_t> profile_id = CurrentProfileId(config);
   if (!profile_id) return std::unexpected(profile_id.error());
-  if (auto location = EnsureInstallLocation(config_); !location)
+  if (auto location = EnsureInstallLocation(config); !location)
     return std::unexpected(location.error());
 
   // Per butlerd's spec, Install.Queue
   // picks an upload and returns {id, stagingFolder}; Install.Perform
   // fetches it using exactly those two values back.
   const Result<json> queued = Call(
-      config_, "Install.Queue",
+      config, "Install.Queue",
       {{"game", {{"id", numeric_id}}}, {"profileId", *profile_id}, {"installLocationId", "mira"}});
   if (!queued) return std::unexpected(queued.error());
 
@@ -55,29 +50,22 @@ Result<void> ItchInstaller::Run(const std::string& game_id) {
     const auto now = std::chrono::steady_clock::now();
     if (now - last_sent < std::chrono::seconds(1)) return;
     last_sent = now;
-    events_.Publish("library.install.progress", {{"source", "itch"},
-                                                 {"ref", game_id},
-                                                 {"progress", core::JsonDouble(params, "progress")},
-                                                 {"eta", core::JsonDouble(params, "eta")},
-                                                 {"bps", core::JsonDouble(params, "bps")}});
+    events.Publish("library.install.progress", {{"source", "itch"},
+                                                {"ref", game_id},
+                                                {"progress", core::JsonDouble(params, "progress")},
+                                                {"eta", core::JsonDouble(params, "eta")},
+                                                {"bps", core::JsonDouble(params, "bps")}});
   };
   if (auto performed =
-          CallLong(config_, "Install.Perform",
+          CallLong(config, "Install.Perform",
                    {{"id", install_id}, {"stagingFolder", staging_folder}}, on_notification);
       !performed) {
     return std::unexpected(performed.error());
   }
 
-  ItchImporter importer(config_, games_, events_);
+  ItchImporter importer(config, games, events);
   if (auto imported = importer.Import(); !imported) return std::unexpected(imported.error());
   return {};
-}
-
-Result<void> ItchInstaller::Install(const std::string& game_id) {
-  return Run(game_id);
-}
-Result<void> ItchInstaller::Update(const std::string& game_id) {
-  return Run(game_id);
 }
 
 }  // namespace mira::itch

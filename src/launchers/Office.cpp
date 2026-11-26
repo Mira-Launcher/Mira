@@ -189,8 +189,7 @@ Result<void> ImportRegistry(const config::Config& config, const runner::RunnerRe
   fs::create_directories(downloads, ec);
   const fs::path reg = downloads / "office-settings.reg";
   std::ofstream(reg) << Registry(config);
-  std::string windows_reg = "Z:" + reg.string();
-  std::ranges::replace(windows_reg, '/', '\\');
+  const std::string windows_reg = paths::ZDrivePath(reg);
   const auto imported = runner::RunWine(runners, host, {"regedit", "/S", windows_reg});
   if (!imported) return std::unexpected(imported.error());
   if (imported->exit_code != 0)

@@ -9,6 +9,7 @@
 
 #include "core/AtomicFile.h"
 #include "core/Files.h"
+#include "core/Paths.h"
 #include "core/Strings.h"
 #include "epic/Legendary.h"
 
@@ -153,11 +154,7 @@ Result<void> SetOverlayIn(const fs::path& prefix, const fs::path& overlay) {
   const fs::path file = prefix / "user.reg";
   const auto current = files::ReadFile(file);
   if (!current) return {};  // Wine writes it when it first starts
-  std::string windows_path;
-  if (!overlay.empty()) {
-    windows_path = "Z:" + overlay.string();
-    std::ranges::replace(windows_path, '/', '\\');
-  }
+  const std::string windows_path = overlay.empty() ? std::string() : paths::ZDrivePath(overlay);
   const std::string changed = WithOverlayPath(*current, windows_path);
   if (changed == *current) return {};
   // A prefix whose Wine is running writes its registry back when that stops, without this; the

@@ -19,9 +19,7 @@ namespace {
 using nlohmann::json;
 
 Result<json> GetJson(const std::string& url, const std::string& bearer_token) {
-  const Result<runner::ExecResult> result = runner::RunCurlWithSecrets(
-      {"-sSL", "--max-time", "10", url},
-      runner::CurlConfigLine("header", "Authorization: Bearer " + bearer_token));
+  const Result<runner::ExecResult> result = CurlWithToken(bearer_token, {"--max-time", "10", url});
   if (!result) return std::unexpected(result.error());
   const json parsed = json::parse(result->output, nullptr, false);
   if (parsed.is_discarded()) return Err("gog_api_error", "GOG's API didn't return valid JSON");
@@ -101,14 +99,12 @@ Result<std::vector<library::CatalogEntry>> GogSource::Catalog(const config::Conf
 
 Result<void> GogSource::Install(config::Config& config, store::GameStore& games,
                                 api::EventBus& events, const std::string& ref) {
-  GogInstaller installer(config, games, events);
-  return installer.Install(ref);
+  return InstallTitle(config, games, events, ref);
 }
 
 Result<void> GogSource::Update(config::Config& config, store::GameStore& games,
                                api::EventBus& events, const std::string& ref) {
-  GogInstaller installer(config, games, events);
-  return installer.Update(ref);
+  return InstallTitle(config, games, events, ref);
 }
 
 Result<library::LaunchExtras> GogSource::BeforeLaunch(const config::Config& config,

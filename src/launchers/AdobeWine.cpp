@@ -136,8 +136,7 @@ Result<void> Prepare(const runner::RunnerRegistry& runners, const model::Game& h
          "[HKEY_CURRENT_USER\\Software\\Wine\\X11 Driver]\n\"Decorated\"=\"N\"\n\n"
          "[HKEY_CURRENT_USER\\Software\\Wine\\Explorer]\n\"ShowSystray\"=dword:00000000\n\n"
          "[HKEY_CURRENT_USER\\Software\\Wine\\WineDbg]\n\"ShowCrashDialog\"=dword:00000000\n";
-  std::string windows_reg = "Z:" + reg.string();
-  std::ranges::replace(windows_reg, '/', '\\');
+  const std::string windows_reg = paths::ZDrivePath(reg);
   // Windows 11 (build 26100) as Creative Cloud expects, and the WinRT notifications AdobeWine adds.
   for (const std::vector<std::string>& args :
        {std::vector<std::string>{"regedit", "/S", windows_reg},

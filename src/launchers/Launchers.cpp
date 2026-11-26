@@ -262,8 +262,7 @@ Result<void> RunInstaller(config::Config& config, const Launcher& launcher, cons
   if (!command) return std::unexpected(command.error());
   // Proton silences Wine; its errors are often the only clue why a setup quit.
   command->env.try_emplace("WINEDEBUG", "fixme-all,err+all");
-  std::string windows_downloads = "Z:" + downloads.string();
-  std::ranges::replace(windows_downloads, '/', '\\');
+  const std::string windows_downloads = paths::ZDrivePath(downloads);
   for (std::string arg : step.args) {
     if (const std::size_t at = arg.find("{downloads}"); at != std::string::npos) {
       arg.replace(at, std::string_view("{downloads}").size(), windows_downloads);

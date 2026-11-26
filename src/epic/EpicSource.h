@@ -4,7 +4,7 @@
 
 namespace mira::epic {
 
-// Wraps Legendary.h/EpicImporter/EpicInstaller behind ILibrarySource --
+// Wraps Legendary.h/EpicImporter/epic::InstallTitle behind ILibrarySource --
 // same behavior as before this existed, just reachable through
 // library::AllSources() instead of a hand-written "if source == epic"
 // branch.

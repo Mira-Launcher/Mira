@@ -5,6 +5,7 @@
 #include <format>
 #include <set>
 
+#include "core/Paths.h"
 #include "core/Strings.h"
 
 namespace mira::library {
@@ -19,12 +20,6 @@ std::optional<LaunchMode> ModeFromString(std::string_view text) {
     if (name == text) return mode;
   }
   return std::nullopt;
-}
-
-std::string WinePath(const std::string& path) {
-  std::string out = "Z:" + path;
-  std::ranges::replace(out, '/', '\\');
-  return out;
 }
 
 }  // namespace
@@ -130,7 +125,7 @@ json WithLaunchIds(json launch) {
 std::string FillLaunchPlaceholders(std::string_view text, const model::Game& game,
                                    bool wine_paths) {
   const auto path = [&](const std::string& value) {
-    return wine_paths && !value.empty() ? WinePath(value) : value;
+    return wine_paths && !value.empty() ? paths::ZDrivePath(value) : value;
   };
   const std::string exe = game.exe_path.empty()
                               ? std::string()

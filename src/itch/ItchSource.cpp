@@ -109,14 +109,12 @@ Result<std::vector<library::CatalogEntry>> ItchSource::Catalog(
 
 Result<void> ItchSource::Install(config::Config& config, store::GameStore& games,
                                  api::EventBus& events, const std::string& ref) {
-  ItchInstaller installer(config, games, events);
-  return installer.Install(ref);
+  return InstallTitle(config, games, events, ref);
 }
 
 Result<void> ItchSource::Update(config::Config& config, store::GameStore& games,
                                 api::EventBus& events, const std::string& ref) {
-  ItchInstaller installer(config, games, events);
-  return installer.Update(ref);
+  return InstallTitle(config, games, events, ref);
 }
 
 }  // namespace mira::itch

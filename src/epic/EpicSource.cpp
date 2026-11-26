@@ -8,6 +8,7 @@
 #include "core/Command.h"
 #include "core/Json.h"
 #include "core/Log.h"
+#include "core/Paths.h"
 #include "core/StoreErrors.h"
 #include "epic/EosOverlay.h"
 #include "epic/EpicImporter.h"
@@ -44,15 +45,13 @@ Result<std::vector<library::CatalogEntry>> EpicSource::Catalog(
 Result<void> EpicSource::Install(config::Config& config, store::GameStore& games,
                                  api::EventBus& events, const std::string& ref) {
   if (auto ready = CheckReady(config); !ready) return ready;
-  EpicInstaller installer(config, games, events);
-  return installer.Install(ref);
+  return InstallTitle(config, games, events, "install", ref);
 }
 
 Result<void> EpicSource::Update(config::Config& config, store::GameStore& games,
                                 api::EventBus& events, const std::string& ref) {
   if (auto ready = CheckReady(config); !ready) return ready;
-  EpicInstaller installer(config, games, events);
-  return installer.Update(ref);
+  return InstallTitle(config, games, events, "update", ref);
 }
 
 namespace {
@@ -117,11 +116,8 @@ Result<library::LaunchExtras> EpicSource::BeforeLaunch(const config::Config& con
     if (constexpr std::string_view kToken = "-epicovt="; arg.starts_with(kToken)) {
       const std::string file = arg.substr(kToken.size());
       extras.remove_after_exit.emplace_back(file);
-      if (game.platform == model::Platform::Windows) {
-        std::string windows = "Z:" + file;
-        std::ranges::replace(windows, '/', '\\');
-        arg = std::string(kToken) + windows;
-      }
+      if (game.platform == model::Platform::Windows)
+        arg = std::string(kToken) + paths::ZDrivePath(file);
     }
     extras.args.push_back(std::move(arg));
   }
