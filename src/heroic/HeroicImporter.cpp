@@ -308,13 +308,7 @@ Result<HeroicImportSummary> HeroicImporter::Import() {
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
 
-    auto result = games_.Merge(existing, game);
-    if (!result) {
-      log::Error("failed to save heroic game {}: {}", game.id, result.error().message);
-      continue;
-    }
-    keep(game);
-    library::RecordImported(summary, events_, game, existing.has_value());
+    if (library::SaveImported(summary, events_, games_, existing, game, "heroic")) keep(game);
   }
   return summary;
 }

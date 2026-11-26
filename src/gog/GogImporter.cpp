@@ -28,8 +28,8 @@ std::optional<std::string> GogIdIn(const fs::path& dir) {
   return std::nullopt;
 }
 
-// The game directory itself when it holds a goggame-*.info; otherwise the
-// legacy <install_root>/<id>/<Title>/ layout's single subdirectory, or `dir`.
+// The game directory itself when it holds a goggame-*.info; otherwise the single subdirectory of
+// gog.folder_naming "id"'s <install_root>/<id>/<Title>/ layout, or `dir`.
 fs::path ResolveGameDir(const fs::path& dir) {
   if (GogIdIn(dir)) return dir;
   std::error_code ec;
@@ -131,14 +131,10 @@ Result<library::ImportSummary> GogImporter::Import() {
 
   for (const fs::path& entry : paths::ListDir(root)) {
     if (!fs::is_directory(entry, ec)) continue;
-    // No goggame-*.info yet: gogdl is still downloading it, unless it's the
-    // legacy <install_root>/<id>/ layout.
-    const std::string folder = entry.filename().string();
-    const bool legacy_id =
-        !folder.empty() && std::ranges::all_of(folder, [](char c) { return c >= '0' && c <= '9'; });
+    // No goggame-*.info yet: gogdl is still downloading it.
     const std::optional<std::string> found = GogIdIn(ResolveGameDir(entry));
-    if (!found && !legacy_id) continue;
-    const std::string id = found.value_or(folder);
+    if (!found) continue;
+    const std::string& id = *found;
     const bool existed = games_.Find("gog-" + id).has_value();
     summary.listed.insert("gog-" + id);
 

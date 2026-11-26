@@ -12,6 +12,17 @@ using namespace mira;
 
 TEST_CASE("drops: a ROM goes to the one emulator that runs it, and Mira asks when several do") {
   test::TestEnv env("drops");
+  // Steam's store answers for Celeste only, so sorting never waits on the network.
+  test::Touch(env.dir / "fake-bin" / "curl", R"sh(#!/bin/sh
+for arg; do url=$arg; done
+case "$url" in
+  *storesearch*[Cc]eleste*) echo '{"items": [{"type": "app", "id": 504230, "name": "Celeste"}]}' ;;
+  *GetItems*) echo '{"response": {"store_items": [{"type": 0}]}}' ;;
+  *) echo '{}' ;;
+esac
+)sh",
+              /*executable=*/true);
+  const test::PathPrepend fake_curl(env.dir / "fake-bin");
   const fs::path mira = env.dir / "Mira";
   REQUIRE(env.config.Set("mira_folders", nlohmann::json::array({mira.string()})));
   REQUIRE(env.config.Set(

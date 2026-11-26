@@ -27,19 +27,15 @@ std::unexpected<Error> Unreachable(std::string what) {
   return Err("gog_api_error", std::format("GOG didn't answer with {}.", what), kConnectionHint);
 }
 
-// GETs `url` into a private temp file and returns its body. `token`, when given, goes in a
-// header through curl's config file, so it stays off the process list.
+// GETs `url` into a private temp file and returns its body, signed in with `token` when given.
 Result<std::string> Fetch(const std::string& url, const std::string& token = std::string()) {
   if (!achievements::FetchableUrl(url)) return Unreachable("a usable address");
   std::string path = (fs::temp_directory_path() / "mira-gog-XXXXXX").string();
   const int fd = mkostemp(path.data(), O_CLOEXEC);
   if (fd < 0) return Unreachable("anything (no temp file)");
   close(fd);
-  const std::string secrets =
-      token.empty() ? std::string()
-                    : runner::CurlConfigLine("header", "Authorization: Bearer " + token);
-  const auto run = runner::RunCurlWithSecrets(
-      {"-sSLf", "--max-time", "20", "-H", "Accept: application/json", "-o", path, url}, secrets);
+  const auto run = CurlWithToken(
+      token, {"-f", "--max-time", "20", "-H", "Accept: application/json", "-o", path, url});
   auto body = files::ReadFile(path);
   unlink(path.c_str());
   if (!run || run->exit_code != 0 || !body) return Unreachable(url);

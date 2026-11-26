@@ -173,4 +173,11 @@ Result<std::string> AccessToken(const config::Config& config) {
   return (*stored)["access_token"].get<std::string>();
 }
 
+Result<runner::ExecResult> CurlWithToken(const std::string& token, std::vector<std::string> args) {
+  args.insert(args.begin(), "-sSL");
+  return runner::RunCurlWithSecrets(
+      args, token.empty() ? std::string()
+                          : runner::CurlConfigLine("header", "Authorization: Bearer " + token));
+}
+
 }  // namespace mira::gog

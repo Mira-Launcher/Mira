@@ -20,7 +20,7 @@ namespace mira::epic {
 // Mira only reads a snapshot of it on request.
 //
 // Unlike Steam/Lutris, an installed-but-not-yet-provisioned Epic game still
-// needs RunnerRegistry::ProvisionGame run on it once (see EpicInstaller),
+// needs RunnerRegistry::ProvisionGame run on it once (see epic::InstallTitle),
 // Legendary has no prefix concept of its own, so a freshly-imported
 // already-installed title is upserted Ready with an empty data_dir, and
 // gets provisioned lazily the same way a plain scan-detected game does.

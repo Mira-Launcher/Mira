@@ -372,12 +372,7 @@ Result<library::ImportSummary> DesktopEntryScanner::Import(const std::vector<std
     std::erase(game.tags, std::string("app"));
     if (std::ranges::contains(apps, entry.id)) game.tags.push_back("app");
 
-    auto result = games_.Merge(existing, game);
-    if (!result) {
-      log::Error("failed to save desktop-entry game {}: {}", game.id, result.error().message);
-      continue;
-    }
-    library::RecordImported(summary, events_, game, existing.has_value());
+    library::SaveImported(summary, events_, games_, existing, game, "desktop-entry");
   }
   return summary;
 }

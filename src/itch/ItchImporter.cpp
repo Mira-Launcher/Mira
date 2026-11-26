@@ -113,13 +113,7 @@ Result<library::ImportSummary> ItchImporter::Import() {
       game.status = model::GameStatus::Ready;
     }
 
-    auto result = games_.Merge(existing, game);
-    if (!result) {
-      log::Error("failed to save itch game {}: {}", id, result.error().message);
-      summary.listed.insert(id);  // still installed, only not saved
-      continue;
-    }
-    library::RecordImported(summary, events_, game, existing.has_value());
+    library::SaveImported(summary, events_, games_, existing, game, "itch");
   }
   summary.lists_installed = true;
   return summary;

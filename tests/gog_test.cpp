@@ -154,15 +154,21 @@ TEST_CASE("GogImporter::Import scans install_root's subdirectories") {
   fixture.UseFakeGogdl();
 
   const fs::path root = fixture.dir / "install_root";
-  fs::create_directories(root / "123");
-  fs::create_directories(root / "456");
+  fs::create_directories(root / "Alpha");
+  std::ofstream(root / "Alpha" / "goggame-123.info") << "{}";
+  fs::create_directories(root / "Beta");
+  std::ofstream(root / "Beta" / "goggame-456.info") << "{}";
+  fs::create_directories(root / "789" / "Gamma");  // gog.folder_naming "id"
+  std::ofstream(root / "789" / "Gamma" / "goggame-789.info") << "{}";
+  fs::create_directories(root / "Downloading");  // no goggame-*.info yet: skipped
   REQUIRE(fixture.config.Set("gog.install_root", root.string()));
 
   gog::GogImporter importer(fixture.config, fixture.games, fixture.events);
   const Result<library::ImportSummary> summary = importer.Import();
   REQUIRE(summary);
-  CHECK(summary->added == 2);
-  CHECK(fixture.games.All().size() == 2);
+  CHECK(summary->added == 3);
+  CHECK(fixture.games.All().size() == 3);
+  CHECK(gog::FindGameDir(fixture.config, "789") == root / "789" / "Gamma");
 }
 
 TEST_CASE("GogImporter::Import reads the id from goggame-<id>.info in a title-named folder") {
