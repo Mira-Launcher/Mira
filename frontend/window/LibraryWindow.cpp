@@ -22,6 +22,7 @@
 #include <QLocale>
 #include <QMenu>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QScreen>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -107,6 +108,26 @@
 #include "TopBar.h"
 
 namespace {
+
+// Runs `clicked` on a left click of the widget it watches.
+class ClickFilter : public QObject {
+ public:
+  ClickFilter(QObject* parent, std::function<void()> clicked)
+      : QObject(parent), clicked_(std::move(clicked)) {}
+
+ protected:
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    if (event->type() == QEvent::MouseButtonRelease &&
+        static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+      clicked_();
+      return true;
+    }
+    return QObject::eventFilter(watched, event);
+  }
+
+ private:
+  std::function<void()> clicked_;
+};
 
 // Only local files can be added: a dropped web link or text is refused.
 bool CanAddDrop(const QMimeData* data) {
@@ -1936,7 +1957,11 @@ QWidget* LibraryWindow::BuildSettingsPage() {
   header_layout->addWidget(back);
   auto* title = new QLabel("Settings", header);
   mira_gui::SetTextStyle(title, mira_gui::text::kHeading);
-  header_layout->addWidget(title, /*stretch=*/1);
+  // The title goes back too, as a page title beside a back arrow does elsewhere.
+  title->setCursor(Qt::PointingHandCursor);
+  title->installEventFilter(new ClickFilter(title, [this] { RequestCloseSettings(); }));
+  header_layout->addWidget(title, /*stretch=*/0);
+  header_layout->addStretch(1);
   settings_panel_->SetHeader(header);
 
   settings_panel_->AddSectionAction(
