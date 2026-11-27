@@ -231,4 +231,13 @@ TEST_CASE("Keyboard focus shows a ring, and a mouse click hides it") {
       [&] { return library.grid->selectionModel()->isSelected(library.grid->currentIndex()); }));
   QTest::mouseClick(library.play, Qt::LeftButton);
   CHECK(QTest::qWaitFor([&] { return !ring()->isVisible(); }));
+
+  // A clicked button that disables itself while it works hands focus on, as Tab would; that's
+  // still the mouse, so no ring.
+  QObject::connect(library.play, &QPushButton::clicked, [&] { library.play->setEnabled(false); });
+  QTest::mouseClick(library.play, Qt::LeftButton);
+  CHECK_FALSE(library.play->hasFocus());
+  QCoreApplication::processEvents();  // the ring places itself on a zero timer
+  QCoreApplication::processEvents();
+  CHECK_FALSE(ring()->isVisible());
 }

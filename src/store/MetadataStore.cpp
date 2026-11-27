@@ -670,12 +670,14 @@ void MetadataStore::Remove(const std::string& id) {
   fs::remove_all(ArtworkDir(id), ec);
 }
 
-void MetadataStore::KeepPicks(const std::string& id) {
+void MetadataStore::KeepCoverAndPicks(const std::string& id) {
   const json info = Read(id);
   json kept = json::object();
   std::set<std::string> files;
   for (const auto& [slot, key] : kSlots) {
-    if (!info.contains(key) || !info[key].is_object() || !info[key].value("chosen", false))
+    // The cover stays either way, for the removed games' list.
+    if (!info.contains(key) || !info[key].is_object() ||
+        (slot != "cover" && !info[key].value("chosen", false)))
       continue;
     kept[key] = info[key];
     if (const std::string name = FileName(info[key]); !name.empty()) files.insert(name);

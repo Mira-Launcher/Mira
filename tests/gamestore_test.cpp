@@ -230,11 +230,12 @@ TEST_CASE("a game found again where a removed one was gets the removed one's id"
 namespace {
 
 // Back to the games table and version from before `setup`, whose step adds columns, with the
-// `confidence` a later one drops.
+// `confidence` a later one drops, and without the sources' `in_library` a later one adds.
 void Rewind(const fs::path& file, int version) {
   store::Database db;
   REQUIRE(db.Open(file).has_value());
   REQUIRE(db.Exec("ALTER TABLE games DROP COLUMN setup").has_value());
+  REQUIRE(db.Exec("ALTER TABLE sources DROP COLUMN in_library").has_value());
   REQUIRE(db.Exec("ALTER TABLE games ADD COLUMN confidence REAL NOT NULL DEFAULT 0").has_value());
   REQUIRE(
       db.Exec("ALTER TABLE games ADD COLUMN old_status TEXT NOT NULL DEFAULT 'ready'").has_value());

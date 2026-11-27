@@ -23,6 +23,7 @@
 #include "desktop/DesktopEntries.h"
 #include "epic/EosOverlay.h"
 #include "epic/Legendary.h"
+#include "epic/Playtime.h"
 #include "launchers/Launchers.h"
 #include "library/AutoInstall.h"
 #include "library/FolderTags.h"
@@ -113,6 +114,8 @@ Services::Services(config::Config& config_in, store::GameStore& games_in, EventB
     }
     StopSharedIfIdle(id);
     RefreshAchievementsAfterPlay(id);
+    if (config.GetBool("epic.sync_playtime") && id.starts_with("epic-"))
+      playtime_sends.Post([this, id] { epic::SendPlaytime(config, games, id); });
     // Its tags may have changed while it ran.
     SavesAfterPlay(id, [this, id] { SortByTags({id}); });
   });
@@ -696,6 +699,51 @@ void Services::ProvisionLater(const model::Game& game) {
       std::string(), &operations);
 }
 
+void Services::DropPrefixLater(const model::Game& windows) {
+  jobs.Start(
+      "delete", windows.id, "Removing " + windows.name + "'s prefix",
+      [this, windows](JobRegistry::Progress&) -> Result<json> {
+        auto folders_lock = games.LockFolders();
+        const auto claim = Claim(windows.id, "deleted");
+        if (!claim) return std::unexpected(claim.error());
+        const auto current = games.Find(windows.id);
+        if (!current) return Err("game_not_found", "the game was removed");
+        // Turned back, or given another prefix, since: nothing to drop.
+        if (current->platform != model::Platform::Native || current->data_dir != windows.data_dir)
+          return json{{"dropped", false}};
+        // Read as the Windows game it was, so its saves are found in the prefix.
+        {
+          const SavesWork work(*this, windows.id, "backing_up");
+          CheckSaveManifest();
+          auto taken = saves::TakeSnapshot(config, windows,
+                                           saves::SurveyFor(config, games.Metadata(), windows),
+                                           saves::kBeforeNative);
+          if (!taken && taken.error().code != "saves_not_found") {
+            Error kept = taken.error();
+            kept.message = std::format("{}'s prefix was kept: {}", windows.name, kept.message);
+            return std::unexpected(kept);
+          }
+          if (taken) {
+            const std::string snapshot = (*taken)["snapshot"].value("id", "");
+            if (auto pinned = saves::PinSnapshot(config, windows.id, snapshot, true); !pinned)
+              log::Warn("couldn't pin {}'s backup {}: {}", windows.id, snapshot,
+                        pinned.error().message);
+            events.Publish("game.saves_changed", {{"id", windows.id}});
+          }
+        }
+        if (auto deleted = DeleteGameData(windows, games.All(), /*files=*/false, /*prefix=*/true,
+                                          /*forget=*/false, /*backups=*/false);
+            !deleted)
+          return std::unexpected(deleted.error());
+        auto saved = games.Update(windows.id, [](model::Game& game) { game.data_dir.clear(); });
+        if (!saved) return std::unexpected(saved.error());
+        folders_lock.unlock();
+        events.Publish("game.updated", Record(*saved));
+        return json{{"dropped", true}};
+      },
+      std::string(), &operations);
+}
+
 Result<proc::ProcessSupervisor::Reservation> Services::Claim(const std::string& game_id,
                                                              const std::string& purpose) {
   if (auto claim = supervisor.Reserve(game_id, purpose)) return std::move(*claim);
@@ -906,7 +954,7 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   if (forget) {
     games.Metadata().Remove(game.id);
   } else if (game.source != "steam" && library::FindStore(game.source) == nullptr) {
-    games.Metadata().KeepPicks(game.id);
+    games.Metadata().KeepCoverAndPicks(game.id);
   }
   return {};
 }

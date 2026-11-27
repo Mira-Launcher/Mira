@@ -18,7 +18,7 @@ namespace mira_gui::api {
 // GET /v1/sources: every source's state, in sidebar order.
 void ListSourcesAsync(QObject* context, std::function<void(SourcesResult)> callback);
 // PATCH /v1/sources/{id}: only the fields given change.
-void PatchSourceAsync(QObject* context, const std::string& id, std::optional<bool> enabled,
+void PatchSourceAsync(QObject* context, const std::string& id, std::optional<bool> in_library,
                       std::optional<bool> in_sidebar,
                       std::function<void(PatchConfigResult)> callback);
 // PATCH /v1/sources/{id} {"in_hidden_sidebar": ...}: whether hidden mode's sidebar lists it.

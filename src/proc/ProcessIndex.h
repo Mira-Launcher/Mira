@@ -33,7 +33,8 @@ class ProcessIndex {
 
 // For Steam's "reaper SteamLaunch AppId=<id> -- <game>" wrapper, which lives
 // exactly as long as Steam considers the game running: the AppId. `rest` is
-// the command line after argv0. Empty for any other process.
+// the command line after argv0. Empty for any other process, and for the install or uninstall
+// scripts Steam runs through that wrapper (Install=1), which aren't play.
 std::string SteamLaunchAppId(const std::string& argv0, std::istream& rest);
 
 // `argv0` is `win_path` itself or a file under it (both lowercase, forward slashes).

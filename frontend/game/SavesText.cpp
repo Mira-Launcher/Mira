@@ -24,6 +24,7 @@ QString Reason(const std::string& reason) {
   if (reason == "manual") return "Backed up by hand";
   if (reason == "before_restore") return "Before restoring";
   if (reason == "before_cloud_download") return "Before a cloud download";
+  if (reason == "before_native") return "From its Windows prefix";
   return QString::fromStdString(reason);
 }
 

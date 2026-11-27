@@ -447,7 +447,9 @@ void GameCard::UpdateIdentity() {
 }
 
 void GameCard::LoadAchievements(bool refresh) {
-  api::GetAchievementsAsync(this, id_, [this, refresh](AchievementsResult result) {
+  const int request = ++achievements_request_;
+  api::GetAchievementsAsync(this, id_, [this, refresh, request](AchievementsResult result) {
+    if (request != achievements_request_) return;
     // A game no store reads them for, or with them turned off, shows nothing.
     if (!result.ok && !result.missing) {
       achievements_.reset();

@@ -46,7 +46,7 @@ class SourcesPage : public QFrame {
   void SettingsRequested(QString id);
   void SidebarToggled(QString id, bool shown);
   void HiddenSidebarMirrorsToggled(bool mirrors);
-  void EnabledToggled(QString id, bool enabled);
+  void InLibraryToggled(QString id, bool in_library);
   void Imported(QString id);
   void Removed(QString id);
   void CloseRequested();

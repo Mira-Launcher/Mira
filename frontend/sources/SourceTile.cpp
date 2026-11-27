@@ -68,13 +68,6 @@ void SourceTile::SetClickable(const QString& tooltip) {
   setToolTip(tooltip);
 }
 
-void SourceTile::SetDim(bool dim) {
-  SetSourceBadgeDim(badge_, source_, dim);
-  SetTextStyle(name_, dim ? text::kSubtle : text::kBody);
-  name_->style()->unpolish(name_);
-  name_->style()->polish(name_);
-}
-
 bool SourceTile::hasHeightForWidth() const {
   return layout()->hasHeightForWidth();
 }

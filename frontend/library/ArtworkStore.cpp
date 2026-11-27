@@ -129,13 +129,13 @@ ArtworkStore::ArtworkStore(QObject* parent) : QObject(parent) {
 }
 
 void ArtworkStore::SetQuickScaling(bool quick) {
-  quick_ = quick;
-  if (quick || drawn_quickly_.isEmpty()) return;
+  zooming_ = std::max(0, zooming_ + (quick ? 1 : -1));
+  quick_ = zooming_ > 0;
+  if (quick_ || drawn_quickly_.isEmpty()) return;
   // Queued: a view closed mid-zoom turns this off from its destructor, mid-teardown.
   QTimer::singleShot(0, this, [this] {
-    if (quick_)
-      return;  // another zoom started: its end announces them    for (const QString& id :
-               // std::exchange(drawn_quickly_, {})) emit CoverChanged(id);
+    if (quick_) return;  // another zoom started: its end announces them
+    for (const QString& id : std::exchange(drawn_quickly_, {})) emit CoverChanged(id);
   });
 }
 
@@ -178,7 +178,12 @@ void ArtworkStore::Keep(const QSet<QString>& ids) {
   }
 }
 
+void ArtworkStore::LetGoWidth(int width) {
+  if (--held_widths_[width] <= 0) held_widths_.remove(width);
+}
+
 void ArtworkStore::ForgetWidth(int width) {
+  if (held_widths_.contains(width)) return;  // another view draws at it
   const QString size = QString::number(width) + 'x';
   for (auto it = scaled_.begin(); it != scaled_.end();) {
     if (it.key().section('@', 1, 1).startsWith(size)) {

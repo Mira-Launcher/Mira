@@ -121,7 +121,8 @@ int main(int argc, char** argv) {
         // size and look instead of changing once shown.
         const mira_gui::FrontendPrefsResult saved = mira_gui::api::GetFrontendPrefsBlocking();
         mira_gui::FrontendPrefs prefs = saved.ok ? saved.prefs : mira_gui::FrontendPrefs{};
-        const bool tray = hidden || (login && !prefs.big_screen_at_start.value_or(false));
+        const bool tray = hidden || (login && !prefs.big_screen_at_start.value_or(false) &&
+                                     !prefs.login_opens_window.value_or(false));
         // A frontend.toml that already has a window size is an existing install, not a new one.
         const bool first_launch = !tray && saved.ok && !prefs.onboarded.value_or(false) &&
                                   !prefs.window_width.has_value();

@@ -156,6 +156,9 @@ class SourcePage : public QWidget {
   void UpdateOwnedCount();
   void ShowOwned(const StoreLibraryResult& result);
   void ShowBundles(const HumbleLibraryResult& result);
+  // Local's second section: the games removed from it, under the hidden mode.
+  void ShowRemoved(const RemovedGamesResult& result);
+  void ShowRemovedMenu(const QPoint& pos);
   void RebuildOwnedTiles();
   void StartInstall(const QString& ref, bool update);
   void ApplyFilter();
@@ -227,6 +230,7 @@ class SourcePage : public QWidget {
   QLabel* library_empty_ = nullptr;
   QFrame* drop_zone_ = nullptr;  // an emulator's, in place of library_empty_
 
+  QWidget* divider_ = nullptr;  // between the two sections
   QWidget* owned_section_ = nullptr;
   QLabel* owned_heading_ = nullptr;
   QLabel* owned_count_ = nullptr;  // "51", "171 of 227", or "Asking GOG…"
@@ -245,6 +249,9 @@ class SourcePage : public QWidget {
   // The last lists, kept so a switch of hidden mode shows the other part at once.
   StoreLibraryResult owned_result_;
   HumbleLibraryResult bundles_result_;
+  RemovedGamesResult removed_result_;
+  QHash<QString, RemovedGame> removed_;  // id -> a removed game listed on Local, by owned_'s ref
+  bool removed_refresh_queued_ = false;  // a burst of game.added events asks once
   // What the account owns and isn't installed, under the hidden mode, by ref, with its title.
   std::vector<std::pair<QString, QString>> owned_;
   QSet<QString> not_owned_;              // refs listed from a collection but not bought

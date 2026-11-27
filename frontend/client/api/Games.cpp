@@ -69,6 +69,7 @@ PatchGameResult PatchGameSync(const std::string& id, const GamePatch& patch) {
   if (patch.install_path) body["install_path"] = *patch.install_path;
   if (patch.tags) body["tags"] = *patch.tags;
   if (patch.launch) body["launch"] = mapping::ToJson(*patch.launch);
+  if (patch.drop_prefix) body["drop_prefix"] = true;
 
   const auto parse_object = [&](const std::string& text, const char* field,
                                 const char* message) -> bool {
@@ -438,13 +439,15 @@ void PinSaveBackupAsync(QObject* context, const std::string& id, const std::stri
 
 void ChangeSaveFolderAsync(QObject* context, const std::string& id, bool add,
                            const std::string& folder,
-                           std::function<void(GameActionResult)> callback) {
+                           std::function<void(GameActionResult)> callback,
+                           const std::string& matching) {
   async::Run(
       context,
-      [id, add, folder] {
+      [id, add, folder, matching] {
+        json body = {{add ? "add" : "remove", folder}};
+        if (!matching.empty()) body["matching"] = matching;
         const transport::Reply reply =
-            transport::PostJson("/v1/games/" + PercentEncode(id) + "/saves/folders",
-                                json{{add ? "add" : "remove", folder}});
+            transport::PostJson("/v1/games/" + PercentEncode(id) + "/saves/folders", body);
         return GameActionResult{reply.ok, reply.error};
       },
       std::move(callback));
@@ -532,21 +535,33 @@ void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, boo
       FillDeleteGames, std::move(callback));
 }
 
-void GetRemovedGamesAsync(QObject* context, std::function<void(RemovedGamesResult)> callback) {
+void GetRemovedGamesAsync(QObject* context, bool all,
+                          std::function<void(RemovedGamesResult)> callback) {
   async::Run(
       context,
-      [] {
+      [all] {
+        const std::string path = all ? "/v1/removed-games?all=true" : "/v1/removed-games";
         return ReadReply<RemovedGamesResult>(
-            transport::Get("/v1/removed-games"), "GET /v1/removed-games", Shape::Array,
+            transport::Get(path), "GET /v1/removed-games", Shape::Array,
             [](RemovedGamesResult& result, const json& body) {
               for (const json& entry : body) {
-                result.games.push_back(
-                    {.id = entry.at("id").get<std::string>(),
-                     .name = entry.value("name", std::string()),
-                     .install_path = entry.value("install_path", std::string()),
-                     .exe_path = entry.value("exe_path", std::string()),
-                     .prefix_bytes = entry.value("prefix_bytes", std::uint64_t{0}),
-                     .saves_bytes = entry.value("saves_bytes", std::uint64_t{0})});
+                RemovedGame game{.id = entry.at("id").get<std::string>(),
+                                 .name = entry.value("name", std::string()),
+                                 .source = entry.value("source", std::string()),
+                                 .tags = {},
+                                 .removed_at = entry.value("removed_at", std::int64_t{0}),
+                                 .play_seconds = entry.value("play_seconds", std::int64_t{0}),
+                                 .last_played_at = std::nullopt,
+                                 .install_path = entry.value("install_path", std::string()),
+                                 .exe_path = entry.value("exe_path", std::string()),
+                                 .prefix_bytes = entry.value("prefix_bytes", std::uint64_t{0}),
+                                 .saves_bytes = entry.value("saves_bytes", std::uint64_t{0})};
+                if (const auto played = entry.value("last_played_at", std::int64_t{0}); played > 0)
+                  game.last_played_at = played;
+                if (const auto tags = entry.find("tags"); tags != entry.end() && tags->is_array())
+                  for (const json& tag : *tags)
+                    if (tag.is_string()) game.tags.push_back(tag.get<std::string>());
+                result.games.push_back(std::move(game));
               }
             });
       },

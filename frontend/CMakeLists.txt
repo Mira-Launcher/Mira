@@ -173,6 +173,7 @@ add_executable(mira_gui_tests
   library/OwnedTitles.cpp
   library/PlayChoices.cpp
   library/TitleRatings.cpp
+  library/ZoomSettle.cpp
   settings/SettingsSearch.cpp
   setup/SetupFlow.cpp
   sources/Sources.cpp

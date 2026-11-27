@@ -1,6 +1,7 @@
 #include "SourcePage.h"
 
 #include <QComboBox>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QEvent>
 #include <QFileDialog>
@@ -9,6 +10,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLocale>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
@@ -53,6 +55,7 @@
 #include "../library/CoverArt.h"
 #include "../library/GameActions.h"
 #include "../library/GameLibraryModel.h"
+#include "../library/GamePresentation.h"
 #include "../library/GameTileDelegate.h"
 #include "../library/HoverCard.h"
 #include "../library/RatingChips.h"
@@ -117,9 +120,15 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   });
   content_layout_->addWidget(setup_card_);
   if (id_ != "humble") content_layout_->addWidget(BuildLibrarySection());
-  if (id_ != "humble" && HasOwned())
-    content_layout_->addWidget(MakeDivider(content, Qt::Horizontal));
+  if (id_ != "humble" && HasOwned()) {
+    divider_ = MakeDivider(content, Qt::Horizontal);
+    content_layout_->addWidget(divider_);
+  }
   if (HasOwned()) content_layout_->addWidget(BuildOwnedSection());
+  if (id_ == "local") {
+    owned_section_->setVisible(false);
+    divider_->setVisible(false);
+  }
   content_layout_->addStretch(1);
   scroll->setWidget(content);
   // A click on the page's own background deselects, like one between tiles.
@@ -170,7 +179,9 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
     LibraryUpdated();
     if (picker_ != nullptr) picker_->SetShowingHidden(library_->ShowingHidden());
     if (!owned_loaded_ || owned_section_ == nullptr) return;
-    if (id_ == "humble") {
+    if (id_ == "local") {
+      ShowRemoved(removed_result_);
+    } else if (id_ == "humble") {
       ShowBundles(bundles_result_);
     } else {
       ShowOwned(owned_result_);
@@ -181,7 +192,7 @@ SourcePage::SourcePage(const SourceInfo& source, GameLibraryModel* library, Artw
   RefreshStatus();
   // mirad answers from the list it stored, so a store's doesn't wait for its status. Humble's
   // purchases are asked for live, once signed in.
-  if (id_ == "steam" || (IsStore() && id_ != "humble")) RefreshOwned();
+  if (id_ == "steam" || id_ == "local" || (IsStore() && id_ != "humble")) RefreshOwned();
 }
 
 bool SourcePage::eventFilter(QObject* watched, QEvent* event) {
@@ -235,10 +246,11 @@ bool SourcePage::HasImport() const {
   return !CopyFor(id_).import_button.isEmpty();
 }
 
-// Every page but Local has both sections; ones that can't list what the account owns say so.
-// A launcher without an import is one app (AutoCAD, Revit): there's nothing more to list.
+// Every page has a second section: what the account owns, and on Local the games removed from it;
+// ones that can't list what the account owns say so. A launcher without an import is one app
+// (AutoCAD, Revit): there's nothing more to list.
 bool SourcePage::HasOwned() const {
-  return id_ != "local" && !IsEmulator() && !IsModManager() && !(IsLauncher() && !HasImport());
+  return !IsEmulator() && !IsModManager() && !(IsLauncher() && !HasImport());
 }
 
 bool SourcePage::ListsOwned() const {
@@ -632,16 +644,17 @@ QWidget* SourcePage::BuildLibrarySection() {
 
 QWidget* SourcePage::BuildOwnedSection() {
   owned_section_ = new QWidget(this);
-  owned_available_ = id_ == "steam" || !ListsOwned();
+  owned_available_ = id_ == "steam" || id_ == "local" || !ListsOwned();
   auto* layout = new QVBoxLayout(owned_section_);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
 
   auto* header = new QHBoxLayout();
   header->setSpacing(8);
-  owned_heading_ = new QLabel(id_ == "humble" ? QString("Your purchases")
-                              : IsLauncher()  ? "More " + CopyFor(id_).item + "s"
-                                              : QString("Not installed"),
+  owned_heading_ = new QLabel(id_ == "humble"  ? QString("Your purchases")
+                              : id_ == "local" ? QString("Removed")
+                              : IsLauncher()   ? "More " + CopyFor(id_).item + "s"
+                                               : QString("Not installed"),
                               owned_section_);
   SetTextStyle(owned_heading_, text::kHeading);
   header->addWidget(owned_heading_, 0, Qt::AlignBaseline);
@@ -707,7 +720,7 @@ QWidget* SourcePage::BuildOwnedSection() {
             [this] { emit OpenSettingsRequested("steam.web_api_key"); });
     layout->addWidget(steam_settings_, 0, Qt::AlignLeft);
   }
-  if (id_ != "humble") {
+  if (id_ != "humble" && id_ != "local") {
     art_key_ = new QPushButton("Add a SteamGridDB key for covers", owned_section_);
     icons::Follow(art_key_, icons::Glyph::Image);
     art_key_->setVisible(false);
@@ -716,7 +729,9 @@ QWidget* SourcePage::BuildOwnedSection() {
     layout->addWidget(art_key_, 0, Qt::AlignLeft);
   }
 
-  if (!ListsOwned()) {
+  if (id_ == "local") {
+    owned_refresh_->setVisible(false);  // follows the library's events
+  } else if (!ListsOwned()) {
     owned_refresh_->setVisible(false);
     if (art_key_ != nullptr) art_key_->setVisible(false);
     // A launcher's note follows whether it's installed (UpdateStatusLine).
@@ -734,10 +749,18 @@ QWidget* SourcePage::BuildOwnedSection() {
   owned_grid_->setModel(owned_model_);
   owned_grid_->on_hover = [this](const QModelIndex& index) { ShowHoverCard(owned_grid_, index); };
   owned_grid_->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(owned_grid_, &QWidget::customContextMenuRequested, this, &SourcePage::ShowOwnedMenu);
+  connect(owned_grid_, &QWidget::customContextMenuRequested, this,
+          id_ == "local" ? &SourcePage::ShowRemovedMenu : &SourcePage::ShowOwnedMenu);
   owned_grid_->on_ctrl_wheel = [this](int steps) { emit ZoomRequested(steps); };
   owned_grid_->on_action = [this](const QModelIndex& index) {
     const QString ref = index.data(GameTileDelegate::IdRole).toString();
+    if (id_ == "local") {
+      const auto removed = removed_.constFind(ref);
+      if (removed == removed_.constEnd()) return;
+      // Its files are gone: picked again, wherever they are now.
+      if (removed->install_path.empty()) return cards::Show(this, new AddGamesCard());
+      return actions::AddBackRemovedGame(this, *removed, [this] { RefreshOwned(); });
+    }
     if (id_ != "humble") {
       StartInstall(ref, /*update=*/false);
       return;
@@ -821,10 +844,15 @@ void SourcePage::PrefetchTileWidth(int width) {
 }
 
 void SourcePage::UpdateCover(const QString& id) {
-  // A not-installed title's cover is keyed "<source>-<ref>". The library
-  // grid's own tiles repaint from the shared model.
+  // The library grid's own tiles repaint from the shared model. Local's removed games are keyed by
+  // their own ids, a not-installed title's cover by "<source>-<ref>".
+  if (owned_grid_ == nullptr || id_ == "humble") return;
+  if (id_ == "local") {
+    if (removed_.contains(id)) owned_grid_->viewport()->update();
+    return;
+  }
   const QString prefix = source_.id + "-";
-  if (owned_grid_ == nullptr || id_ == "humble" || !id.startsWith(prefix)) return;
+  if (!id.startsWith(prefix)) return;
   const QString ref = id.mid(prefix.size());
   owned_grid_->viewport()->update();
   // Its details came with the cover, so its tier, reviews and tags may be new.
@@ -1206,7 +1234,13 @@ void SourcePage::RefreshOwned(bool fresh) {
     owned_refresh_->setEnabled(owned_available_);
     return true;
   };
-  if (id_ == "humble") {
+  if (id_ == "local") {
+    api::GetRemovedGamesAsync(this, /*all=*/true, [this, done](RemovedGamesResult r) {
+      if (!done()) return;
+      ShowRemoved(r);
+      UpdateOwnedLoading();
+    });
+  } else if (id_ == "humble") {
     api::GetHumbleLibraryAsync(this, [this, done](HumbleLibraryResult r) {
       if (!done()) return;
       ShowBundles(r);
@@ -1311,6 +1345,43 @@ void SourcePage::ShowOwned(const StoreLibraryResult& result) {
   RebuildOwnedTiles();
 }
 
+namespace {
+bool FromLocal(const std::string& source) {
+  GameSummary game;
+  game.source = source;
+  return SourceIdOf(game) == "local";
+}
+
+QString RemovedAgo(std::int64_t removed_at) {
+  return "Removed " + FormatPlayedAgo(removed_at).toLower();
+}
+}  // namespace
+
+void SourcePage::ShowRemoved(const RemovedGamesResult& result) {
+  if (&result != &removed_result_) removed_result_ = result;
+  owned_.clear();
+  removed_.clear();
+  tags_.clear();
+  if (!result.ok) {
+    ShowError(owned_note_, "Could not list removed games", result.error);
+    RebuildOwnedTiles();
+    return;
+  }
+  for (const RemovedGame& game : result.games) {
+    const bool hidden = std::ranges::contains(game.tags, std::string("hidden"));
+    if (!FromLocal(game.source) || hidden != library_->ShowingHidden()) continue;
+    const QString id = QString::fromStdString(game.id);
+    owned_.emplace_back(id, QString::fromStdString(game.name));
+    removed_.insert(id, game);
+    tags_.insert(id, ToQStringList(game.tags));
+  }
+  ShowLine(owned_note_, QString(), text::kDetail);
+  // Nothing removed: no section, as there's nothing to say.
+  owned_section_->setVisible(!owned_.empty());
+  if (divider_ != nullptr) divider_->setVisible(!owned_.empty());
+  RebuildOwnedTiles();
+}
+
 void SourcePage::ShowBundles(const HumbleLibraryResult& result) {
   if (&result != &bundles_result_) bundles_result_ = result;
   owned_.clear();
@@ -1360,6 +1431,16 @@ void SourcePage::RebuildOwnedTiles() {
   for (int row = 0; row < owned_model_->rowCount(); ++row) {
     QStandardItem* item = owned_model_->item(row);
     const auto& [ref, title] = owned_[row];
+    if (id_ == "local") {
+      const RemovedGame& game = removed_[ref];
+      item->setData(QString("local"), GameTileDelegate::SourceRole);
+      item->setData(true, GameTileDelegate::DimmedRole);
+      item->setData(RemovedAgo(game.removed_at), GameTileDelegate::StatusTextRole);
+      item->setData(QString("Add back"), GameTileDelegate::ActionRole);
+      item->setData(static_cast<int>(icons::Glyph::Plus), GameTileDelegate::ActionGlyphRole);
+      item->setData(true, GameTileDelegate::ActionEnabledRole);
+      continue;
+    }
     // Bundles aren't games, so there's no cover to look up.
     if (id_ == "humble") {
       item->setData(PlaceholderCover(title, source_.id + "-" + ref, tile_, devicePixelRatioF()),
@@ -1367,6 +1448,7 @@ void SourcePage::RebuildOwnedTiles() {
     } else {
       item->setData(QStringList{source_.id, ref}, GameTileDelegate::TitleCoverRole);
     }
+    item->setData(true, GameTileDelegate::DimmedRole);
     item->setData(tiers_.value(ref), GameTileDelegate::ProtonDbRole);
     item->setData(
         review_percents_.contains(ref) ? QVariant(review_percents_.value(ref)) : QVariant(),
@@ -1456,6 +1538,19 @@ void SourcePage::ShowHoverCard(TileGrid* grid, const QModelIndex& index) {
     const GameSummary* game = games_->GameAt(index);
     if (game == nullptr) return;
     hover_card_->ShowGame(*game, game->running);
+  } else if (id_ == "local") {
+    const QString id = index.data(GameTileDelegate::IdRole).toString();
+    const RemovedGame& game = removed_[id];
+    const QString played = game.play_seconds > 0
+                               ? FormatPlaytime(game.play_seconds) + " played, last " +
+                                     FormatPlayedAgo(game.last_played_at).toLower()
+                               : QString("Never played");
+    hover_card_->ShowTitle(QString::fromStdString(id_), id, QString::fromStdString(game.name),
+                           RemovedAgo(game.removed_at), played,
+                           game.install_path.empty()
+                               ? QString("Its files are gone")
+                               : QString("Its files are still where they were"),
+                           {});
   } else {
     // A running install's status line, else the pill's outcome; an idle one just says Install.
     const QString ref = index.data(GameTileDelegate::IdRole).toString();
@@ -1604,7 +1699,51 @@ void SourcePage::ShowOwnedMenu(const QPoint& pos) {
   }
 }
 
+void SourcePage::ShowRemovedMenu(const QPoint& pos) {
+  const QModelIndex index = owned_grid_->indexAt(pos);
+  if (!index.isValid()) return;
+  std::vector<RemovedGame> picked;
+  for (const QModelIndex& it : SelectForMenu(owned_grid_, index)) {
+    const auto game = removed_.constFind(it.data(GameTileDelegate::IdRole).toString());
+    if (game != removed_.constEnd()) picked.push_back(*game);
+  }
+  if (picked.empty()) return;
+  const auto with_files = std::ranges::count_if(
+      picked, [](const RemovedGame& game) { return !game.install_path.empty(); });
+  QMenu menu(this);
+  QAction* add = menu.addAction(with_files > 1 ? QString("Add back (%1)").arg(with_files)
+                                               : QString("Add back"));
+  add->setEnabled(with_files > 0 || picked.size() == 1);
+  menu.addSeparator();
+  // One at a time: each asks first.
+  QAction* forget = picked.size() == 1 ? menu.addAction("Forget…") : nullptr;
+  QAction* chosen = menu.exec(owned_grid_->viewport()->mapToGlobal(pos));
+  if (chosen == nullptr) return;
+  if (chosen == forget) {
+    actions::ForgetRemovedGame(this, picked.front(), [this] { RefreshOwned(); });
+    return;
+  }
+  if (chosen != add) return;
+  if (with_files == 0) return cards::Show(this, new AddGamesCard());
+  for (const RemovedGame& game : picked) {
+    if (!game.install_path.empty())
+      actions::AddBackRemovedGame(this, game, [this] { RefreshOwned(); });
+  }
+}
+
 void SourcePage::HandleEvent(const std::string& type, const std::string& data) {
+  // A game added or removed elsewhere changes Local's removed games; a scan's burst asks once.
+  if (id_ == "local" && owned_section_ != nullptr &&
+      (type == "game.added" || type == "game.removed" || type == "games.removed")) {
+    if (!removed_refresh_queued_) {
+      removed_refresh_queued_ = true;
+      QTimer::singleShot(300, this, [this] {
+        removed_refresh_queued_ = false;
+        RefreshOwned();
+      });
+    }
+    return;
+  }
   // An emulator installed or firmware added elsewhere (its install job, a second window).
   if ((IsEmulator() || IsModManager() || IsStore()) && type == "sources.changed")
     return RefreshStatus();

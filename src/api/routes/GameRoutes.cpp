@@ -7,7 +7,6 @@
 #include <fstream>
 #include <map>
 #include <optional>
-#include <set>
 
 #include "api/Http.h"
 #include "api/Routes.h"
@@ -86,24 +85,16 @@ void RegisterGameRoutes(Router& http, Services& s) {
   // --- games ----------------------------------------------------------------
 
   // Leaves out games tagged "hidden" unless a tag is asked for or include_hidden=true (and always
-  // while hidden games are locked), and games from a source that's off unless include_off=true.
+  // while hidden games are locked).
   http.Get("/v1/games", [&s](const Request& req, Response& res) {
     std::vector<model::Game> all = s.games.All();
     json out = json::array();
     const auto status_filter = req.params.find("status");
     const auto tag_filter = req.params.find("tag");
     const bool include_hidden = BoolParam(req, "include_hidden");
-    const bool include_off = BoolParam(req, "include_off");
-    std::set<std::string> off_sources;
-    if (!include_off) {
-      for (const store::SourceState& source : s.games.Sources()) {
-        if (!source.enabled) off_sources.insert(source.id);
-      }
-    }
     const Services::RecordSettings settings = s.CurrentRecordSettings();
     for (const model::Game& game : all) {
       if (s.Conceals(game)) continue;
-      if (!include_off && off_sources.contains(store::SourceIdOf(game.source))) continue;
       if (status_filter != req.params.end() &&
           status_filter->second != model::ToString(game.status)) {
         continue;
@@ -204,6 +195,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
     const json& b = *body;
     if (const auto problem = library::GamePatchProblem(b))
       return SendError(res, 400, "invalid_body", *problem);
+    const bool body_drop_prefix = b.value("drop_prefix", false);
 
     // A new install_path points the game at where its files were moved outside Mira; nothing moves.
     if (b.contains("install_path")) {
@@ -250,6 +242,11 @@ void RegisterGameRoutes(Router& http, Services& s) {
     s.SyncDesktopEntry(id);
     SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
     if (provision) s.ProvisionLater(*result);
+    // Turned native, with its prefix asked to go: its saves are backed up from it first.
+    if (before && body_drop_prefix && before->platform == model::Platform::Windows &&
+        result->platform == model::Platform::Native && !before->data_dir.empty() &&
+        before->source != "steam" && !before->runner_ref.starts_with("steam:"))
+      s.DropPrefixLater(*before);
     if (before) s.RefetchIfIdentityChanged(*before, *result);
     // A new folder too: a game sorted by a link needs its link pointed at it.
     if (before &&
@@ -470,10 +467,13 @@ void RegisterGameRoutes(Router& http, Services& s) {
   // DELETE /v1/games/{id} for many games, with one save, menu sync and event.
   // A game whose files can't be deleted stays in the library.
   // What removing each game can delete, for a client to show before asking.
-  // Removed games that left something on disk: a prefix, save backups, or files to add back.
-  http.Get("/v1/removed-games", [&s](const Request&, Response& res) {
+  // Removed games that left something on disk (a prefix, save backups, or files to add back), or
+  // every one with all=true. Hidden ones stay out while hidden games are locked.
+  http.Get("/v1/removed-games", [&s](const Request& req, Response& res) {
+    const bool all = BoolParam(req, "all");
     json list = json::array();
     for (const store::RemovedGame& game : s.games.Removed()) {
+      if (s.hidden.Locked() && std::ranges::contains(game.tags, std::string("hidden"))) continue;
       const std::string prefix = s.games.KeptDataDir(game.id);
       const std::filesystem::path backups = saves::GameBackups(s.config, game.id);
       const std::uintmax_t backup_bytes = saves::BackupBytes(backups);
@@ -481,10 +481,15 @@ void RegisterGameRoutes(Router& http, Services& s) {
       const bool files =
           !game.install_path.empty() &&
           std::filesystem::exists(std::filesystem::path(game.install_path) / game.exe_path, ec);
-      if (prefix.empty() && backup_bytes == 0 && !files) continue;
+      if (!all && prefix.empty() && backup_bytes == 0 && !files) continue;
       list.push_back({{"id", game.id},
                       {"name", game.name},
+                      {"source", game.source},
+                      {"tags", game.tags},
                       {"removed_at", game.removed_at},
+                      {"play_seconds", game.play_seconds},
+                      {"last_played_at", game.last_played_at},
+                      {"art", s.games.Metadata().ArtVersions(game.id)},
                       {"install_path", files ? game.install_path : std::string()},
                       {"exe_path", files ? game.exe_path : std::string()},
                       {"prefix", prefix},

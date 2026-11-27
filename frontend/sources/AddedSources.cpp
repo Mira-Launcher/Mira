@@ -37,8 +37,8 @@ QString Ago(std::int64_t unix_seconds) {
 
 QString Status(const SourceEntry& entry) {
   const QString items = Counted(entry.games, CopyFor(entry.source.id.toStdString()).item);
-  if (!entry.enabled) return "Off · " + items + " kept out of the library";
   QStringList details{items};
+  if (!entry.in_library) details << "kept off the library page";
   if (!entry.account.empty()) details << "signed in as " + QString::fromStdString(entry.account);
   if (entry.imported_at > 0) details << "imported " + Ago(entry.imported_at);
   return details.join(" · ");
@@ -140,13 +140,11 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
     tile.in_library = new Switch(tile.tile);
     tile.in_library->setAccessibleName(QString("%1's %2 in the library").arg(name, items));
     AddLine(tile.tile, QString("%1 in library").arg(items[0].toUpper() + items.mid(1)),
-            QString("Off keeps %1's %2 out of the library and stops importing. Nothing is deleted.")
+            QString("Off keeps %1's %2 off the library page. They stay on %1's own page.")
                 .arg(name, items),
             tile.in_library);
-    connect(tile.in_library, &Switch::toggled, this, [this, id](bool on) {
-      tiles_[id].note.clear();  // an old import's result no longer describes it
-      emit EnabledToggled(id, on);
-    });
+    connect(tile.in_library, &Switch::toggled, this,
+            [this, id](bool on) { emit InLibraryToggled(id, on); });
   }
   tile.in_sidebar = new Switch(tile.tile);
   tile.in_sidebar->setAccessibleName(name + " in the sidebar");
@@ -161,10 +159,9 @@ AddedSources::Tile& AddedSources::Build(const SourceEntry& entry) {
 
 void AddedSources::Update(Tile& tile) {
   const SourceEntry& entry = tile.entry;
-  tile.tile->SetDim(!entry.enabled);
   if (!tile.importing && tile.note.isEmpty()) tile.tile->Line()->setText(Status(entry));
-  for (auto [toggle, on] :
-       {std::pair{tile.in_library, entry.enabled}, std::pair{tile.in_sidebar, entry.in_sidebar}}) {
+  for (auto [toggle, on] : {std::pair{tile.in_library, entry.in_library},
+                            std::pair{tile.in_sidebar, entry.in_sidebar}}) {
     if (toggle == nullptr) continue;
     toggle->blockSignals(true);
     toggle->setChecked(on);
@@ -201,10 +198,7 @@ void AddedSources::ShowMenu(const QString& id) {
   if (id != "humble" && id != "local" && entry.source.kind != SourceInfo::Kind::ModManager) {
     const QString item = CopyFor(id.toStdString()).item;
     QAction* import = menu.addAction("Import " + item + "s now", this, [this, id] { Import(id); });
-    import->setEnabled(entry.enabled && !tile.importing);
-    if (!entry.enabled)
-      import->setToolTip(QString("Turn on ") + item[0].toUpper() + item.mid(1) +
-                         "s in library first.");
+    import->setEnabled(!tile.importing);
   }
   // Local is where games from no source go, so it can't be removed.
   if (id != "local") {

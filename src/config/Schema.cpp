@@ -1193,6 +1193,15 @@ Schema::Schema() {
          .keywords = "epic legendary sign in login timeout offline",
          .unit = "s"});
 
+  s.Add({.key = "epic.sync_playtime",
+         .label = "Sync playtime with Epic",
+         .type = Type::Bool,
+         .default_value = true,
+         .doc = "Adds the time Epic counted for a game (in the Epic Games Launcher or on other "
+                "computers) when Epic games are imported, and sends Epic the time played in Mira "
+                "after each session.",
+         .keywords = "epic playtime hours played import sync upload"});
+
   s.Item("gog", "GOG");
 
   s.Add({.key = "gog.gogdl_bin",

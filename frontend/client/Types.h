@@ -632,6 +632,8 @@ struct GamePatch {
   // plain list the way env's null-removes-a-key convention gives it one.
   std::optional<std::vector<std::string>> tags;
   std::optional<GameLaunch> launch;  // replaces the whole set
+  // With a Windows game turned native: its saves are backed up from its prefix, then it's deleted.
+  bool drop_prefix = false;
 };
 
 struct PatchGameResult {
@@ -1171,6 +1173,9 @@ struct FrontendPrefs {
   std::optional<bool> big_screen_large_text;
   std::optional<bool> big_screen_at_start;
   std::optional<bool> start_on_login;
+  std::optional<bool> login_opens_window;  // started at login, the window shows, not just the tray
+  // Closing the main window hides it to the tray (default), or quits Mira when false.
+  std::optional<bool> close_to_tray;
   // Big screen navigation sounds and controller vibration, both on by default.
   std::optional<bool> big_screen_sounds;
   // Vibration: "off", "light" (default) or "strong".
@@ -1351,10 +1356,15 @@ inline bool HasPrefixToDelete(const RemovalPlan& plan) {
   return !plan.prefix.empty() && plan.prefix_shared_with.empty() && !plan.folder_is_prefix;
 }
 
-// A removed game that left something on disk (GET /v1/removed-games).
+// A removed game whose record Mira keeps (GET /v1/removed-games).
 struct RemovedGame {
   std::string id;
   std::string name;
+  std::string source;  // as a game's: "scan", "manual", "epic"
+  std::vector<std::string> tags;
+  std::int64_t removed_at = 0;
+  std::int64_t play_seconds = 0;
+  std::optional<std::int64_t> last_played_at;
   std::string install_path;  // "" unless its files are still there to add back
   std::string exe_path;
   std::uint64_t prefix_bytes = 0;  // its kept prefix, 0 when none
@@ -1520,8 +1530,8 @@ struct DesktopEntrySyncResult {
 // One entry from GET /v1/sources: a source's place in Mira, as mirad stores it.
 struct SourceState {
   std::string id;
-  bool added = false;  // set up; the rest are offered on the Sources page's catalog
-  bool enabled = true;
+  bool added = false;      // set up; the rest are offered on the Sources page's catalog
+  bool in_library = true;  // its games on the library page, not only on its own
   bool in_sidebar = true;
   bool in_hidden_sidebar = true;  // in hidden mode's sidebar
   int position = 0;

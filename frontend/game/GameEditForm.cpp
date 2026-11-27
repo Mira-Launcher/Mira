@@ -5,6 +5,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -1049,6 +1050,22 @@ void GameEditForm::Save() {
           save_overrides();
         });
   };
+
+  // A Linux program picked for a Windows game makes it native, and its prefix goes (mirad backs up
+  // its saves from it first). Steam keeps its own prefixes.
+  if (patch.exe_path && !patch.exe_path->empty() && windows_ && !data_dir_.empty() &&
+      source_ != "steam") {
+    const QString suffix = QFileInfo(QString::fromStdString(*patch.exe_path)).suffix().toLower();
+    const bool native = !QStringList{"exe", "msi", "bat", "cmd", "html", "htm"}.contains(suffix);
+    if (native) {
+      if (!notify::Confirm(this, "Run it natively?",
+                           "This program runs without Wine or Proton, so the game's prefix is "
+                           "deleted. Its saves there are backed up first.",
+                           "Delete the prefix", /*destructive=*/true))
+        return;
+      patch.drop_prefix = true;
+    }
+  }
 
   setEnabled(false);
   if (!fields_changed) {

@@ -121,7 +121,7 @@ SourcesPage::SourcesPage(QWidget* parent) : QFrame(parent) {
   connect(added_, &AddedSources::OpenRequested, this, &SourcesPage::OpenRequested);
   connect(added_, &AddedSources::SettingsRequested, this, &SourcesPage::SettingsRequested);
   connect(added_, &AddedSources::SidebarToggled, this, &SourcesPage::SidebarToggled);
-  connect(added_, &AddedSources::EnabledToggled, this, &SourcesPage::EnabledToggled);
+  connect(added_, &AddedSources::InLibraryToggled, this, &SourcesPage::InLibraryToggled);
   connect(added_, &AddedSources::Imported, this, &SourcesPage::Imported);
   connect(added_, &AddedSources::Removed, this, &SourcesPage::Removed);
   connect(catalog_, &SourceCatalog::SetUpRequested, this, &SourcesPage::OpenSetup);

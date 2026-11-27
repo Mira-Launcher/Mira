@@ -118,6 +118,7 @@ class GameCard : public CardBackdrop {
   SavesPage* saves_page_ = nullptr;
   std::optional<SavesResult> saves_;
   int saves_request_ = 0;  // the newest LoadSaves: an older answer arriving after it is dropped
+  int achievements_request_ = 0;  // the same for LoadAchievements
   bool open_saves_when_loaded_ = false;
   QPushButton* art_button_ = nullptr;
   Button* play_ = nullptr;

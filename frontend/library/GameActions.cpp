@@ -130,6 +130,38 @@ void Stop(QWidget* parent, const std::string& id) {
   });
 }
 
+void AddBackRemovedGame(QWidget* parent, const RemovedGame& game, std::function<void()> done) {
+  api::AddManualGameAsync(parent, game.install_path, game.exe_path, game.name, {}, false, false,
+                          [parent, name = game.name, done](GameDetailResult added) {
+                            if (!added.ok)
+                              notify::FailedRequest(
+                                  parent, "Could not add back " + QString::fromStdString(name),
+                                  added.error);
+                            if (done) done();
+                          });
+}
+
+void ForgetRemovedGame(QWidget* parent, const RemovedGame& game, std::function<void()> done) {
+  const QString name = QString::fromStdString(game.name);
+  const bool kept_data = game.prefix_bytes > 0 || game.saves_bytes > 0;
+  const bool confirmed =
+      kept_data ? notify::Confirm(parent, "Delete what " + name + " kept?",
+                                  "Its prefix and save backups are deleted, and can't be "
+                                  "recovered. Its play history stays.",
+                                  "Delete")
+                : notify::Confirm(parent, "Forget " + name + "?",
+                                  "Mira stops listing it and forgets its settings. Its files and "
+                                  "play history stay.",
+                                  "Forget");
+  if (!confirmed) return;
+  const QString failed =
+      kept_data ? "Could not delete what " + name + " kept" : "Could not forget " + name;
+  api::DeleteRemovedGameAsync(parent, game.id, [parent, failed, done](StoreActionResult r) {
+    if (!r.ok) notify::FailedRequest(parent, failed, r.error);
+    if (done) done();
+  });
+}
+
 void RemoveGames(QWidget* parent, const std::vector<RemovalPlan>& plans, bool delete_prefix,
                  bool delete_saves, bool delete_outside) {
   // Each game asks only for what its plan says can go: files where they're Mira's or a store's

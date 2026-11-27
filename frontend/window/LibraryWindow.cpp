@@ -22,6 +22,7 @@
 #include <QLocale>
 #include <QMenu>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QScreen>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -107,6 +108,26 @@
 #include "TopBar.h"
 
 namespace {
+
+// Runs `clicked` on a left click of the widget it watches.
+class ClickFilter : public QObject {
+ public:
+  ClickFilter(QObject* parent, std::function<void()> clicked)
+      : QObject(parent), clicked_(std::move(clicked)) {}
+
+ protected:
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    if (event->type() == QEvent::MouseButtonRelease &&
+        static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+      clicked_();
+      return true;
+    }
+    return QObject::eventFilter(watched, event);
+  }
+
+ private:
+  std::function<void()> clicked_;
+};
 
 // Only local files can be added: a dropped web link or text is refused.
 bool CanAddDrop(const QMimeData* data) {
@@ -552,6 +573,7 @@ void LibraryWindow::ApplySettingsPrefs(const mira_gui::FrontendPrefs& prefs) {
   tile_size_synced_ = prefs.tile_size_synced.value_or(false);
   drag_select_ = prefs.drag_select.value_or(true);
   double_click_play_ = prefs.double_click_play.value_or(true);
+  close_to_tray_ = prefs.close_to_tray.value_or(true);
   mira_gui::system::SetCopyCommands(prefs.copy_commands.value_or(false));
   if (source_page_ != nullptr) source_page_->SetDragSelectEnabled(drag_select_);
   UpdateLibraryNavActive();  // the slider follows tile_size_synced_
@@ -743,6 +765,12 @@ void LibraryWindow::QuitOrClose() {
 void LibraryWindow::closeEvent(QCloseEvent* event) {
   // Only for the window Attach() made the tray's; a secondary window
   // closes for real either way, since nothing would bring it back.
+  if (mira_gui::tray::IsManaged(this) && !mira_gui::tray::Quitting() && !close_to_tray_) {
+    // Quits as the tray's Quit does, which closes this window again to ask what quitting asks.
+    event->ignore();
+    QTimer::singleShot(0, this, [] { mira_gui::tray::RequestQuit(); });
+    return;
+  }
   if (mira_gui::tray::IsManaged(this) && !mira_gui::tray::Quitting()) {
     FlushPrefs(/*quitting=*/false);  // the process stays, so the save needn't freeze the window
     event->ignore();
@@ -1929,7 +1957,11 @@ QWidget* LibraryWindow::BuildSettingsPage() {
   header_layout->addWidget(back);
   auto* title = new QLabel("Settings", header);
   mira_gui::SetTextStyle(title, mira_gui::text::kHeading);
-  header_layout->addWidget(title, /*stretch=*/1);
+  // The title goes back too, as a page title beside a back arrow does elsewhere.
+  title->setCursor(Qt::PointingHandCursor);
+  title->installEventFilter(new ClickFilter(title, [this] { RequestCloseSettings(); }));
+  header_layout->addWidget(title, /*stretch=*/0);
+  header_layout->addStretch(1);
   settings_panel_->SetHeader(header);
 
   settings_panel_->AddSectionAction(
@@ -2359,8 +2391,8 @@ void LibraryWindow::OpenSourcesPage(bool catalog) {
           &mira_gui::Sidebar::SetHiddenSidebarMirrors);
   connect(page, &mira_gui::SourcesPage::SidebarToggled, this,
           [this](const QString& id, bool shown) { sidebar_->SetSourceHidden(id, !shown); });
-  connect(page, &mira_gui::SourcesPage::EnabledToggled, sidebar_,
-          &mira_gui::Sidebar::SetSourceEnabled);
+  connect(page, &mira_gui::SourcesPage::InLibraryToggled, sidebar_,
+          &mira_gui::Sidebar::SetSourceInLibrary);
   connect(page, &mira_gui::SourcesPage::Imported, sidebar_, &mira_gui::Sidebar::NoteImported);
   connect(page, &mira_gui::SourcesPage::Removed, sidebar_, &mira_gui::Sidebar::ForgetSource);
   connect(page, &mira_gui::SourcesPage::OpenRequested, this, [this](const QString& id) {

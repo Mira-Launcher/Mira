@@ -22,11 +22,14 @@ std::string SteamLaunchAppId(const std::string& argv0, std::istream& rest) {
   if (!argv0.ends_with("/reaper")) return "";
   std::string arg;
   bool launch = false;
+  std::string appid;
   while (std::getline(rest, arg, '\0') && arg != "--") {
     if (arg == "SteamLaunch") launch = true;
-    if (launch && arg.starts_with("AppId=")) return arg.substr(6);
+    if (launch && arg.starts_with("AppId=")) appid = arg.substr(6);
+    // Steam's install and uninstall scripts (iscriptevaluator) run under the same wrapper.
+    if (launch && arg == "Install=1") return "";
   }
-  return "";
+  return appid;
 }
 
 namespace {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QStringList>
 #include <QWidget>
 #include <optional>
 #include <string>
@@ -50,7 +51,13 @@ class SavesPage : public QWidget {
   void Delete(const SaveSnapshot& snapshot);
   void Pin(const SaveSnapshot& snapshot);
   void Sync(const std::string& action);
+  const std::string& LookIn() const;
+  QWidget* TextButtonRow(QHBoxLayout** line);
   void AddFolder();
+  // Picks files; when they share a type, the page asks whether to keep only those or every file
+  // of that type in their folder.
+  void AddFiles();
+  void AddPicked(bool every_of_type);
   void RemoveFolder(const std::string& pattern);
   // Whether a backup, restore or sync from here is running, which disables the others.
   void SetBusy(bool busy);
@@ -70,6 +77,8 @@ class SavesPage : public QWidget {
     std::string undo;
   };
   std::optional<Restored> restored_;
+  // Files picked by Add files… while the page asks how to add them.
+  QStringList picked_;
 
   QWidget* controls_ = nullptr;
   QPushButton* back_up_ = nullptr;

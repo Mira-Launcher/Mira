@@ -344,7 +344,7 @@ SourcesResult ListSourcesSync() {
           SourceState source;
           source.id = item.value("id", std::string());
           source.added = item.value("added", false);
-          source.enabled = item.value("enabled", true);
+          source.in_library = item.value("in_library", true);
           source.in_sidebar = item.value("in_sidebar", true);
           source.in_hidden_sidebar = item.value("in_hidden_sidebar", source.in_sidebar);
           source.position = item.value("position", 0);
@@ -356,10 +356,10 @@ SourcesResult ListSourcesSync() {
       });
 }
 
-PatchConfigResult PatchSourceSync(const std::string& id, std::optional<bool> enabled,
+PatchConfigResult PatchSourceSync(const std::string& id, std::optional<bool> in_library,
                                   std::optional<bool> in_sidebar) {
   json body = json::object();
-  if (enabled) body["enabled"] = *enabled;
+  if (in_library) body["in_library"] = *in_library;
   if (in_sidebar) body["in_sidebar"] = *in_sidebar;
   const transport::Reply reply = transport::Patch("/v1/sources/" + PercentEncode(id), body);
   return {reply.ok, reply.error};
@@ -390,11 +390,11 @@ void ListSourcesAsync(QObject* context, std::function<void(SourcesResult)> callb
   async::Run(context, [] { return ListSourcesSync(); }, std::move(callback));
 }
 
-void PatchSourceAsync(QObject* context, const std::string& id, std::optional<bool> enabled,
+void PatchSourceAsync(QObject* context, const std::string& id, std::optional<bool> in_library,
                       std::optional<bool> in_sidebar,
                       std::function<void(PatchConfigResult)> callback) {
   async::Run(
-      context, [id, enabled, in_sidebar] { return PatchSourceSync(id, enabled, in_sidebar); },
+      context, [id, in_library, in_sidebar] { return PatchSourceSync(id, in_library, in_sidebar); },
       std::move(callback));
 }
 

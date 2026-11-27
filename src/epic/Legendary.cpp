@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 
+#include "achievements/Achievements.h"
 #include "core/Json.h"
 #include "core/Log.h"
 #include "core/StoreErrors.h"

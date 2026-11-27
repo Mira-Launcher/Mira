@@ -87,7 +87,8 @@ class Services {
   Lane installs{"installs", 1};      // installers a scan runs on its own
   Lane achievements{"achievements", 2};
   Lane achievement_icons{"achievement-icons", 4};
-  Lane saves{"saves", 1};  // the save-location list's updates
+  Lane playtime_sends{"playtime-sends", 1};  // a store's playtime, after a session
+  Lane saves{"saves", 1};                    // the save-location list's updates
   library::CatalogCache catalogs;
   Lane catalog_checks{"catalog-checks", 2};  // after `catalogs`, so its tasks stop first
   downloads::Queue downloads{config, games, events};
@@ -201,6 +202,10 @@ class Services {
   // Sets up a Windows game's prefix as a job: it can take minutes (umu fetches its runtime the
   // first time). The caller stores the game `setting_up` first; game.updated says how it went.
   void ProvisionLater(const model::Game& game);
+  // A game just turned native (`windows` is its record from before): backs up its saves from the
+  // prefix, pinned, then deletes the prefix and clears its data_dir, as a job. A failed backup
+  // keeps the prefix; so does a Steam game's or a shared one.
+  void DropPrefixLater(const model::Game& windows);
   // Claims a game for `purpose` ("launched", "moved", "deleted") until the result is dropped,
   // so it can't launch while its files change, or change while it launches or runs.
   Result<proc::ProcessSupervisor::Reservation> Claim(const std::string& game_id,

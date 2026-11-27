@@ -32,6 +32,13 @@ struct PlaySession {
   bool incomplete = false;  // mirad restarted during it, so how it ended is unknown
 };
 
+// A store's playtime total for a game as Mira last took it (`seen`, seconds), and the end of the
+// last session Mira sent the store (`sent_through`, unix seconds).
+struct StorePlaytime {
+  std::int64_t seen = 0;
+  std::int64_t sent_through = 0;
+};
+
 // One cloud save location's state, as saves::Cloud last checked and synced it.
 struct CloudSync {
   std::string location;
@@ -63,7 +70,8 @@ struct RemoteSync {
 struct SourceState {
   std::string id;
   bool added = false;   // set up: shown on the Sources page and in the sidebar, not in the catalog
-  bool enabled = true;  // off keeps it added but hidden, its games unlisted and imports skipped
+  bool enabled = true;  // off once removed, so imports don't bring its games back
+  bool in_library = true;  // off keeps its games off the library page; they're still imported
   bool in_sidebar = true;
   // In hidden mode's sidebar; unset while hidden mode mirrors in_sidebar.
   std::optional<bool> in_hidden_sidebar = std::nullopt;
@@ -85,6 +93,10 @@ struct RemovedGame {
   std::string exe_path;
   std::string data_dir;
   std::int64_t removed_at = 0;
+  std::string source;  // as a game's: "scan", "manual", "epic"
+  std::vector<std::string> tags;
+  std::int64_t play_seconds = 0;    // from its play history
+  std::int64_t last_played_at = 0;  // 0 if never
 };
 
 class GameStore {
@@ -215,6 +227,10 @@ class GameStore {
   // `forget`.
   std::vector<CloudSync> CloudSyncs(const std::string& id) const;
   Result<void> SetCloudSync(const std::string& id, const CloudSync& state);
+
+  // What a store's playtime sync last saw and sent for a game; none before its first sync.
+  std::optional<StorePlaytime> StorePlaytimeOf(const std::string& id) const;
+  Result<void> SetStorePlaytime(const std::string& id, const StorePlaytime& state);
 
   // Remote save state per slot, kept on a plain removal and dropped with `forget`.
   std::optional<RemoteSync> RemoteSyncOf(const std::string& id, const std::string& slot) const;

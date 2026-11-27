@@ -133,14 +133,18 @@ bool FocusRing::eventFilter(QObject* watched, QEvent* event) {
   switch (event->type()) {
     case QEvent::MouseButtonPress:
     case QEvent::MouseButtonDblClick:
+      by_mouse_ = true;
       SetShown(false);
       break;
     case QEvent::KeyPress:
+      by_mouse_ = false;
       if (NavigationKey(static_cast<QKeyEvent*>(event)->key())) SetShown(true);
       break;
     case QEvent::FocusIn: {
+      // A clicked button that disables or hides itself hands focus on with Tab's reason too.
       const Qt::FocusReason reason = static_cast<QFocusEvent*>(event)->reason();
-      if (reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason) SetShown(true);
+      if (!by_mouse_ && (reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason))
+        SetShown(true);
       break;
     }
     case QEvent::Move:

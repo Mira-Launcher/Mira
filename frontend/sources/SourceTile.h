@@ -27,8 +27,6 @@ class SourceTile : public QFrame {
   QHBoxLayout* Corner() const { return corner_; }
   QVBoxLayout* Body() const { return body_; }
   void SetClickable(const QString& tooltip);
-  // Fades the badge and name, e.g. while the source is off.
-  void SetDim(bool dim);
 
   bool hasHeightForWidth() const override;
   int heightForWidth(int width) const override;

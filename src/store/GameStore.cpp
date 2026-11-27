@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 14> kMigrations = {
+constexpr std::array<std::string_view, 16> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -204,12 +204,26 @@ CREATE TABLE IF NOT EXISTS remote_sync(
   PRIMARY KEY(game_id, slot)
 ) STRICT;
 )sql",
+    R"sql(
+-- A store game's playtime as Mira last took it from the store, and up to when it sent its own.
+CREATE TABLE IF NOT EXISTS store_playtime(
+  game_id TEXT PRIMARY KEY,
+  seen INTEGER NOT NULL,
+  sent_through INTEGER NOT NULL
+) STRICT;
+)sql",
+    R"sql(
+-- A source's games can stay off the library page while it keeps importing; one switched off did both.
+ALTER TABLE sources ADD COLUMN in_library INTEGER NOT NULL DEFAULT 1;
+UPDATE sources SET in_library = 0, enabled = 1 WHERE added = 1 AND enabled = 0;
+)sql",
 };
 
 // The fields a removed game keeps: what the user chose, not what a store or scan finds again.
-constexpr std::array<std::string_view, 12> kKeptFields = {
-    "name",     "exe_path",   "args",      "working_dir", "runner_ref", "runner_config",
-    "data_dir", "folder_tag", "overrides", "env",         "launch",     "tags"};
+// `source` only lists it under its source.
+constexpr std::array<std::string_view, 13> kKeptFields = {
+    "name",       "exe_path",  "args", "working_dir", "runner_ref", "runner_config", "data_dir",
+    "folder_tag", "overrides", "env",  "launch",      "tags",       "source"};
 
 // An id names folders (its artwork's, among others), so it must be one plain path segment.
 Result<void> CheckId(const std::string& id) {
@@ -431,6 +445,24 @@ Result<void> GameStore::SetCloudSync(const std::string& id, const CloudSync& sta
       .Bind(6, state.local_marker)
       .Bind(7, state.checked_at)
       .Run();
+}
+
+std::optional<StorePlaytime> GameStore::StorePlaytimeOf(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  auto select = db_.Prepare("SELECT seen, sent_through FROM store_playtime WHERE game_id = ?");
+  if (!select) return std::nullopt;
+  select->Bind(1, id);
+  auto row = select->Step();
+  if (!row || !*row) return std::nullopt;
+  return StorePlaytime{.seen = select->Int(0), .sent_through = select->Int(1)};
+}
+
+Result<void> GameStore::SetStorePlaytime(const std::string& id, const StorePlaytime& state) {
+  std::lock_guard lock(mutex_);
+  auto upsert = db_.Prepare(
+      "INSERT OR REPLACE INTO store_playtime(game_id, seen, sent_through) VALUES(?, ?, ?)");
+  if (!upsert) return std::unexpected(upsert.error());
+  return upsert->Bind(1, id).Bind(2, state.seen).Bind(3, state.sent_through).Run();
 }
 
 std::optional<RemoteSync> GameStore::RemoteSyncOf(const std::string& id,
@@ -706,7 +738,8 @@ Result<void> GameStore::KeepUiState(const json& state) {
 namespace {
 // A source's row with hidden mode's choice beside it, NULL when there is none.
 constexpr std::string_view kSourceSelect =
-    "SELECT id, added, enabled, in_sidebar, position, imported_at, hidden_sidebar.shown "
+    "SELECT id, added, enabled, in_sidebar, position, imported_at, hidden_sidebar.shown, "
+    "in_library "
     "FROM sources LEFT JOIN hidden_sidebar ON hidden_sidebar.source = sources.id";
 
 // Columns: kSourceSelect's.
@@ -715,6 +748,7 @@ SourceState ReadSource(const Statement& row) {
       .id = row.Text(0),
       .added = row.Int(1) != 0,
       .enabled = row.Int(2) != 0,
+      .in_library = row.Int(7) != 0,
       .in_sidebar = row.Int(3) != 0,
       .in_hidden_sidebar = row.IsNull(6) ? std::nullopt : std::optional<bool>(row.Int(6) != 0),
       .position = static_cast<int>(row.Int(4)),
@@ -751,8 +785,8 @@ void GameStore::SaveSource(const SourceState& state) {
   if (!db_.IsOpen()) return;
   const auto written = Transact([&]() -> Result<void> {
     auto keep = db_.Prepare(
-        "INSERT OR REPLACE INTO sources(id, added, enabled, in_sidebar, position, imported_at) "
-        "VALUES(?, ?, ?, ?, ?, ?)");
+        "INSERT OR REPLACE INTO sources(id, added, enabled, in_sidebar, position, imported_at, "
+        "in_library) VALUES(?, ?, ?, ?, ?, ?, ?)");
     if (!keep) return std::unexpected(keep.error());
     if (auto done = keep->Bind(1, state.id)
                         .Bind(2, std::int64_t{state.added})
@@ -760,6 +794,7 @@ void GameStore::SaveSource(const SourceState& state) {
                         .Bind(4, std::int64_t{state.in_sidebar})
                         .Bind(5, std::int64_t{state.position})
                         .Bind(6, state.imported_at)
+                        .Bind(7, std::int64_t{state.in_library})
                         .Run();
         !done)
       return done;
@@ -976,8 +1011,11 @@ std::vector<RemovedGame> GameStore::Removed() const {
   auto select = db_.Prepare(
       "SELECT id, install_path, COALESCE(json_extract(record, '$.name'), ''), "
       "COALESCE(json_extract(record, '$.exe_path'), ''), "
-      "COALESCE(json_extract(record, '$.data_dir'), ''), removed_at FROM removed_games "
-      "ORDER BY removed_at DESC");
+      "COALESCE(json_extract(record, '$.data_dir'), ''), removed_at, "
+      "COALESCE(json_extract(record, '$.source'), ''), COALESCE(json_extract(record, '$.tags'), "
+      "'[]'), (SELECT COALESCE(SUM(duration_seconds), 0) FROM sessions s WHERE s.game_id = r.id "
+      "AND finished = 1), (SELECT COALESCE(MAX(ended_at), 0) FROM sessions s WHERE s.game_id = "
+      "r.id AND finished = 1) FROM removed_games r ORDER BY removed_at DESC");
   if (!select) return removed;
   for (auto row = select->Step(); row && *row; row = select->Step()) {
     RemovedGame game{.id = select->Text(0),
@@ -985,7 +1023,20 @@ std::vector<RemovedGame> GameStore::Removed() const {
                      .install_path = select->Text(1),
                      .exe_path = select->Text(3),
                      .data_dir = select->Text(4),
-                     .removed_at = select->Int(5)};
+                     .removed_at = select->Int(5),
+                     .source = select->Text(6),
+                     .tags = {},
+                     .play_seconds = select->Int(8),
+                     .last_played_at = select->Int(9)};
+    // Records kept before sources were: a store title's id names its store.
+    if (game.source.empty()) {
+      const std::string prefix = game.id.substr(0, game.id.find('-'));
+      game.source = game.install_path.empty() && prefix != game.id ? prefix : "local";
+    }
+    const json tags = json::parse(select->Text(7), nullptr, /*allow_exceptions=*/false);
+    if (tags.is_array())
+      for (const json& tag : tags)
+        if (tag.is_string()) game.tags.push_back(tag.get<std::string>());
     if (!std::ranges::contains(games_, game.id, &model::Game::id))
       removed.push_back(std::move(game));
   }
@@ -1211,7 +1262,8 @@ Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::st
       }
       for (const char* sql :
            {"DELETE FROM removed_games WHERE id = ?", "DELETE FROM cloud_sync WHERE game_id = ?",
-            "DELETE FROM remote_sync WHERE game_id = ?"}) {
+            "DELETE FROM remote_sync WHERE game_id = ?",
+            "DELETE FROM store_playtime WHERE game_id = ?"}) {
         auto drop = db_.Prepare(sql);
         if (!drop) return std::unexpected(drop.error());
         if (auto done = drop->Bind(1, game.id).Run(); !done) return done;

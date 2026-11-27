@@ -115,14 +115,18 @@ class ArtworkStore : public QObject {
   void ThemeChanged();
 
   // While on (a zoom moving; see ZoomSettle), a cover not already scaled is scaled quickly and not
-  // kept, so each step costs little. Turned off, every cover drawn that way is announced as
-  // changed, so a view that didn't zoom draws it again too.
+  // kept, so each step costs little. Counted, so it stays on while any view zooms. Off again, every
+  // cover drawn that way is announced as changed, so a view that didn't zoom draws it again too.
   void SetQuickScaling(bool quick);
+  bool QuickScaling() const { return quick_; }
 
   // The games whose sidebar-sized images stay (the sidebar's pinned and recently
   // played); any other's is dropped once its sizes are drawn.
   void Keep(const QSet<QString>& ids);
-  // Drops the covers drawn at this tile width, once the grid no longer uses it.
+  // A view draws covers at this width (a ZoomSettle's), until it lets go; ForgetWidth keeps those.
+  void HoldWidth(int width) { ++held_widths_[width]; }
+  void LetGoWidth(int width);
+  // Drops the covers drawn at this tile width, unless a view still holds it.
   void ForgetWidth(int width);
 
   // With the window in the tray: every image goes, small copies too. Restore fetches the
@@ -189,6 +193,7 @@ class ArtworkStore : public QObject {
   std::tuple<int, int, int> drawn_with_;   // the theme values ThemeChanged compares
   QHash<QString, QString> slot_versions_;  // from NoteArt; empty for none
   bool quick_ = false;
+  int zooming_ = 0;                   // views whose zoom turned quick scaling on
   QSet<QString> drawn_quickly_;       // stand-ins drawn while quick_, announced once it's off
   QSet<QString> answered_;            // asked and heard back, either way
   QSet<QString> queued_;              // in `pending_` or in flight
@@ -198,6 +203,7 @@ class ArtworkStore : public QObject {
   QQueue<QString> ahead_;                                       // PrefetchTitle's
   QHash<QString, std::pair<std::string, std::string>> titles_;  // id -> {source, ref}
   QHash<QString, qint64> drawn_;  // covers drawn at tile size, by when last drawn (clock_ ms)
+  QHash<int, int> held_widths_;   // cover width -> views drawing at it
   QElapsedTimer clock_;
   bool trim_queued_ = false;
   bool drop_signal_queued_ = false;

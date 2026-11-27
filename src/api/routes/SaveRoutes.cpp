@@ -189,14 +189,21 @@ void RegisterSaveRoutes(Router& http, Services& s) {
 
   // One folder at a time, changed in the stored list itself, so two quick edits both land.
   http.Post(R"(/v1/games/([^/]+)/saves/folders)", [&s](const Request& req, Response& res) {
-    constexpr std::string_view kShape = R"({"add": "<path>"} or {"remove": "<pattern>"})";
+    constexpr std::string_view kShape =
+        R"({"add": "<path>", "matching"?: "<name pattern>"} or {"remove": "<pattern>"})";
     const std::string id = req.matches[1];
     const auto body = BodyObject(req, res, kShape);
     if (!body) return;
     const std::string add = core::JsonString(*body, "add");
     const std::string remove = core::JsonString(*body, "remove");
-    if (add.empty() == remove.empty())
+    const std::string matching = core::JsonString(*body, "matching");
+    if (add.empty() == remove.empty() || (!matching.empty() && add.empty()))
       return SendError(res, 400, "invalid_body", std::format("expected {}", kShape));
+    // A name pattern for the files inside the added folder, one path component.
+    if (!matching.empty() &&
+        (matching.find('/') != std::string::npos || matching == "." || matching == ".."))
+      return SendError(res, 400, "invalid_body",
+                       "\"matching\" is a pattern for file names in the folder, such as *.sav");
     auto updated = s.games.Update(id, [&](model::Game& game) {
       json kept = json::array();
       if (const auto found = game.overrides.find("saves.extra_paths");
@@ -204,8 +211,10 @@ void RegisterSaveRoutes(Router& http, Services& s) {
         kept = *found;
       // Written against the game's folders, so they follow it when it or its prefix moves.
       const std::string pattern =
-          add.empty() ? remove
-                      : saves::Shorten(saves::Escape(add), saves::RootsFor(s.config, game));
+          add.empty()
+              ? remove
+              : saves::Shorten(saves::Escape(add) + (matching.empty() ? "" : "/" + matching),
+                               saves::RootsFor(s.config, game));
       kept.erase(std::remove(kept.begin(), kept.end(), json(pattern)), kept.end());
       if (!add.empty()) kept.push_back(pattern);
       // None left clears the game's own value rather than keeping an empty one.

@@ -96,10 +96,12 @@ void DeleteSaveBackupAsync(QObject* context, const std::string& id, const std::s
 void PinSaveBackupAsync(QObject* context, const std::string& id, const std::string& snapshot,
                         bool pinned, std::function<void(GameActionResult)> callback);
 
-// POST /v1/games/{id}/saves/folders: adds a picked folder (`add`), or takes one out by its pattern.
+// POST /v1/games/{id}/saves/folders: adds a picked file or folder (`add`), only its files whose
+// names match `matching` when given, or takes one out by its pattern.
 void ChangeSaveFolderAsync(QObject* context, const std::string& id, bool add,
                            const std::string& folder,
-                           std::function<void(GameActionResult)> callback);
+                           std::function<void(GameActionResult)> callback,
+                           const std::string& matching = {});
 
 // POST /v1/games/{id}/saves/cloud, a job: `action` is "check", "sync", "download" or "upload".
 void SyncCloudSavesAsync(QObject* context, const std::string& id, const std::string& action,
@@ -114,9 +116,10 @@ void RunWinetricksAsync(QObject* context, const std::string& id, const std::stri
 void GetInstalledTricksAsync(QObject* context, const std::string& id,
                              std::function<void(InstalledTricksResult)> callback);
 
-// GET /v1/removed-games, and DELETE /v1/removed-games/{id}: deletes a removed game's kept prefix
-// and save backups.
-void GetRemovedGamesAsync(QObject* context, std::function<void(RemovedGamesResult)> callback);
+// GET /v1/removed-games: the removed games that left something on disk, or every one with `all`.
+// DELETE /v1/removed-games/{id}: deletes a removed game's kept prefix, save backups and record.
+void GetRemovedGamesAsync(QObject* context, bool all,
+                          std::function<void(RemovedGamesResult)> callback);
 void DeleteRemovedGameAsync(QObject* context, const std::string& id,
                             std::function<void(StoreActionResult)> callback);
 

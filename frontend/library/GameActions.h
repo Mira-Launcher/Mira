@@ -57,6 +57,13 @@ void ChoosePlay(QWidget* parent, const GameSummary& game,
 // that follows is what actually updates the view.
 void Stop(QWidget* parent, const std::string& id);
 
+// Adds a removed game back from its files where they were, with the settings it kept; `done` runs
+// either way, after a failure is reported.
+void AddBackRemovedGame(QWidget* parent, const RemovedGame& game, std::function<void()> done);
+// After asking, deletes what a removed game kept (prefix, save backups) and its record, so it
+// leaves the removed games; with nothing kept it's only forgotten. `done` runs once it's gone.
+void ForgetRemovedGame(QWidget* parent, const RemovedGame& game, std::function<void()> done);
+
 // Removes the games a RemoveGamesCard was confirmed for, as their plans say: files go wherever
 // they're Mira's or a store's to delete, outside Mira's folders only with `delete_outside`, never
 // otherwise; prefixes no other game uses only with `delete_prefix`, save backups only with
