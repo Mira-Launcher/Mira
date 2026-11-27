@@ -403,8 +403,11 @@ TEST_CASE("Reconcile re-adopts a session whose wrapper is still alive, tracking 
   // something genuine to answer about. Reconcile can never actually
   // waitpid() this (it isn't this process's child), which is exactly the
   // case it exists to handle.
+  // Named mira-run: only a mira-run is re-adopted.
+  const fs::path wrapper = state / "mira-run";
+  fs::copy_file("/usr/bin/sleep", wrapper);
   Command command;
-  command.argv = {"sh", "-c", "sleep 30"};
+  command.argv = {wrapper.string(), "30"};
   auto pid = runner::SpawnDetached(command);
   REQUIRE(pid.has_value());
 

@@ -696,6 +696,28 @@ Result<void> Transfer(const fs::path& from, const fs::path& to, bool move) {
   return {};
 }
 
+// Each pair in turn. One failing puts back what already moved, or removes what was copied, so a
+// retry starts from where the user's files were.
+Result<void> TransferAll(const std::vector<std::pair<fs::path, fs::path>>& pairs, bool move) {
+  std::vector<std::pair<fs::path, fs::path>> done;
+  for (const auto& [from, to] : pairs) {
+    std::error_code ec;
+    const bool there = fs::exists(to, ec);  // left alone, so not undone either
+    if (auto transferred = Transfer(from, to, move); !transferred) {
+      for (auto it = done.rbegin(); it != done.rend(); ++it) {
+        if (move) {
+          (void)library::MovePath(it->second, it->first, true);
+        } else {
+          fs::remove_all(it->second, ec);
+        }
+      }
+      return transferred;
+    }
+    if (!there) done.emplace_back(from, to);
+  }
+  return {};
+}
+
 // The newest file matching `asset` the folder listing at `listing_url` links to, by version.
 Result<runner::ReleaseAsset> NewestListed(const config::Config& config, const Emulator& emulator) {
   const fs::path page = ToolDir(config, emulator).parent_path() / (emulator.id + "-listing.html");
@@ -1022,9 +1044,7 @@ Result<library::ImportSummary> AddFiles(config::Config& config, store::GameStore
       return Err("already_there",
                  std::format("two files are named {}", it->second.filename().string()));
   }
-  for (const auto& [from, to] : transfers) {
-    if (auto done = Transfer(from, to, move); !done) return std::unexpected(done.error());
-  }
+  if (auto done = TransferAll(transfers, move); !done) return std::unexpected(done.error());
   if (!refused.empty() && refused.size() == files.size()) {
     std::string names;
     for (const std::string& name : refused) names += (names.empty() ? "" : ", ") + name;
@@ -1110,15 +1130,15 @@ Result<model::Game> MoveGame(config::Config& config, store::GameStore& games,
     if (paths::IsWithin(install, {root})) from_dir = root;
   }
   const fs::path to_dir = RomDir(config, to);
+  std::vector<std::pair<fs::path, fs::path>> moves;
   for (const fs::path& file : GameFiles(config, game)) {
     const fs::path target = to_dir / file.lexically_relative(from_dir);
     std::error_code ec;
     if (fs::exists(target, ec))
       return Err("already_there", std::format("{} already has {}", to.name, game.name));
-    fs::create_directories(target.parent_path(), ec);
-    if (auto moved = library::MovePath(file, target, true); !moved)
-      return std::unexpected(moved.error());
+    moves.emplace_back(file, target);
   }
+  if (auto moved = TransferAll(moves, true); !moved) return std::unexpected(moved.error());
   const fs::path moved = to_dir / install.lexically_relative(from_dir);
   return games.Update(game.id, [&](model::Game& g) {
     g.source = to.id;
@@ -1322,10 +1342,7 @@ Result<library::ImportSummary> AdoptExisting(config::Config& config, store::Game
     }
     if (move &&
         std::ranges::none_of(moves, [&](const auto& m) { return fs::exists(m.second, ec); })) {
-      for (const auto& [part, target] : moves) {
-        if (auto moved = Transfer(part, target, true); !moved)
-          return std::unexpected(moved.error());
-      }
+      if (auto moved = TransferAll(moves, true); !moved) return std::unexpected(moved.error());
       file = rom_dir / file.filename();
     }
     const bool folder = fs::is_directory(file, ec);
