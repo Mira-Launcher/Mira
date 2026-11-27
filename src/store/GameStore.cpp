@@ -220,9 +220,10 @@ UPDATE sources SET in_library = 0, enabled = 1 WHERE added = 1 AND enabled = 0;
 };
 
 // The fields a removed game keeps: what the user chose, not what a store or scan finds again.
-constexpr std::array<std::string_view, 12> kKeptFields = {
-    "name",     "exe_path",   "args",      "working_dir", "runner_ref", "runner_config",
-    "data_dir", "folder_tag", "overrides", "env",         "launch",     "tags"};
+// `source` only lists it under its source.
+constexpr std::array<std::string_view, 13> kKeptFields = {
+    "name",       "exe_path",  "args", "working_dir", "runner_ref", "runner_config", "data_dir",
+    "folder_tag", "overrides", "env",  "launch",      "tags",       "source"};
 
 // An id names folders (its artwork's, among others), so it must be one plain path segment.
 Result<void> CheckId(const std::string& id) {
@@ -1010,8 +1011,11 @@ std::vector<RemovedGame> GameStore::Removed() const {
   auto select = db_.Prepare(
       "SELECT id, install_path, COALESCE(json_extract(record, '$.name'), ''), "
       "COALESCE(json_extract(record, '$.exe_path'), ''), "
-      "COALESCE(json_extract(record, '$.data_dir'), ''), removed_at FROM removed_games "
-      "ORDER BY removed_at DESC");
+      "COALESCE(json_extract(record, '$.data_dir'), ''), removed_at, "
+      "COALESCE(json_extract(record, '$.source'), ''), COALESCE(json_extract(record, '$.tags'), "
+      "'[]'), (SELECT COALESCE(SUM(duration_seconds), 0) FROM sessions s WHERE s.game_id = r.id "
+      "AND finished = 1), (SELECT COALESCE(MAX(ended_at), 0) FROM sessions s WHERE s.game_id = "
+      "r.id AND finished = 1) FROM removed_games r ORDER BY removed_at DESC");
   if (!select) return removed;
   for (auto row = select->Step(); row && *row; row = select->Step()) {
     RemovedGame game{.id = select->Text(0),
@@ -1019,7 +1023,20 @@ std::vector<RemovedGame> GameStore::Removed() const {
                      .install_path = select->Text(1),
                      .exe_path = select->Text(3),
                      .data_dir = select->Text(4),
-                     .removed_at = select->Int(5)};
+                     .removed_at = select->Int(5),
+                     .source = select->Text(6),
+                     .tags = {},
+                     .play_seconds = select->Int(8),
+                     .last_played_at = select->Int(9)};
+    // Records kept before sources were: a store title's id names its store.
+    if (game.source.empty()) {
+      const std::string prefix = game.id.substr(0, game.id.find('-'));
+      game.source = game.install_path.empty() && prefix != game.id ? prefix : "local";
+    }
+    const json tags = json::parse(select->Text(7), nullptr, /*allow_exceptions=*/false);
+    if (tags.is_array())
+      for (const json& tag : tags)
+        if (tag.is_string()) game.tags.push_back(tag.get<std::string>());
     if (!std::ranges::contains(games_, game.id, &model::Game::id))
       removed.push_back(std::move(game));
   }

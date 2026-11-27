@@ -954,7 +954,7 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
   if (forget) {
     games.Metadata().Remove(game.id);
   } else if (game.source != "steam" && library::FindStore(game.source) == nullptr) {
-    games.Metadata().KeepPicks(game.id);
+    games.Metadata().KeepCoverAndPicks(game.id);
   }
   return {};
 }

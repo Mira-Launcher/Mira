@@ -93,6 +93,10 @@ struct RemovedGame {
   std::string exe_path;
   std::string data_dir;
   std::int64_t removed_at = 0;
+  std::string source;  // as a game's: "scan", "manual", "epic"
+  std::vector<std::string> tags;
+  std::int64_t play_seconds = 0;    // from its play history
+  std::int64_t last_played_at = 0;  // 0 if never
 };
 
 class GameStore {

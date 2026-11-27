@@ -467,10 +467,13 @@ void RegisterGameRoutes(Router& http, Services& s) {
   // DELETE /v1/games/{id} for many games, with one save, menu sync and event.
   // A game whose files can't be deleted stays in the library.
   // What removing each game can delete, for a client to show before asking.
-  // Removed games that left something on disk: a prefix, save backups, or files to add back.
-  http.Get("/v1/removed-games", [&s](const Request&, Response& res) {
+  // Removed games that left something on disk (a prefix, save backups, or files to add back), or
+  // every one with all=true. Hidden ones stay out while hidden games are locked.
+  http.Get("/v1/removed-games", [&s](const Request& req, Response& res) {
+    const bool all = BoolParam(req, "all");
     json list = json::array();
     for (const store::RemovedGame& game : s.games.Removed()) {
+      if (s.hidden.Locked() && std::ranges::contains(game.tags, std::string("hidden"))) continue;
       const std::string prefix = s.games.KeptDataDir(game.id);
       const std::filesystem::path backups = saves::GameBackups(s.config, game.id);
       const std::uintmax_t backup_bytes = saves::BackupBytes(backups);
@@ -478,10 +481,15 @@ void RegisterGameRoutes(Router& http, Services& s) {
       const bool files =
           !game.install_path.empty() &&
           std::filesystem::exists(std::filesystem::path(game.install_path) / game.exe_path, ec);
-      if (prefix.empty() && backup_bytes == 0 && !files) continue;
+      if (!all && prefix.empty() && backup_bytes == 0 && !files) continue;
       list.push_back({{"id", game.id},
                       {"name", game.name},
+                      {"source", game.source},
+                      {"tags", game.tags},
                       {"removed_at", game.removed_at},
+                      {"play_seconds", game.play_seconds},
+                      {"last_played_at", game.last_played_at},
+                      {"art", s.games.Metadata().ArtVersions(game.id)},
                       {"install_path", files ? game.install_path : std::string()},
                       {"exe_path", files ? game.exe_path : std::string()},
                       {"prefix", prefix},

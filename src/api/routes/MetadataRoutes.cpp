@@ -47,8 +47,10 @@ std::optional<model::Game> ArtSubject(Services& s, const std::string& id) {
   return title;
 }
 
+// A removed game counts too, for its kept cover.
 bool HasArtSubject(Services& s, const std::string& id) {
-  return s.games.Contains(id) || ArtSubject(s, id).has_value();
+  return s.games.Contains(id) || ArtSubject(s, id).has_value() ||
+         std::ranges::contains(s.games.Removed(), id, &store::RemovedGame::id);
 }
 
 }  // namespace

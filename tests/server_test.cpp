@@ -988,6 +988,85 @@ TEST_CASE("DELETE /v1/games/{id}?purge=true removes files, prefix, and metadata 
 }
 
 TEST_CASE(
+    "Every removed game lists with its source, play history and cover, hidden ones only "
+    "while unlocked") {
+  LiveServer server(TempDir("server-removed-list"));
+  const fs::path library_root = TempDir("server-removed-list-library");
+  REQUIRE(server.MutableConfig()
+              .Set("library_roots", nlohmann::json::array({library_root.string()}))
+              .has_value());
+  test::Touch(library_root / "Celeste" / "Celeste", "elf", /*executable=*/true);
+  model::Game celeste;
+  celeste.id = "celeste";
+  celeste.name = "Celeste";
+  celeste.source = "scan";
+  celeste.install_path = (library_root / "Celeste").string();
+  celeste.exe_path = "Celeste";
+  model::Game balatro = celeste;
+  balatro.id = "balatro";
+  balatro.name = "Balatro";
+  balatro.install_path = (library_root / "Balatro").string();  // nothing on disk
+  balatro.tags = {"hidden"};
+  for (const model::Game& game : {celeste, balatro}) REQUIRE(server.games().Upsert(game));
+  REQUIRE(server.games().FinishSession({.game_id = "celeste",
+                                        .started_at = 1700000000,
+                                        .ended_at = 1700000600,
+                                        .duration_seconds = 600},
+                                       [](model::Game&) {}));
+  test::Touch(server.games().Metadata().ArtworkDir("celeste") / "cover.png", "png");
+  test::Touch(server.games().Metadata().ArtworkDir("celeste") / "h", "png");
+  REQUIRE(server.games()
+              .Metadata()
+              .Write("celeste", {{"artwork", {{"file", "cover.png"}}}, {"hero", {{"file", "h"}}}})
+              .has_value());
+
+  httplib::Client client = server.Client();
+  for (const char* id : {"celeste", "balatro"}) {
+    const auto removed = client.Delete(std::string("/v1/games/") + id);
+    REQUIRE(removed);
+    REQUIRE(removed->status == 200);
+  }
+
+  const auto list = [&](const std::string& query) {
+    const auto res = client.Get("/v1/removed-games" + query);
+    REQUIRE(res);
+    REQUIRE(res->status == 200);
+    return nlohmann::json::parse(res->body);
+  };
+  // Without all, only what left something on disk.
+  const nlohmann::json leftovers = list("");
+  REQUIRE(leftovers.size() == 1);
+  CHECK(leftovers[0]["id"] == "celeste");
+
+  const nlohmann::json all = list("?all=true");
+  REQUIRE(all.size() == 2);
+  const auto entry = [&](const std::string& id) {
+    const auto it = std::ranges::find_if(all, [&](const auto& e) { return e["id"] == id; });
+    REQUIRE(it != all.end());
+    return *it;
+  };
+  const nlohmann::json removed_celeste = entry("celeste");
+  CHECK(removed_celeste["source"] == "scan");
+  CHECK(removed_celeste["play_seconds"] == 600);
+  CHECK(removed_celeste["last_played_at"] == 1700000600);
+  CHECK(removed_celeste["install_path"] == celeste.install_path);
+  CHECK(removed_celeste["art"].contains("cover"));
+  CHECK_FALSE(removed_celeste["art"].contains("hero"));
+  const nlohmann::json removed_balatro = entry("balatro");
+  CHECK(removed_balatro["install_path"] == "");
+  CHECK(removed_balatro["play_seconds"] == 0);
+  const auto cover = client.Get("/v1/games/celeste/artwork?type=cover");
+  REQUIRE(cover);
+  CHECK(cover->status == 200);
+
+  REQUIRE(client.Put("/v1/hidden/password", R"({"password": "p"})", "application/json"));
+  REQUIRE(client.Post("/v1/hidden/lock", "{}", "application/json"));
+  const nlohmann::json locked = list("?all=true");
+  REQUIRE(locked.size() == 1);
+  CHECK(locked[0]["id"] == "celeste");
+}
+
+TEST_CASE(
     "DELETE /v1/games/{id}?delete_files=true removes a store game from Mira's store folder, and "
     "only an AppImage from a shared one") {
   LiveServer server(TempDir("server-delete-store-files"));
