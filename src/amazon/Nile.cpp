@@ -113,8 +113,8 @@ Result<void> FinishLogin(const config::Config& config, const std::string& redire
                                          core::JsonString(pending, "code_verifier"), "--serial",
                                          core::JsonString(pending, "serial")});
       !registered) {
-    return Err("login_failed",
-               "nile couldn't register this device. The code may be wrong or expired");
+    return Err("login_failed", "nile couldn't register this device: " + registered.error().message,
+               "The code may be wrong or expired.");
   }
   {
     const std::lock_guard lock(pending_mutex);

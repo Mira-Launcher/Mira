@@ -126,6 +126,11 @@ std::optional<std::string> GamePatchProblem(const json& patch) {
     return "\"runner_config\" must be an object";
   if (patch.contains("env") && !patch["env"].is_object() && !patch["env"].is_null())
     return "\"env\" must be an object or null";
+  if (patch.contains("env") && patch["env"].is_object()) {
+    for (const auto& [key, value] : patch["env"].items())
+      if (!value.is_string() && !value.is_null())
+        return std::format("\"env\".\"{}\" must be a string or null", key);
+  }
   if (patch.contains("reviewed") && !patch["reviewed"].is_boolean())
     return "\"reviewed\" must be true or false";
   if (patch.contains("drop_prefix") && !patch["drop_prefix"].is_boolean())

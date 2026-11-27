@@ -9,6 +9,13 @@
 namespace mira::api {
 using nlohmann::json;
 
+namespace {
+// A file name that isn't UTF-8 is sent with U+FFFD, rather than failing the whole reply.
+std::string Dump(const json& body) {
+  return body.dump(-1, ' ', false, json::error_handler_t::replace);
+}
+}  // namespace
+
 json ErrorBody(const Error& error) {
   return {{"error", ErrorJson(error)}};
 }
@@ -16,18 +23,18 @@ json ErrorBody(const Error& error) {
 void SendError(httplib::Response& res, int status, std::string_view code,
                std::string_view message) {
   res.status = status;
-  res.set_content(ErrorBody(Error{std::string(code), std::string(message), {}, {}}).dump(),
+  res.set_content(Dump(ErrorBody(Error{std::string(code), std::string(message), {}, {}})),
                   "application/json");
 }
 
 void SendError(httplib::Response& res, int status, const Error& error) {
   res.status = status;
-  res.set_content(ErrorBody(error).dump(), "application/json");
+  res.set_content(Dump(ErrorBody(error)), "application/json");
 }
 
 void SendJson(httplib::Response& res, json body, int status) {
   res.status = status;
-  res.set_content(body.dump(), "application/json");
+  res.set_content(Dump(body), "application/json");
 }
 
 void SendResult(httplib::Response& res, const Result<void>& result) {

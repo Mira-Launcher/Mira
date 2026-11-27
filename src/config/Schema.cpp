@@ -1685,6 +1685,7 @@ Schema::Schema() {
          .type = Type::Int,
          .default_value = 0,
          .doc = "The most link downloads may use together. 0 is no limit.",
+         .constraint = Range(0, 100000),
          .unit = "MB/s"});
 
   s.Add({.key = "downloads.parallel",

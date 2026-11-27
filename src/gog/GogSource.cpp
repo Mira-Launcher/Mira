@@ -19,8 +19,11 @@ namespace {
 using nlohmann::json;
 
 Result<json> GetJson(const std::string& url, const std::string& bearer_token) {
-  const Result<runner::ExecResult> result = CurlWithToken(bearer_token, {"--max-time", "10", url});
+  // -f: a refused request is an error, not an empty library.
+  const Result<runner::ExecResult> result =
+      CurlWithToken(bearer_token, {"-f", "--max-time", "10", url});
   if (!result) return std::unexpected(result.error());
+  if (result->exit_code != 0) return Err("gog_api_error", "GOG's API didn't answer");
   const json parsed = json::parse(result->output, nullptr, false);
   if (parsed.is_discarded()) return Err("gog_api_error", "GOG's API didn't return valid JSON");
   return parsed;
