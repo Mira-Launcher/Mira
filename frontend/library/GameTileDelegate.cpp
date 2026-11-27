@@ -177,10 +177,25 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
                               : artwork_->CoverById(index.data(IdRole).toString(), name, size, dpr,
                                                     index.data(SourceRole).toString());
   }
+  const bool dimmed = index.data(DimmedRole).toBool() && !hovered && !selected;
   if (cover.isNull()) {
     painter->fillRect(rect, tokens.tile_placeholder);
   } else {
-    painter->drawPixmap(rect, cover);
+    if (dimmed) {
+      // Mostly gray and half see-through. Only a removed game's few tiles are drawn this way.
+      QPixmap faded = cover;
+      {
+        QPainter blend(&faded);
+        blend.setOpacity(0.65);
+        blend.drawImage(0, 0, cover.toImage().convertToFormat(QImage::Format_Grayscale8));
+      }
+      painter->fillRect(rect, tokens.window);
+      painter->setOpacity(0.55);
+      painter->drawPixmap(rect, faded);
+      painter->setOpacity(1.0);
+    } else {
+      painter->drawPixmap(rect, cover);
+    }
   }
 
   // The scrim keeps a light cover from swallowing the title, drawn
@@ -333,8 +348,12 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     const qreal dpr = painter->device() != nullptr ? painter->device()->devicePixelRatioF() : 1.0;
     QRect glyph(0, 0, kGlyph, kGlyph);
     glyph.moveCenter(pill.center());
-    painter->drawPixmap(glyph,
-                        icons::For(icons::Glyph::Download, ink).pixmap(QSize(kGlyph, kGlyph), dpr));
+    painter->drawPixmap(
+        glyph, icons::For(index.data(ActionGlyphRole).isValid()
+                              ? static_cast<icons::Glyph>(index.data(ActionGlyphRole).toInt())
+                              : icons::Glyph::Download,
+                          ink)
+                   .pixmap(QSize(kGlyph, kGlyph), dpr));
   }
 
   if (!note_.isEmpty() && index.data(IdRole).toString() == note_id_) {

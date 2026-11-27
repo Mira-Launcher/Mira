@@ -1356,10 +1356,15 @@ inline bool HasPrefixToDelete(const RemovalPlan& plan) {
   return !plan.prefix.empty() && plan.prefix_shared_with.empty() && !plan.folder_is_prefix;
 }
 
-// A removed game that left something on disk (GET /v1/removed-games).
+// A removed game whose record Mira keeps (GET /v1/removed-games).
 struct RemovedGame {
   std::string id;
   std::string name;
+  std::string source;  // as a game's: "scan", "manual", "epic"
+  std::vector<std::string> tags;
+  std::int64_t removed_at = 0;
+  std::int64_t play_seconds = 0;
+  std::optional<std::int64_t> last_played_at;
   std::string install_path;  // "" unless its files are still there to add back
   std::string exe_path;
   std::uint64_t prefix_bytes = 0;  // its kept prefix, 0 when none

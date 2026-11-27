@@ -43,6 +43,7 @@
 #include "../components/SettingsPage.h"
 #include "../components/ShortcutEdit.h"
 #include "../components/Text.h"
+#include "../library/GameActions.h"
 #include "../library/HiddenLock.h"
 #include "../sources/Sources.h"
 #include "../theme/Icons.h"
@@ -717,7 +718,7 @@ QStringList ListValue(const ConfigResult& config, const std::string& key) {
 // What removed games left on disk: their prefixes and save backups, kept for when a game comes
 // back, and files still there to add back.
 void SettingsPanel::ShowRemovedGames() {
-  api::GetRemovedGamesAsync(this, [this](RemovedGamesResult result) {
+  api::GetRemovedGamesAsync(this, /*all=*/false, [this](RemovedGamesResult result) {
     if (removed_card_ == nullptr) return;
     removed_card_->ClearRows();
     removed_card_->setVisible(result.ok && !result.games.empty());
@@ -734,14 +735,7 @@ void SettingsPanel::ShowRemovedGames() {
       if (!game.install_path.empty()) {
         auto* add = new QPushButton("Add back", row);
         connect(add, &QPushButton::clicked, this, [this, game] {
-          api::AddManualGameAsync(
-              this, game.install_path, game.exe_path, game.name, {}, false, false,
-              [this, game](GameDetailResult added) {
-                if (!added.ok)
-                  notify::FailedRequest(
-                      this, "Could not add back " + QString::fromStdString(game.name), added.error);
-                ShowRemovedGames();
-              });
+          actions::AddBackRemovedGame(this, game, [this] { ShowRemovedGames(); });
         });
         row->AddControl(add);
       }
@@ -749,24 +743,8 @@ void SettingsPanel::ShowRemovedGames() {
       // game's own files are left, which stay where they are.
       const bool kept_data = game.prefix_bytes > 0 || game.saves_bytes > 0;
       auto* remove = new QPushButton(kept_data ? "Delete" : "Forget", row);
-      connect(remove, &QPushButton::clicked, this, [this, game, kept_data] {
-        const QString name = QString::fromStdString(game.name);
-        const bool confirmed =
-            kept_data ? notify::Confirm(this, "Delete what " + name + " kept?",
-                                        "Its prefix and save backups are deleted, and can't be "
-                                        "recovered. Its play history stays.",
-                                        "Delete")
-                      : notify::Confirm(this, "Forget " + name + "?",
-                                        "Mira stops listing it here and forgets its settings. Its "
-                                        "files and play history stay.",
-                                        "Forget");
-        if (!confirmed) return;
-        const QString failed =
-            kept_data ? "Could not delete what " + name + " kept" : "Could not forget " + name;
-        api::DeleteRemovedGameAsync(this, game.id, [this, failed](StoreActionResult done) {
-          if (!done.ok) notify::FailedRequest(this, failed, done.error);
-          ShowRemovedGames();
-        });
+      connect(remove, &QPushButton::clicked, this, [this, game] {
+        actions::ForgetRemovedGame(this, game, [this] { ShowRemovedGames(); });
       });
       row->AddControl(remove);
       removed_card_->AddRow(row);

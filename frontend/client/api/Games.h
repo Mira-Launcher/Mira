@@ -116,9 +116,10 @@ void RunWinetricksAsync(QObject* context, const std::string& id, const std::stri
 void GetInstalledTricksAsync(QObject* context, const std::string& id,
                              std::function<void(InstalledTricksResult)> callback);
 
-// GET /v1/removed-games, and DELETE /v1/removed-games/{id}: deletes a removed game's kept prefix
-// and save backups.
-void GetRemovedGamesAsync(QObject* context, std::function<void(RemovedGamesResult)> callback);
+// GET /v1/removed-games: the removed games that left something on disk, or every one with `all`.
+// DELETE /v1/removed-games/{id}: deletes a removed game's kept prefix, save backups and record.
+void GetRemovedGamesAsync(QObject* context, bool all,
+                          std::function<void(RemovedGamesResult)> callback);
 void DeleteRemovedGameAsync(QObject* context, const std::string& id,
                             std::function<void(StoreActionResult)> callback);
 

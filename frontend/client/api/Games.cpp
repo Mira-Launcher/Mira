@@ -535,21 +535,33 @@ void DeleteGamesAsync(QObject* context, const std::vector<std::string>& ids, boo
       FillDeleteGames, std::move(callback));
 }
 
-void GetRemovedGamesAsync(QObject* context, std::function<void(RemovedGamesResult)> callback) {
+void GetRemovedGamesAsync(QObject* context, bool all,
+                          std::function<void(RemovedGamesResult)> callback) {
   async::Run(
       context,
-      [] {
+      [all] {
+        const std::string path = all ? "/v1/removed-games?all=true" : "/v1/removed-games";
         return ReadReply<RemovedGamesResult>(
-            transport::Get("/v1/removed-games"), "GET /v1/removed-games", Shape::Array,
+            transport::Get(path), "GET /v1/removed-games", Shape::Array,
             [](RemovedGamesResult& result, const json& body) {
               for (const json& entry : body) {
-                result.games.push_back(
-                    {.id = entry.at("id").get<std::string>(),
-                     .name = entry.value("name", std::string()),
-                     .install_path = entry.value("install_path", std::string()),
-                     .exe_path = entry.value("exe_path", std::string()),
-                     .prefix_bytes = entry.value("prefix_bytes", std::uint64_t{0}),
-                     .saves_bytes = entry.value("saves_bytes", std::uint64_t{0})});
+                RemovedGame game{.id = entry.at("id").get<std::string>(),
+                                 .name = entry.value("name", std::string()),
+                                 .source = entry.value("source", std::string()),
+                                 .tags = {},
+                                 .removed_at = entry.value("removed_at", std::int64_t{0}),
+                                 .play_seconds = entry.value("play_seconds", std::int64_t{0}),
+                                 .last_played_at = std::nullopt,
+                                 .install_path = entry.value("install_path", std::string()),
+                                 .exe_path = entry.value("exe_path", std::string()),
+                                 .prefix_bytes = entry.value("prefix_bytes", std::uint64_t{0}),
+                                 .saves_bytes = entry.value("saves_bytes", std::uint64_t{0})};
+                if (const auto played = entry.value("last_played_at", std::int64_t{0}); played > 0)
+                  game.last_played_at = played;
+                if (const auto tags = entry.find("tags"); tags != entry.end() && tags->is_array())
+                  for (const json& tag : *tags)
+                    if (tag.is_string()) game.tags.push_back(tag.get<std::string>());
+                result.games.push_back(std::move(game));
               }
             });
       },
