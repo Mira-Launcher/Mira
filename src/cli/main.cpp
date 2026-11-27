@@ -969,13 +969,15 @@ int CmdStoreStatus(httplib::Client& client, const std::string& id) {
   return 0;
 }
 
-int CmdStoreLogin(httplib::Client& client, const std::string& id) {
+// `argument`, when given, is the credential, so nothing is asked.
+int CmdStoreLogin(httplib::Client& client, const std::string& id, const std::string& argument) {
   const std::optional<json> reply =
       Reply(client.Post(std::format("/v1/stores/{}/login/begin", Seg(id))));
   if (!reply) return 1;
   std::printf("Visit this URL and sign in:\n%s\n\n", reply->value("url", "").c_str());
   // A terminal paste routinely carries a trailing \r or spaces.
-  const std::string credential = mira::strings::Trim(ReadSecret(CredentialPrompt(id)));
+  const std::string credential =
+      mira::strings::Trim(argument.empty() ? ReadSecret(CredentialPrompt(id)) : argument);
   if (credential.empty()) {
     std::fprintf(stderr, "mira: nothing entered\n");
     return 2;
@@ -1068,7 +1070,7 @@ int CmdStore(int argc, char** argv) {
   const std::string id = argv[0];
   const std::string_view action = argc > 1 ? argv[1] : "status";
   if (action == "status") return CmdStoreStatus(client, id);
-  if (action == "login") return CmdStoreLogin(client, id);
+  if (action == "login") return CmdStoreLogin(client, id, argc > 2 ? argv[2] : "");
   if (id == "itch" && action == "collections")
     return CmdStoreItchCollections(client, argc - 2, argv + 2);
   if (id == "humble" && (action == "bundles" || action == "download")) {
