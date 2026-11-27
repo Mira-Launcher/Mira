@@ -1453,7 +1453,9 @@ void LibraryWindow::UpdateFooter() {
   qsizetype games = 0;
   qsizetype apps = 0;
   for (const mira_gui::GameSummary& game : library_->Games()) {
-    if (!library_->Shown(game) || !mira_gui::GameFilterProxy::MatchesKey(game, kind)) continue;
+    if (!library_->Shown(game) || !library_->InLibrary(game) ||
+        !mira_gui::GameFilterProxy::MatchesKey(game, kind))
+      continue;
     ++(mira_gui::IsApp(game) ? apps : games);
   }
   sidebar_->SetFooter(mira_gui::ShownOf(grid_page_->ShownCount(), games, apps), mirad_reachable_);
@@ -1940,7 +1942,8 @@ QWidget* LibraryWindow::BuildSettingsPage() {
           [this](bool ok, QString error) {
             const bool close = std::exchange(close_settings_after_save_, false);
             if (!ok) {
-              mira_gui::notify::Failed(this, "Could not save the settings", error);
+              if (!error.isEmpty())
+                mira_gui::notify::Failed(this, "Could not save the settings", error);
               return;
             }
             // The change bar going away is the feedback; no notice for a save the user just made.

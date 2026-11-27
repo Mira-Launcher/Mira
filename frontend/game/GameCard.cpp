@@ -234,7 +234,10 @@ void GameCard::Save() {
   if (saving_ || form_ == nullptr) return;
   saving_ = true;
   bar_->SetBusy(true);
-  form_->Save();
+  if (!form_->Save()) {  // called off: nothing is coming back
+    saving_ = close_after_save_ = false;
+    bar_->SetBusy(false);
+  }
 }
 
 void GameCard::Back() {

@@ -63,7 +63,8 @@ class GameEditForm : public QWidget {
   // Scrolls to `key`'s row, opening its expander.
   void RevealSetting(const std::string& key);
 
-  void Save();
+  // False when the user called it off before anything was sent.
+  bool Save();
   // Fetches the game again, so a change made elsewhere shows; skipped while
   // there are unsaved edits, which it would otherwise overwrite.
   void Reload();

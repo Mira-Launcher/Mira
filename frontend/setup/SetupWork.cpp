@@ -177,8 +177,11 @@ void SetupWork::ImportSteam() {
   if (steam_running_) return;
   steam_running_ = true;
   emit Changed();
-  api::ScanSteamAsync(this, [this](SteamScanResult) {
+  api::ScanSteamAsync(this, [this](SteamScanResult result) {
     steam_running_ = false;
+    if (!result.ok)
+      notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not add Steam games",
+                            result.error);
     emit Changed();
     emit SourcesChanged();
   });
@@ -188,15 +191,18 @@ void SetupWork::ImportFrom(const QString& importer) {
   if (imports_running_.contains(importer)) return;
   imports_running_ << importer;
   emit Changed();
-  const auto done = [this, importer] {
+  const auto done = [this, importer](bool ok, const ApiError& error) {
     imports_running_.remove(importer);
+    if (!ok)
+      notify::FailedRequest(qobject_cast<QWidget*>(parent()), "Could not import from " + importer,
+                            error);
     emit Changed();
     emit SourcesChanged();
   };
   if (importer == "heroic")
-    api::ImportHeroicAsync(this, [done](HeroicImportResult) { done(); });
+    api::ImportHeroicAsync(this, [done](HeroicImportResult r) { done(r.ok, r.error); });
   else
-    api::ImportLutrisAsync(this, [done](LutrisImportResult) { done(); });
+    api::ImportLutrisAsync(this, [done](LutrisImportResult r) { done(r.ok, r.error); });
 }
 
 void SetupWork::SetSourcesOn(const QStringList& on, const QStringList& off) {
@@ -211,7 +217,11 @@ void SetupWork::SetSourcesOn(const QStringList& on, const QStringList& off) {
   auto pending = std::make_shared<int>(static_cast<int>(edits.size()));
   for (const auto& [id, enabled] : edits) {
     api::PatchSourceAsync(this, id.toStdString(), enabled, std::nullopt,
-                          [this, pending](PatchConfigResult) {
+                          [this, pending, id, on = enabled](PatchConfigResult result) {
+                            if (!result.ok)
+                              notify::FailedRequest(qobject_cast<QWidget*>(parent()),
+                                                    "Could not turn " + id + (on ? " on" : " off"),
+                                                    result.error);
                             if (--*pending == 0) emit SourcesChanged();
                           });
   }

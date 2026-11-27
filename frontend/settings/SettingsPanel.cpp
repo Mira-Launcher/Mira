@@ -575,6 +575,7 @@ void SettingsPanel::Save() {
       notify::Failed(this, "Couldn't save shortcuts",
                      keys.toString(QKeySequence::NativeText) +
                          " is used by two shortcuts. Change one of them.");
+      emit SaveFinished(false, {});  // already said why; a close waiting on it stops waiting
       return;
     }
   }

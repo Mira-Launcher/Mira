@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include "../app/ErrorHelp.h"
 #include "../client/EventHub.h"
 #include "../client/api/Config.h"
 #include "../client/api/Library.h"
@@ -54,10 +55,9 @@ void UpdateChecker::Ask(bool refresh) {
   const int request = ++request_;
   api::GetUpdatesAsync(this, refresh, [this, request](UpdatesResult result) {
     if (request != request_) return;
-    if (result.ok) {
-      updates_ = std::move(result.updates);
-      emit Changed();
-    }
+    if (result.ok) updates_ = std::move(result.updates);
+    error_ = result.ok ? QString() : error_help::Describe(result.error);
+    emit Changed();
     Answered();
   });
 }
