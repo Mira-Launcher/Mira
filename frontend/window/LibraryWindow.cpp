@@ -2391,8 +2391,8 @@ void LibraryWindow::OpenSourcesPage(bool catalog) {
           &mira_gui::Sidebar::SetHiddenSidebarMirrors);
   connect(page, &mira_gui::SourcesPage::SidebarToggled, this,
           [this](const QString& id, bool shown) { sidebar_->SetSourceHidden(id, !shown); });
-  connect(page, &mira_gui::SourcesPage::EnabledToggled, sidebar_,
-          &mira_gui::Sidebar::SetSourceEnabled);
+  connect(page, &mira_gui::SourcesPage::InLibraryToggled, sidebar_,
+          &mira_gui::Sidebar::SetSourceInLibrary);
   connect(page, &mira_gui::SourcesPage::Imported, sidebar_, &mira_gui::Sidebar::NoteImported);
   connect(page, &mira_gui::SourcesPage::Removed, sidebar_, &mira_gui::Sidebar::ForgetSource);
   connect(page, &mira_gui::SourcesPage::OpenRequested, this, [this](const QString& id) {

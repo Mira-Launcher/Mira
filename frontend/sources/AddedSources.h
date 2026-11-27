@@ -19,8 +19,8 @@ class TileGridLayout;
 
 struct SourceEntry {
   SourceInfo source;
-  bool ready = false;  // set up
-  bool enabled = true;
+  bool ready = false;      // set up
+  bool in_library = true;  // its games on the library page, not only on its own
   int games = 0;
   bool in_sidebar = true;
   std::string account;           // signed-in account, if the source says
@@ -46,7 +46,7 @@ class AddedSources : public QWidget {
   void OpenRequested(QString id);
   void SettingsRequested(QString id);
   void SidebarToggled(QString id, bool shown);
-  void EnabledToggled(QString id, bool enabled);
+  void InLibraryToggled(QString id, bool in_library);
   void Imported(QString id);  // an import finished and changed something
   void Removed(QString id);
 

@@ -174,6 +174,16 @@ void GameLibraryModel::SetShowingHidden(bool showing) {
   emit ShowingHiddenChanged(showing);
 }
 
+void GameLibraryModel::SetSourcesOffLibrary(std::set<std::string> sources) {
+  if (sources == sources_off_library_) return;
+  sources_off_library_ = std::move(sources);
+  emit SourcesOffLibraryChanged();
+}
+
+bool GameLibraryModel::InLibrary(const GameSummary& game) const {
+  return sources_off_library_.empty() || !sources_off_library_.contains(SourceIdOf(game));
+}
+
 std::vector<const GameSummary*> GameLibraryModel::RecentlyPlayed(int count, bool hidden) const {
   std::vector<const GameSummary*> running;
   std::vector<const GameSummary*> played;
@@ -269,6 +279,8 @@ GameFilterProxy::GameFilterProxy(GameLibraryModel* library, QObject* parent)
   setDynamicSortFilter(true);
   QSortFilterProxyModel::sort(0, Qt::AscendingOrder);
   connect(library, &GameLibraryModel::ShowingHiddenChanged, this, [this] { ChangeFilter([] {}); });
+  connect(library, &GameLibraryModel::SourcesOffLibraryChanged, this,
+          [this] { ChangeFilter([] {}); });
 }
 
 bool GameFilterProxy::MatchesKey(const GameSummary& game, const QString& key, AppsIn apps) {
@@ -431,6 +443,7 @@ bool GameFilterProxy::filterAcceptsRow(int source_row, const QModelIndex&) const
   if (!search_.isEmpty() && !MatchesSearch(game, search_)) return false;
   if (!HasTags(game, tags_)) return false;
   if (!source_.empty()) return InSource(game, source_);
+  if (!library_->InLibrary(game)) return false;
   // Apps kept out of the library still turn up in a search.
   if (apps_ == AppsIn::Search && IsApp(game) && !search_.isEmpty()) return true;
   return MatchesKey(game, key_, apps_);

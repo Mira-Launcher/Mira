@@ -102,6 +102,20 @@ TEST_CASE("Hidden mode shows only hidden games under every filter, and launchers
   CHECK(Shown(proxy) == std::vector<std::string>{"a"});
 }
 
+TEST_CASE("A source kept off the library page still shows its games on its own page") {
+  GameLibraryModel library;
+  library.Replace({Game("a", "Alpha"), Game("steam-1", "Celeste", {}, "steam")});
+  GameFilterProxy library_page(&library);
+  GameFilterProxy steam_page(&library);
+  steam_page.SetSource("steam");
+
+  library.SetSourcesOffLibrary({"steam"});
+  CHECK(Shown(library_page) == std::vector<std::string>{"a"});
+  CHECK(Shown(steam_page) == std::vector<std::string>{"steam-1"});
+  library.SetSourcesOffLibrary({});
+  CHECK(Shown(library_page) == std::vector<std::string>{"a", "steam-1"});
+}
+
 TEST_CASE(
     "Apps and games get their own filters, apps can leave All or the library, and apps never count "
     "as unplayed") {

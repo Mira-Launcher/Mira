@@ -165,6 +165,10 @@ LibraryPage::LibraryPage(GameLibraryModel* library, ArtworkStore* artwork,
     UpdateOwnedMatches();
     LibraryChanged();
   });
+  connect(library_, &GameLibraryModel::SourcesOffLibraryChanged, this, [this] {
+    grid_->clearSelection();
+    LibraryChanged();
+  });
   // The tiles are painted, so the stylesheet can't restyle them.
   connect(theme::Notifier::Instance(), &theme::Notifier::Changed, this, [this] {
     ApplyLayoutTokens();
@@ -732,7 +736,8 @@ void LibraryPage::UpdateCounts() {
   for (const QString& key : pill_->FilterKeys()) {
     const auto count =
         std::ranges::count_if(library_->Games(), [this, &key, &picked](const GameSummary& game) {
-          return library_->Shown(game) && GameFilterProxy::MatchesKey(game, key, apps_) &&
+          return library_->Shown(game) && library_->InLibrary(game) &&
+                 GameFilterProxy::MatchesKey(game, key, apps_) &&
                  GameFilterProxy::HasTags(game, picked);
         });
     pill_->SetCount(key, static_cast<int>(count));
@@ -749,26 +754,27 @@ void LibraryPage::UpdateCounts() {
 void LibraryPage::UpdateEmptyState() {
   if (not_installed_) {
     const bool listed = owned_titles_ != nullptr && owned_titles_->Listed();
-    empty_hint_->setVisible(owned_matches_.empty());
-    empty_hint_->setText(!listed ? (owned_titles_ != nullptr && owned_titles_->Failed()
-                                        ? QString("Couldn't reach your stores")
-                                        : QString("Asking your stores…"))
-                         : !title_filters_->Filter().Empty() || !search_->text().trimmed().isEmpty()
-                             ? QString("No games match")
-                         : library_->ShowingHidden() ? QString("Nothing hidden here")
-                                                     : QString("Everything you own is installed"));
+    const bool filtered = !title_filters_->Filter().Empty() || !search_->text().trimmed().isEmpty();
+    empty_hint_->setVisible(owned_matches_.empty() &&
+                            !(listed && !filtered && library_->ShowingHidden()));
+    empty_hint_->setText(!listed    ? (owned_titles_ != nullptr && owned_titles_->Failed()
+                                           ? QString("Couldn't reach your stores")
+                                           : QString("Asking your stores…"))
+                         : filtered ? QString("No games match")
+                                    : QString("Everything you own is installed"));
     return;
   }
-  const int shown = games_->rowCount();
-  empty_hint_->setVisible(shown == 0);
-  if (shown == 0) {
+  // An empty library, or hidden mode with nothing hidden, is just empty; a filter that matches
+  // nothing says so.
+  const bool none_to_show = std::ranges::none_of(library_->Games(), [this](const GameSummary& g) {
+    return library_->Shown(g) && library_->InLibrary(g);
+  });
+  const bool shown = games_->rowCount() > 0;
+  empty_hint_->setVisible(!shown && !none_to_show);
+  if (!shown && !none_to_show) {
     const QString items = FilterKey() == "apps" ? "apps" : "games";
-    const bool none_hidden =
-        std::ranges::none_of(library_->Games(), [](const GameSummary& g) { return IsHidden(g); });
-    empty_hint_->setText(library_->Games().empty() ? QString("No %1 in the library yet").arg(items)
-                         : library_->ShowingHidden() && none_hidden ? QString("No hidden games")
-                         : !owned_matches_.empty() ? QString("Nothing installed matches")
-                                                   : QString("No %1 match this filter").arg(items));
+    empty_hint_->setText(!owned_matches_.empty() ? QString("Nothing installed matches")
+                                                 : QString("No %1 match this filter").arg(items));
   }
 }
 
@@ -780,7 +786,9 @@ void LibraryPage::RefreshContinue() {
       (key == "all" || key == "games" || (key == "apps" && continue_apps_)) &&
       search_->text().trimmed().isEmpty()) {
     for (const GameSummary& game : library_->Games()) {
-      if (!library_->Shown(game) || !GameFilterProxy::MatchesKey(game, key, apps_)) continue;
+      if (!library_->Shown(game) || !library_->InLibrary(game) ||
+          !GameFilterProxy::MatchesKey(game, key, apps_))
+        continue;
       if (IsApp(game) && !continue_apps_) continue;
       if (game.running || !game.tools.empty() || game.last_played_at) games.push_back(&game);
     }

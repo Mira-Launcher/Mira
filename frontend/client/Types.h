@@ -1524,8 +1524,8 @@ struct DesktopEntrySyncResult {
 // One entry from GET /v1/sources: a source's place in Mira, as mirad stores it.
 struct SourceState {
   std::string id;
-  bool added = false;  // set up; the rest are offered on the Sources page's catalog
-  bool enabled = true;
+  bool added = false;      // set up; the rest are offered on the Sources page's catalog
+  bool in_library = true;  // its games on the library page, not only on its own
   bool in_sidebar = true;
   bool in_hidden_sidebar = true;  // in hidden mode's sidebar
   int position = 0;

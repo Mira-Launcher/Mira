@@ -524,20 +524,21 @@ void Sidebar::RefreshSources() {
   api::ListSourcesAsync(this, [this, request](SourcesResult result) {
     if (request != sources_request_ || !result.ok) return;
     added_sources_.clear();
-    disabled_sources_.clear();
     hidden_sources_.clear();
     hidden_mode_hidden_.clear();
     hidden_sidebar_mirrors_ = result.hidden_sidebar_mirrors;
     source_order_.clear();
+    std::set<std::string> off_library;
     for (const SourceState& source : result.sources) {
       const QString id = QString::fromStdString(source.id);
       source_order_.push_back(id);
       if (source.added) added_sources_.insert(id);
-      if (!source.enabled) disabled_sources_.insert(id);
+      if (!source.in_library) off_library.insert(source.id);
       if (!source.in_sidebar) hidden_sources_.insert(id);
       if (!source.in_hidden_sidebar) hidden_mode_hidden_.insert(id);
       source_imported_at_[id] = source.imported_at;
     }
+    library_->SetSourcesOffLibrary(std::move(off_library));
     UpdateSources();
     emit SourcesChanged();
   });
@@ -619,8 +620,6 @@ void Sidebar::UpdateSources() {
     const auto owns = owned.find(id.toStdString());
     const int of = owns == owned.end() ? 0 : std::max(owns->second, games);
     const QString counted = of > 0 ? QString("%1/%2").arg(games).arg(of) : QString::number(games);
-    // An off source's games aren't in the library, so it shows that instead of a count.
-    const bool off = disabled_sources_.contains(id);
     // A store with games whose account is signed out wants a look.
     const bool signed_out = sources[i].kind == SourceInfo::Kind::Store && games > 0 &&
                             source_ready_.contains(id) && !source_ready_.value(id);
@@ -656,8 +655,7 @@ void Sidebar::UpdateSources() {
                        : show_source_counts_
                            ? counted + " " + item + (std::max(games, of) == 1 ? "" : "s")
                            : QString();
-      if (off) detail = "Off";
-      if (signed_out && !off) {
+      if (signed_out) {
         detail = QString("<span style=\"color: %1;\">Signed out</span>")
                      .arg(theme::Current().warning.name()) +
                  (detail.isEmpty() ? QString() : " · " + detail);
@@ -673,8 +671,7 @@ void Sidebar::UpdateSources() {
       source_row.deck->setFixedSize(18, 18);  // ShowActive draws the dot
       source_row.detail->hide();
       QString label = show_source_counts_ ? counted : QString();
-      if (off) label = "Off";
-      source_row.signed_out->setVisible(signed_out && !off);
+      source_row.signed_out->setVisible(signed_out);
       source_row.count->setText(label);
       source_row.count->show();
     }
@@ -710,7 +707,7 @@ std::vector<SourceEntry> Sidebar::SourceEntries() const {
     const int games = count == counts.end() ? 0 : count->second;
     entries.push_back({.source = *source,
                        .ready = id == "local" || added_sources_.contains(id),
-                       .enabled = !disabled_sources_.contains(id),
+                       .in_library = InLibrary(id),
                        .games = games,
                        .in_sidebar = InSidebar(id),
                        .account = source_account_.value(id).toStdString(),
@@ -723,15 +720,20 @@ void Sidebar::NoteImported(const QString&) {
   RefreshSources();
 }
 
-void Sidebar::SetSourceEnabled(const QString& id, bool enabled) {
-  if (enabled) {
-    disabled_sources_.remove(id);
+bool Sidebar::InLibrary(const QString& id) const {
+  return !library_->SourcesOffLibrary().contains(id.toStdString());
+}
+
+void Sidebar::SetSourceInLibrary(const QString& id, bool in_library) {
+  std::set<std::string> off = library_->SourcesOffLibrary();
+  if (in_library) {
+    off.erase(id.toStdString());
   } else {
-    disabled_sources_.insert(id);
+    off.insert(id.toStdString());
   }
-  UpdateSources();
+  library_->SetSourcesOffLibrary(std::move(off));
   api::PatchSourceAsync(
-      this, id.toStdString(), enabled, std::nullopt, [this](PatchConfigResult result) {
+      this, id.toStdString(), in_library, std::nullopt, [this](PatchConfigResult result) {
         if (!result.ok) {
           notify::FailedRequest(this, "Could not change that source", result.error);
         }
@@ -741,7 +743,6 @@ void Sidebar::SetSourceEnabled(const QString& id, bool enabled) {
 
 void Sidebar::ForgetSource(const QString& id) {
   added_sources_.remove(id);
-  disabled_sources_.insert(id);
   source_ready_[id] = false;
   // mirad's game.removed events say the same; this just doesn't wait for them.
   library_->RemoveSource(id.toStdString());

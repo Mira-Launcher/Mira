@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -55,6 +56,11 @@ class GameLibraryModel : public QAbstractListModel {
   void SetShowingHidden(bool showing);
   // Whether `game` belongs in the views under the current mode.
   bool Shown(const GameSummary& game) const { return IsHidden(game) == showing_hidden_; }
+  // Sources whose games stay off the library page (Sources › Games in library), shown only on
+  // their own pages.
+  void SetSourcesOffLibrary(std::set<std::string> sources);
+  bool InLibrary(const GameSummary& game) const;
+  const std::set<std::string>& SourcesOffLibrary() const { return sources_off_library_; }
 
   // What recently played lists at `count`: running games first, then the last
   // played, `count` in all, more only when more than `count` run. Only hidden games with
@@ -74,6 +80,7 @@ class GameLibraryModel : public QAbstractListModel {
   // Once per burst of changes (a scan, mirad's replay), after the rows moved.
   void Changed();
   void ShowingHiddenChanged(bool showing);
+  void SourcesOffLibraryChanged();
 
  private:
   void RebuildIndex();
@@ -90,6 +97,7 @@ class GameLibraryModel : public QAbstractListModel {
   std::unordered_map<std::string, int> rows_;  // id -> row
   bool change_pending_ = false;
   bool showing_hidden_ = false;
+  std::set<std::string> sources_off_library_;
   std::unordered_map<std::string, qint64> launching_;         // id -> when it was launched, in ms
   QTimer* launch_tick_ = nullptr;                             // animates the launching tiles' dots
   std::unordered_map<std::string, std::string> saves_doing_;  // id -> game.saves_activity's doing

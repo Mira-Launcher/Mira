@@ -71,7 +71,7 @@ class Sidebar : public QWidget {
   // Shows and stores a new order.
   void SetSourceOrder(std::vector<QString> order);
   // Turns a source on or off in mirad's config.
-  void SetSourceEnabled(const QString& id, bool enabled);
+  void SetSourceInLibrary(const QString& id, bool in_library);
   void NoteImported(const QString& id);
   // A source was removed: drop its games and turn its row off.
   void ForgetSource(const QString& id);
@@ -183,13 +183,13 @@ class Sidebar : public QWidget {
   int SourceIndexOf(const QObject* nav) const;
   // Whether the sidebar lists `id` in the current mode.
   bool InSidebar(const QString& id) const;
+  bool InLibrary(const QString& id) const;
   QVBoxLayout* source_nav_layout_ = nullptr;
   QLabel* sources_empty_ = nullptr;     // shown while no source row is
   QSet<QString> added_sources_;         // set up; the Sources page adds the rest
   QSet<QString> hidden_sources_;        // unticked "In sidebar"
   QSet<QString> hidden_mode_hidden_;    // hidden mode's own unticked ones, unless it mirrors
   bool hidden_sidebar_mirrors_ = true;  // hidden mode lists what hidden_sources_ leaves
-  QSet<QString> disabled_sources_;      // <id>.enabled = false
   std::vector<QString> source_order_;   // saved order; see SourceOrder()
   // Store signed in / launcher installed, by source id, as last asked.
   QHash<QString, bool> source_ready_;
