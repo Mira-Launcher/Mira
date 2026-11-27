@@ -22,6 +22,7 @@
 #include "../theme/Icons.h"
 #include "../theme/Theme.h"
 #include "ArtworkStore.h"
+#include "GameTileDelegate.h"
 #include "ZoomSettle.h"
 
 namespace mira_gui {
@@ -46,9 +47,11 @@ class PickTile : public QAbstractButton {
     updateGeometry();
     update();
   }
-  // The library grid's tile shape, so the covers it already scaled are reused.
-  QSize CoverSize() const { return {width_, width_ * 3 / 2}; }
-  QSize sizeHint() const override { return {width_, CoverSize().height() + 4 + kName}; }
+  // The cover a library grid draws for this tile width, so the covers it already scaled are reused.
+  QSize CoverSize() const { return GameTileDelegate::CoverSize({width_, width_ * 3 / 2}); }
+  QSize sizeHint() const override {
+    return {CoverSize().width(), CoverSize().height() + 4 + kName};
+  }
 
  protected:
   void paintEvent(QPaintEvent*) override {
@@ -65,7 +68,7 @@ class PickTile : public QAbstractButton {
     painter.drawPixmap(cover.toRect(), artwork_->Cover(game_, CoverSize(), devicePixelRatioF()));
     painter.restore();
 
-    const QRectF box(width_ - 26, 6, 20, 20);
+    const QRectF box(CoverSize().width() - 26, 6, 20, 20);
     if (isChecked()) {
       painter.setPen(QPen(tokens.accent, 2));
       painter.setBrush(Qt::NoBrush);
@@ -86,10 +89,10 @@ class PickTile : public QAbstractButton {
     }
 
     painter.setPen(isChecked() ? tokens.text : tokens.text_muted);
-    const QRect name(0, CoverSize().height() + 4, width_, kName);
+    const QRect name(0, CoverSize().height() + 4, CoverSize().width(), kName);
     painter.drawText(
         name, Qt::AlignLeft | Qt::AlignVCenter,
-        fontMetrics().elidedText(QString::fromStdString(game_.name), Qt::ElideRight, width_));
+        fontMetrics().elidedText(QString::fromStdString(game_.name), Qt::ElideRight, name.width()));
   }
 
  private:
@@ -154,7 +157,7 @@ GamePicker::GamePicker(ArtworkStore* artwork, const QString& back_label, QWidget
   connect(apply_, &QPushButton::clicked, this, [this] { Apply(); });
   bar_layout_->addWidget(apply_);
 
-  zoom_settle_ = new ZoomSettle(this, artwork_, tile_width_, [this] {
+  zoom_settle_ = new ZoomSettle(this, artwork_, GameTileDelegate::CoverWidth(tile_width_), [this] {
     for (PickTile* tile : tiles_) tile->update();
   });
   connect(artwork_, &ArtworkStore::CoverChanged, this, [this](const QString& id) {
@@ -186,7 +189,7 @@ TileRow GamePicker::Row() const {
 
 void GamePicker::SetTileWidth(int width) {
   tile_width_ = width;
-  zoom_settle_->Step(width);
+  zoom_settle_->Step(GameTileDelegate::CoverWidth(width));
   for (PickTile* tile : tiles_) tile->SetWidth(width);
   // So each heading moves with the covers above it in the same frame.
   SettleLayout(content_);

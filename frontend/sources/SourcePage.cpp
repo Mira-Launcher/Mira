@@ -1448,6 +1448,7 @@ void SourcePage::RebuildOwnedTiles() {
     } else {
       item->setData(QStringList{source_.id, ref}, GameTileDelegate::TitleCoverRole);
     }
+    item->setData(true, GameTileDelegate::DimmedRole);
     item->setData(tiers_.value(ref), GameTileDelegate::ProtonDbRole);
     item->setData(
         review_percents_.contains(ref) ? QVariant(review_percents_.value(ref)) : QVariant(),

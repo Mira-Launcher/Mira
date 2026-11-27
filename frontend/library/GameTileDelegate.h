@@ -52,7 +52,8 @@ class GameTileDelegate : public QStyledItemDelegate {
     // Optional: a store title's {source, ref}, its cover drawn by the artwork store at paint
     // time, so only tiles on screen are fetched and scaled.
     TitleCoverRole,
-    // Optional: true draws the cover faded until the tile is hovered or selected (a removed game).
+    // Optional: true draws the cover faded until the tile is hovered or selected (a title not in
+    // the library).
     DimmedRole,
     // Optional: the ActionRole button's icons::Glyph, Download when unset.
     ActionGlyphRole,

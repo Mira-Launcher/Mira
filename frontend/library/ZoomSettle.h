@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QPointer>
 #include <QSet>
 #include <functional>
 
@@ -11,7 +12,8 @@ namespace mira_gui {
 class ArtworkStore;
 
 // The covers of one view while its zoom moves: scaled quickly at each step and not kept, then,
-// once it stops, `settled` runs to draw them smooth and every other width the view kept goes.
+// once it stops, `settled` runs to draw them smooth and every other width the view kept goes,
+// unless another view draws at it (each holds its width in the ArtworkStore).
 class ZoomSettle : public QObject {
  public:
   ZoomSettle(QObject* parent, ArtworkStore* artwork, int width, std::function<void()> settled);
@@ -24,11 +26,12 @@ class ZoomSettle : public QObject {
   void Prefetched(int width) { widths_.insert(width); }
 
  private:
-  ArtworkStore* artwork_;
+  QPointer<ArtworkStore> artwork_;  // may go first when the window closes
   std::function<void()> settled_;
   QTimer* timer_;
   int width_;
-  QSet<int> widths_;  // widths covers may be kept at besides width_
+  bool quick_ = false;  // this view's zoom turned quick scaling on
+  QSet<int> widths_;    // widths covers may be kept at besides width_
 };
 
 }  // namespace mira_gui

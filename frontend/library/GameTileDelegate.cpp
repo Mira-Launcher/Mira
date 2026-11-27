@@ -1,6 +1,7 @@
 #include "GameTileDelegate.h"
 
 #include <QAbstractItemView>
+#include <QCache>
 #include <QFontMetrics>
 #include <QLinearGradient>
 #include <QListView>
@@ -22,6 +23,22 @@
 
 namespace mira_gui {
 namespace {
+// A cover mostly gray, made once per cover drawn (its cache key) and bounded, so a store's long
+// Not installed list costs about what scaling its covers does.
+QPixmap Faded(const QPixmap& cover) {
+  static QCache<qint64, QPixmap> faded(32 * 1024);  // KiB
+  if (const QPixmap* known = faded.object(cover.cacheKey())) return *known;
+  auto* made = new QPixmap(cover);
+  {
+    QPainter blend(made);
+    blend.setOpacity(0.65);
+    blend.drawImage(0, 0, cover.toImage().convertToFormat(QImage::Format_Grayscale8));
+  }
+  const QPixmap result = *made;
+  faded.insert(cover.cacheKey(), made,
+               std::max<qsizetype>(1, made->width() * made->height() * 4 / 1024));
+  return result;
+}
 
 constexpr int kScrimHeight = 62;
 constexpr int kActionHeight = 24;
@@ -177,21 +194,18 @@ void GameTileDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
                               : artwork_->CoverById(index.data(IdRole).toString(), name, size, dpr,
                                                     index.data(SourceRole).toString());
   }
-  const bool dimmed = index.data(DimmedRole).toBool() && !hovered && !selected;
+  // Not while it installs: its rail and lines are what's worth seeing.
+  const bool dimmed = index.data(DimmedRole).toBool() && !hovered && !selected &&
+                      !index.data(ProgressRole).isValid();
   if (cover.isNull()) {
     painter->fillRect(rect, tokens.tile_placeholder);
   } else {
     if (dimmed) {
-      // Mostly gray and half see-through. Only a removed game's few tiles are drawn this way.
-      QPixmap faded = cover;
-      {
-        QPainter blend(&faded);
-        blend.setOpacity(0.65);
-        blend.drawImage(0, 0, cover.toImage().convertToFormat(QImage::Format_Grayscale8));
-      }
       painter->fillRect(rect, tokens.window);
       painter->setOpacity(0.55);
-      painter->drawPixmap(rect, faded);
+      // Mid-zoom each frame's cover is a new copy: only see-through until it settles.
+      const bool zooming = artwork_ != nullptr && artwork_->QuickScaling();
+      painter->drawPixmap(rect, zooming ? cover : Faded(cover));
       painter->setOpacity(1.0);
     } else {
       painter->drawPixmap(rect, cover);
