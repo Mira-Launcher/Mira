@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <optional>
 
@@ -77,6 +78,52 @@ std::filesystem::path NewestFile(const std::filesystem::path& dir) {
     }
   }
   return newest;
+}
+
+// PATCH /v1/games/{id} with `b`, already checked; `more` also changes the game in the same save.
+void PatchGame(Services& s, const std::string& id, const json& b, Response& res,
+               const std::function<void(model::Game&)>& more = {}) {
+  const auto before = s.games.Find(id);
+  // Turned into a Windows or web game without a data folder: it gets one, as POST
+  // /v1/games/manual does. A game turned native keeps its data_dir, so switching back reuses the
+  // same prefix.
+  std::string prefix_dir;
+  if (before && !model::NeedsRunnerSetup(before->platform) && before->data_dir.empty()) {
+    const model::Game patched = library::ParseGamePatch(*before, b);
+    if (model::NeedsRunnerSetup(patched.platform) && patched.data_dir.empty()) {
+      prefix_dir = library::PrefixDir(s.config, s.games, patched).string();
+    }
+  }
+  // Turned into a ready Windows or web game: its prefix or browser is set up in the background,
+  // as POST /v1/games/manual does, and it is setting_up until then.
+  // So is a game Mira found nothing to run in, once it's given a page or program.
+  const bool turned = before && library::ParseGamePatch(*before, b).platform != before->platform;
+  const bool was_unknown = before && before->platform == model::Platform::Unknown;
+  bool provision = false;
+  auto result = s.games.Update(id, [&](model::Game& game) {
+    game = library::ParseGamePatch(game, b);
+    if (more) more(game);
+    if (model::NeedsRunnerSetup(game.platform) && game.data_dir.empty()) game.data_dir = prefix_dir;
+    provision = turned && model::NeedsRunnerSetup(game.platform) &&
+                (game.status == model::GameStatus::Ready ||
+                 (was_unknown && model::WaitsFor(game, model::SetupStep::Failed)));
+    if (provision) game.status = model::GameStatus::SettingUp;
+  });
+  if (!result) return SendStoreError(res, result.error());
+  s.SyncDesktopEntry(id);
+  SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
+  if (provision) s.ProvisionLater(*result);
+  // Turned native, with its prefix asked to go: its saves are backed up from it first.
+  if (before && b.value("drop_prefix", false) && before->platform == model::Platform::Windows &&
+      result->platform == model::Platform::Native && !before->data_dir.empty() &&
+      before->source != "steam" && !before->runner_ref.starts_with("steam:"))
+    s.DropPrefixLater(*before);
+  if (before) s.RefetchIfIdentityChanged(*before, *result);
+  // A new folder too: a game sorted by a link needs its link pointed at it.
+  if (before &&
+      (before->tags != result->tags || before->folder_tag != result->folder_tag ||
+       before->install_path != result->install_path || before->data_dir != result->data_dir))
+    s.SortByTags({id});
 }
 
 }  // namespace
@@ -153,55 +200,19 @@ void RegisterGameRoutes(Router& http, Services& s) {
     SendJson(res, {{"sessions", sessions}});
   });
 
-  // The tail of mira-run's log for this game. No log yet is an empty list.
-  http.Get(R"(/v1/games/([^/]+)/log)", [&s](const Request& req, Response& res) {
-    auto game = s.games.Find(req.matches[1]);
-    if (!game) return SendError(res, 404, "game_not_found", "no such game");
-
-    int requested_lines = 200;
-    if (auto it = req.params.find("lines"); it != req.params.end()) {
-      const std::string& raw = it->second;
-      if (std::from_chars(raw.data(), raw.data() + raw.size(), requested_lines).ec != std::errc() ||
-          requested_lines < 1) {
-        return SendError(res, 400, "invalid_param", "?lines= must be a whole number, 1 or more");
-      }
-    }
-
-    const std::filesystem::path log_file = proc::GameLogPath(s.games.Dir(), game->id);
-    std::ifstream in(log_file, std::ios::binary);
-    if (!in) return SendJson(res, {{"lines", json::array()}});
-
-    // Only the end of the file is read; logs can be up to launch.log_max_mb.
-    constexpr std::streamoff kMaxTailBytes = 4 * 1024 * 1024;
-    in.seekg(0, std::ios::end);
-    const std::streamoff size = in.tellg();
-    in.seekg(size > kMaxTailBytes ? size - kMaxTailBytes : 0);
-    const std::string content((std::istreambuf_iterator<char>(in)),
-                              std::istreambuf_iterator<char>());
-
-    std::vector<std::string> all_lines = strings::Split(content, '\n');
-    if (!all_lines.empty() && all_lines.back().empty()) all_lines.pop_back();  // trailing newline
-    const std::size_t take = std::min(all_lines.size(), static_cast<std::size_t>(requested_lines));
-    json out = json::array();
-    for (std::size_t i = all_lines.size() - take; i < all_lines.size(); ++i)
-      out.push_back(all_lines[i]);
-    SendJson(res, {{"lines", out}});
-  });
-
   http.Patch(R"(/v1/games/([^/]+))", [&s](const Request& req, Response& res) {
     const std::string id = req.matches[1];
     const auto body = BodyObject(req, res, "a JSON object");
     if (!body) return;
-    const json& b = *body;
-    if (const auto problem = library::GamePatchProblem(b))
+    if (const auto problem = library::GamePatchProblem(*body))
       return SendError(res, 400, "invalid_body", *problem);
-    const bool body_drop_prefix = b.value("drop_prefix", false);
 
     // A new install_path points the game at where its files were moved outside Mira; nothing moves.
-    if (b.contains("install_path")) {
+    if (body->contains("install_path")) {
       const auto current = s.games.Find(id);
       if (!current) return SendError(res, 404, "game_not_found", "no such game");
-      const std::filesystem::path wanted = paths::Expand(b["install_path"].get<std::string>());
+      const std::filesystem::path wanted =
+          paths::Expand((*body)["install_path"].get<std::string>());
       if (wanted.lexically_normal() !=
           std::filesystem::path(current->install_path).lexically_normal()) {
         const auto claim = s.Claim(id, "moved");  // not while it runs from the old folder
@@ -212,47 +223,7 @@ void RegisterGameRoutes(Router& http, Services& s) {
       }
     }
 
-    const auto before = s.games.Find(id);
-    // Turned into a Windows or web game without a data folder: it gets one, as POST
-    // /v1/games/manual does. A game turned native keeps its data_dir, so switching back reuses the
-    // same prefix.
-    std::string prefix_dir;
-    if (before && !model::NeedsRunnerSetup(before->platform) && before->data_dir.empty()) {
-      const model::Game patched = library::ParseGamePatch(*before, b);
-      if (model::NeedsRunnerSetup(patched.platform) && patched.data_dir.empty()) {
-        prefix_dir = library::PrefixDir(s.config, s.games, patched).string();
-      }
-    }
-    // Turned into a ready Windows or web game: its prefix or browser is set up in the background,
-    // as POST /v1/games/manual does, and it is setting_up until then.
-    // So is a game Mira found nothing to run in, once it's given a page or program.
-    const bool turned = before && library::ParseGamePatch(*before, b).platform != before->platform;
-    const bool was_unknown = before && before->platform == model::Platform::Unknown;
-    bool provision = false;
-    auto result = s.games.Update(id, [&](model::Game& game) {
-      game = library::ParseGamePatch(game, b);
-      if (model::NeedsRunnerSetup(game.platform) && game.data_dir.empty())
-        game.data_dir = prefix_dir;
-      provision = turned && model::NeedsRunnerSetup(game.platform) &&
-                  (game.status == model::GameStatus::Ready ||
-                   (was_unknown && model::WaitsFor(game, model::SetupStep::Failed)));
-      if (provision) game.status = model::GameStatus::SettingUp;
-    });
-    if (!result) return SendStoreError(res, result.error());
-    s.SyncDesktopEntry(id);
-    SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
-    if (provision) s.ProvisionLater(*result);
-    // Turned native, with its prefix asked to go: its saves are backed up from it first.
-    if (before && body_drop_prefix && before->platform == model::Platform::Windows &&
-        result->platform == model::Platform::Native && !before->data_dir.empty() &&
-        before->source != "steam" && !before->runner_ref.starts_with("steam:"))
-      s.DropPrefixLater(*before);
-    if (before) s.RefetchIfIdentityChanged(*before, *result);
-    // A new folder too: a game sorted by a link needs its link pointed at it.
-    if (before &&
-        (before->tags != result->tags || before->folder_tag != result->folder_tag ||
-         before->install_path != result->install_path || before->data_dir != result->data_dir))
-      s.SortByTags({id});
+    PatchGame(s, id, *body, res);
   });
 
   // Detects the game's program again from scratch: the old candidates are dropped and the program
@@ -267,25 +238,32 @@ void RegisterGameRoutes(Router& http, Services& s) {
     const library::Detector::Result detected =
         library::Detector(library::SettingsFromConfig(s.config))
             .Detect(before->install_path, before->name);
-    auto result = s.games.Update(id, [&](model::Game& game) {
+    // A game nothing was found for before: it waits to be confirmed, with no prefix until then.
+    const bool first_found = before->exe_path.empty() && !detected.candidates.empty() &&
+                             model::WaitsFor(*before, model::SetupStep::Failed);
+    // Another program goes through the patch, so a game turned Windows or native by it gets its
+    // prefix and setup as one picked by hand would. The same one leaves the game's platform alone.
+    json patch = json::object();
+    if (!first_found && !detected.candidates.empty() &&
+        !std::ranges::contains(detected.candidates, before->exe_path,
+                               &model::Candidate::rel_path)) {
+      const model::Candidate& picked = detected.candidates.front();
+      patch["exe_path"] = picked.rel_path;
+      if (picked.kind != model::Platform::Unknown) patch["platform"] = model::ToString(picked.kind);
+    }
+    PatchGame(s, id, patch, res, [&](model::Game& game) {
       game.candidates = detected.candidates;
-      const bool kept =
-          std::ranges::contains(game.candidates, game.exe_path, &model::Candidate::rel_path);
-      if (!kept && !game.candidates.empty()) game.exe_path = game.candidates.front().rel_path;
+      if (first_found) game.exe_path = game.candidates.front().rel_path;
       for (model::Candidate& candidate : game.candidates)
         candidate.chosen = candidate.rel_path == game.exe_path;
       game.reviewed = false;
-      if (before->exe_path.empty() && !game.candidates.empty() &&
-          model::WaitsFor(game, model::SetupStep::Failed)) {
+      if (first_found) {
         game.platform = game.candidates.front().kind;
         game.setup = game.candidates.front().is_installer ? model::SetupStep::Install
                                                           : model::SetupStep::Confirm;
         game.last_error.clear();
       }
     });
-    if (!result) return SendStoreError(res, result.error());
-    s.SyncDesktopEntry(id);
-    SendJson(res, s.events.Publish("game.updated", s.Record(*result)).payload);
   });
 
   // One save, one menu sync and one event for any number of games, so a

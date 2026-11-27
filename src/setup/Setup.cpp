@@ -14,14 +14,11 @@ namespace {
 namespace fs = std::filesystem;
 
 constexpr std::string_view kMarker = "# Written by `mira setup`";
-// The hand-written wrapper this replaces (same behavior, no marker).
-constexpr std::string_view kLegacyMarker = "Wrapper: always run whichever binary";
 constexpr const char* kLinks[] = {"mira-run"};
 
 bool IsOurs(const fs::path& path) {
   const std::string content = files::ReadFile(path).value_or("");
-  return content.find(kMarker) != std::string::npos ||
-         content.find(kLegacyMarker) != std::string::npos;
+  return content.find(kMarker) != std::string::npos;
 }
 
 Result<void> WriteFile(const fs::path& path, const std::string& content) {

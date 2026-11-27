@@ -48,9 +48,7 @@ HiddenUnlockCard::HiddenUnlockCard(QWidget* parent) : SheetCard("Unlock hidden g
   error_ = ErrorLine();
 
   QHBoxLayout* buttons = ButtonRow();
-  auto* cancel = new QPushButton("Cancel", this);
-  connect(cancel, &QPushButton::clicked, this, &HiddenUnlockCard::CloseRequested);
-  buttons->addWidget(cancel);
+  AddCancel([this] { emit CloseRequested(); });
   unlock_ = new Button("Unlock", ButtonKind::Primary, this);
   unlock_->setDefault(true);
   connect(unlock_, &QPushButton::clicked, this, &HiddenUnlockCard::Unlock);

@@ -1157,7 +1157,8 @@ bool AddSteamByName(const config::Config& config, store::MetadataStore& cache,
   // A library game sold on Steam under its exact name gets the store page too: description,
   // screenshots and trailers. Not store titles, which would be one appdetails call each.
   if (store_details && !exact.empty()) {
-    FetchSteamDetails(config, cache, exact, SteamStoreItem(exact), info);
+    if (!FetchSteamDetails(config, cache, exact, SteamStoreItem(exact), info))
+      info.erase("details_fetched");  // asked again next time, not after refresh_days
     return true;
   }
   json item;

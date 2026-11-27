@@ -93,10 +93,8 @@ ConnectRemoteCard::ConnectRemoteCard(const std::string& slot, QWidget* parent)
   AddRow(progress_);
 
   error_ = ErrorLine();
+  AddCancel([this] { emit CloseRequested(); });
   QHBoxLayout* buttons = ButtonRow();
-  auto* cancel = new QPushButton("Cancel", this);
-  connect(cancel, &QPushButton::clicked, this, &ConnectRemoteCard::CloseRequested);
-  buttons->addWidget(cancel);
   connect_ = new Button("Connect", ButtonKind::Primary, this);
   connect_->setEnabled(false);
   connect_->setDefault(true);

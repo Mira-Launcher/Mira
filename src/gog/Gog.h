@@ -74,4 +74,8 @@ Result<void> Logout(const config::Config& config);
 // refreshing doesn't produce a usable token either.
 Result<std::string> AccessToken(const config::Config& config);
 
+// Runs curl -sSL with `args`, signed in with `token` (none when empty), which goes through curl's
+// config file so it stays off the process list.
+Result<runner::ExecResult> CurlWithToken(const std::string& token, std::vector<std::string> args);
+
 }  // namespace mira::gog

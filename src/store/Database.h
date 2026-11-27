@@ -60,6 +60,15 @@ class Database {
 
   Result<void> Exec(std::string_view sql);
   Result<Statement> Prepare(std::string_view sql);
+  // Prepares `sql`, binds `args` to ?1, ?2... in order and runs it: a statement with no rows.
+  template <typename... Args>
+  Result<void> Run(std::string_view sql, const Args&... args) {
+    auto statement = Prepare(sql);
+    if (!statement) return std::unexpected(statement.error());
+    int index = 1;
+    (statement->Bind(index++, args), ...);
+    return statement->Run();
+  }
   // Applies the steps past PRAGMA user_version, each in a transaction of its own.
   Result<void> Migrate(std::span<const std::string_view> steps);
   // PRAGMA quick_check. "database_damaged" when it finds damage; any other error means the check

@@ -368,6 +368,10 @@ GameEditForm::GameEditForm(std::string id, QWidget* parent) : QWidget(parent), i
     now.only = saved.only && !now.default_id.empty();
   });
   revert(tags_row_, &mira_gui::GamePatch::tags);
+  connect(tags_row_, &SettingRow::RevertClicked, this, [this] {
+    tags_edit_->SetFolderPick(original_pick_);
+    UpdateModified();
+  });
   revert(runner_row_, &mira_gui::GamePatch::runner_ref);
 
   setEnabled(false);
@@ -510,10 +514,6 @@ void GameEditForm::Arrange(const mira_gui::GameDetail& game) {
     return AddCard(QString::fromStdString(group_label));
   });
   emit CardsChanged();
-}
-
-void GameEditForm::ResetScroll() {
-  scroll_->verticalScrollBar()->setValue(0);
 }
 
 void GameEditForm::Reload() {
@@ -974,7 +974,7 @@ mira_gui::GamesPatch GameEditForm::TagsPatch(
   return tags;
 }
 
-void GameEditForm::Save() {
+bool GameEditForm::Save() {
   const mira_gui::GamePatch current = CurrentPatch();
   const std::vector<mira_gui::GameConfigEdit> override_edits = overrides_->PendingEdits();
 
@@ -1062,7 +1062,7 @@ void GameEditForm::Save() {
                            "This program runs without Wine or Proton, so the game's prefix is "
                            "deleted. Its saves there are backed up first.",
                            "Delete the prefix", /*destructive=*/true))
-        return;
+        return false;
       patch.drop_prefix = true;
     }
   }
@@ -1070,7 +1070,7 @@ void GameEditForm::Save() {
   setEnabled(false);
   if (!fields_changed) {
     save_tags();
-    return;
+    return true;
   }
   mira_gui::api::PatchGameAsync(this, id_, patch,
                                 [fail, save_tags](mira_gui::PatchGameResult result) {
@@ -1080,6 +1080,7 @@ void GameEditForm::Save() {
                                   }
                                   save_tags();
                                 });
+  return true;
 }
 
 }  // namespace mira_gui

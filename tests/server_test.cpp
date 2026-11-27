@@ -2308,3 +2308,33 @@ TEST_CASE("A client that saw only the live marker resumes from it without a gap"
   CHECK(std::ranges::none_of(resumed,
                              [](const Frame& frame) { return frame.event == "stream.gap"; }));
 }
+
+TEST_CASE("Detect again that picks a Windows program makes the game a Windows game") {
+  LiveServer server(TempDir("detect-platform"));
+  const fs::path folder = TempDir("detect-platform-game") / "Hades";
+  test::Touch(folder / "Hades.exe", std::string(4096, 'x'));
+  model::Game game;
+  game.id = "hades";
+  game.name = "Hades";
+  game.install_path = folder.string();
+  game.exe_path = "start.sh";  // gone: the folder now holds the Windows build
+  game.platform = model::Platform::Native;
+  REQUIRE(server.games().Upsert(game).has_value());
+
+  httplib::Client client = server.Client();
+  auto res = client.Post("/v1/games/hades/detect");
+  REQUIRE(res != nullptr);
+  REQUIRE(res->status == 200);
+  const nlohmann::json body = nlohmann::json::parse(res->body);
+  CHECK(body["exe_path"] == "Hades.exe");
+  CHECK(body["platform"] == "windows");
+
+  // Still the same program: a platform set by hand stays.
+  REQUIRE(server.games()
+              .Update("hades", [](model::Game& g) { g.platform = model::Platform::Native; })
+              .has_value());
+  res = client.Post("/v1/games/hades/detect");
+  REQUIRE(res != nullptr);
+  REQUIRE(res->status == 200);
+  CHECK(nlohmann::json::parse(res->body)["platform"] == "native");
+}

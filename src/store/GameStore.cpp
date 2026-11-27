@@ -348,13 +348,6 @@ Result<void> GameStore::Open() {
     opened = db_.Open(file_);
   }
   if (!opened) return opened;
-  {
-    // Scoped: an open statement would block the backup's VACUUM below.
-    auto version = db_.Prepare("PRAGMA user_version");
-    if (!version) return std::unexpected(version.error());
-    if (auto row = version->Step(); !row) return std::unexpected(row.error());
-    sources_new_ = version->Int(0) < 2;
-  }
   if (auto migrated = db_.Migrate(kMigrations); !migrated) return migrated;
   if (auto backed_up = db_.BackUp(backup); !backed_up) {
     log::Warn("could not back up the library: {}", backed_up.error().message);
@@ -404,10 +397,9 @@ Result<void> GameStore::ReadAll() {
 }
 
 Result<void> GameStore::WriteTitleHidden(const std::string& key, bool hidden) {
-  auto statement = db_.Prepare(hidden ? "INSERT OR IGNORE INTO hidden_titles(id) VALUES(?)"
-                                      : "DELETE FROM hidden_titles WHERE id = ?");
-  if (!statement) return std::unexpected(statement.error());
-  return statement->Bind(1, key).Run();
+  return db_.Run(hidden ? "INSERT OR IGNORE INTO hidden_titles(id) VALUES(?)"
+                        : "DELETE FROM hidden_titles WHERE id = ?",
+                 key);
 }
 
 std::vector<CloudSync> GameStore::CloudSyncs(const std::string& id) const {
@@ -658,9 +650,7 @@ Result<void> GameStore::Write(model::Game& game) {
   }
   if (auto done = insert->Run(); !done) return done;
 
-  auto clear = db_.Prepare("DELETE FROM game_tags WHERE game_id = ?");
-  if (!clear) return std::unexpected(clear.error());
-  if (auto done = clear->Bind(1, game.id).Run(); !done) return done;
+  if (auto done = db_.Run("DELETE FROM game_tags WHERE game_id = ?", game.id); !done) return done;
   auto add = db_.Prepare("INSERT OR IGNORE INTO game_tags(game_id, position, tag) VALUES(?, ?, ?)");
   if (!add) return std::unexpected(add.error());
   std::int64_t position = 0;
@@ -672,13 +662,9 @@ Result<void> GameStore::Write(model::Game& game) {
 }
 
 Result<void> GameStore::Delete(const std::string& id) {
-  auto remove = db_.Prepare("DELETE FROM games WHERE id = ?");
-  if (!remove) return std::unexpected(remove.error());
-  if (auto done = remove->Bind(1, id).Run(); !done) return done;
+  if (auto done = db_.Run("DELETE FROM games WHERE id = ?", id); !done) return done;
   // Its sessions stay; one still open is never counted now.
-  auto close = db_.Prepare("UPDATE sessions SET counted = 1 WHERE game_id = ? AND counted = 0");
-  if (!close) return std::unexpected(close.error());
-  return close->Bind(1, id).Run();
+  return db_.Run("UPDATE sessions SET counted = 1 WHERE game_id = ? AND counted = 0", id);
 }
 
 Result<void> GameStore::Transact(const std::function<Result<void>()>& write) {
@@ -831,9 +817,10 @@ void GameStore::SetHiddenSidebar(const std::map<std::string, bool>& shown) {
       auto source = db_.Prepare("INSERT OR IGNORE INTO sources(id) VALUES(?)");
       if (!source) return std::unexpected(source.error());
       if (auto done = source->Bind(1, id).Run(); !done) return done;
-      auto insert = db_.Prepare("INSERT INTO hidden_sidebar(source, shown) VALUES(?, ?)");
-      if (!insert) return std::unexpected(insert.error());
-      if (auto done = insert->Bind(1, id).Bind(2, std::int64_t{on}).Run(); !done) return done;
+      if (auto done = db_.Run("INSERT INTO hidden_sidebar(source, shown) VALUES(?, ?)", id,
+                              std::int64_t{on});
+          !done)
+        return done;
     }
     return {};
   });
@@ -847,12 +834,10 @@ void GameStore::SetSourceOrder(const std::vector<std::string>& ids) {
     std::int64_t position = 0;
     for (const std::string& id : ids) {
       ++position;
-      auto insert = db_.Prepare("INSERT OR IGNORE INTO sources(id) VALUES(?)");
-      if (!insert) return std::unexpected(insert.error());
-      if (auto done = insert->Bind(1, id).Run(); !done) return done;
-      auto update = db_.Prepare("UPDATE sources SET position = ? WHERE id = ?");
-      if (!update) return std::unexpected(update.error());
-      if (auto done = update->Bind(1, position).Bind(2, id).Run(); !done) return done;
+      if (auto done = db_.Run("INSERT OR IGNORE INTO sources(id) VALUES(?)", id); !done)
+        return done;
+      if (auto done = db_.Run("UPDATE sources SET position = ? WHERE id = ?", position, id); !done)
+        return done;
     }
     return {};
   });
@@ -1045,9 +1030,7 @@ std::vector<RemovedGame> GameStore::Removed() const {
 
 Result<void> GameStore::ForgetRemoved(const std::string& id) {
   std::lock_guard lock(mutex_);
-  auto remove = db_.Prepare("DELETE FROM removed_games WHERE id = ?");
-  if (!remove) return std::unexpected(remove.error());
-  return remove->Bind(1, id).Run();
+  return db_.Run("DELETE FROM removed_games WHERE id = ?", id);
 }
 
 Result<void> GameStore::KeepRecord(const model::Game& game) {
@@ -1083,9 +1066,7 @@ Result<void> GameStore::Reattach(model::Game& game) {
   if (*row) {
     const json record = json::parse(kept->Text(0), nullptr, /*allow_exceptions=*/false);
     if (record.is_object()) Restore(game, record, games_);
-    auto drop = db_.Prepare("DELETE FROM removed_games WHERE id = ?");
-    if (!drop) return std::unexpected(drop.error());
-    if (auto done = drop->Bind(1, game.id).Run(); !done) return done;
+    if (auto done = db_.Run("DELETE FROM removed_games WHERE id = ?", game.id); !done) return done;
   }
 
   auto select = db_.Prepare(
@@ -1264,9 +1245,7 @@ Result<std::vector<std::string>> GameStore::RemoveMany(const std::vector<std::st
            {"DELETE FROM removed_games WHERE id = ?", "DELETE FROM cloud_sync WHERE game_id = ?",
             "DELETE FROM remote_sync WHERE game_id = ?",
             "DELETE FROM store_playtime WHERE game_id = ?"}) {
-        auto drop = db_.Prepare(sql);
-        if (!drop) return std::unexpected(drop.error());
-        if (auto done = drop->Bind(1, game.id).Run(); !done) return done;
+        if (auto done = db_.Run(sql, game.id); !done) return done;
       }
     }
     for (const std::string& id : removed) {

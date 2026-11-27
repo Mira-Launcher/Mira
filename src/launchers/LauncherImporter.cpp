@@ -236,11 +236,7 @@ Result<library::ImportSummary> Import(config::Config& config, store::GameStore& 
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
 
-    if (auto saved = games.Merge(existing, game); !saved) {
-      log::Error("failed to import {} game {}: {}", launcher.name, id, saved.error().message);
-      continue;
-    }
-    library::RecordImported(summary, events, game, existing.has_value());
+    library::SaveImported(summary, events, games, existing, game, launcher.name);
   }
 
   // Uninstalled through the launcher: handled like a scanned game whose

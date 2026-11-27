@@ -61,17 +61,36 @@ json GameLog(Services& s, const std::string& id, const std::optional<std::uint64
 // daemon, game:<id>, setup:<source>, install:<source>:<ref>, runner:<kind>:<name>.
 // Each task has its own, so two running at once don't mix. `next` is the cursor to send back.
 void RegisterLogRoutes(Router& http, Services& s) {
-  http.Get(R"(/v1/logs/([A-Za-z0-9._:-]+))", [&s](const httplib::Request& req,
-                                                  httplib::Response& res) {
-    const std::string channel = req.matches[1];
-    int tail = 300;
-    if (req.has_param("lines")) {
-      const std::string raw = req.get_param_value("lines");
-      if (std::from_chars(raw.data(), raw.data() + raw.size(), tail).ec != std::errc() ||
-          tail < 1) {
-        return SendError(res, 400, "invalid_param", "?lines= must be a whole number, 1 or more");
-      }
+  // ?lines=, else `fallback`; nullopt once a bad one is answered.
+  const auto lines_param = [](const httplib::Request& req, httplib::Response& res,
+                              int fallback) -> std::optional<int> {
+    if (!req.has_param("lines")) return fallback;
+    const std::string raw = req.get_param_value("lines");
+    int tail = 0;
+    if (std::from_chars(raw.data(), raw.data() + raw.size(), tail).ec != std::errc() || tail < 1) {
+      SendError(res, 400, "invalid_param", "?lines= must be a whole number, 1 or more");
+      return std::nullopt;
     }
+    return tail;
+  };
+
+  // The tail of the game's log, as game:<id> below without the cursor. No log yet is an empty list.
+  http.Get(R"(/v1/games/([^/]+)/log)",
+           [&s, lines_param](const httplib::Request& req, httplib::Response& res) {
+             const std::string id = req.matches[1];
+             if (!s.games.Contains(id))
+               return SendError(res, 404, "game_not_found", "no such game");
+             const std::optional<int> tail = lines_param(req, res, 200);
+             if (!tail) return;
+             SendJson(res, {{"lines", GameLog(s, id, std::nullopt, *tail)["lines"]}});
+           });
+
+  http.Get(R"(/v1/logs/([A-Za-z0-9._:-]+))", [&s, lines_param](const httplib::Request& req,
+                                                               httplib::Response& res) {
+    const std::string channel = req.matches[1];
+    const std::optional<int> lines = lines_param(req, res, 300);
+    if (!lines) return;
+    const int tail = *lines;
     std::optional<std::uint64_t> after;
     if (req.has_param("after")) {
       const std::string raw = req.get_param_value("after");

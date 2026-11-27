@@ -349,7 +349,8 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
         existing ? game.id : games_.NextId(row.slug.empty() ? row.name : row.slug, install_path);
     game.source = "lutris";
     game.source_ref = row.slug;  // joins Lutris's own cached banner/cover/icon files by slug
-    game.name = row.name;
+    // A rename stays; a game found by its folder before takes Lutris's name.
+    if (!existing || existing->source != "lutris" || game.name.empty()) game.name = row.name;
     // Lutris sets where the game is when it arrives; after that the
     // executable and folders are Mira's to change (a pick in the game's
     // settings), and Lutris's only come back if Mira's are gone.
@@ -404,13 +405,8 @@ Result<LutrisImportSummary> LutrisImporter::Import() {
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
 
-    auto result = games_.Merge(existing, game);
-    if (!result) {
-      log::Error("failed to save lutris game {}: {}", game.id, result.error().message);
-      continue;
-    }
-    keep(game);  // as Merge saved it
-    library::RecordImported(summary, events_, game, existing.has_value());
+    // As Merge saved it.
+    if (library::SaveImported(summary, events_, games_, existing, game, "lutris")) keep(game);
   }
 
   return summary;

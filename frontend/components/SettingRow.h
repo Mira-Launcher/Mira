@@ -112,15 +112,10 @@ class ExpanderRow : public QWidget {
   void SetMeta(const QString& text);
   // On the right before the chevron, e.g. "Installed", muted unless `tone` says otherwise.
   void SetSummary(const QString& text, Tone tone = Tone::Muted);
-  // Before the chevron, after the summary, e.g. a source's on switch.
-  void AddTrailing(QWidget* widget);
   void SetLeading(QWidget* widget);
   void SetExpanded(bool expanded);
   bool Expanded() const;
   QLabel* Label() const { return label_; }
-
- signals:
-  void Toggled(bool expanded);
 
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
@@ -136,6 +131,9 @@ class ExpanderRow : public QWidget {
   QVBoxLayout* body_layout_ = nullptr;
   QList<QWidget*> rows_;
 };
+
+// A row of muted text alone, e.g. an empty list's one line.
+SettingRow* NoteRow(const QString& text, QWidget* parent = nullptr);
 
 // `field` stretched beside `buttons`, for a row's AddControlBelow.
 QWidget* FieldWithButtons(QWidget* field, const std::vector<QWidget*>& buttons);

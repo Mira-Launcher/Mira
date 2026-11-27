@@ -6,7 +6,6 @@
 
 #include "core/Json.h"
 #include "gog/Gog.h"
-#include "runner/Exec.h"
 
 namespace mira::gog {
 namespace {
@@ -15,9 +14,8 @@ using achievements::GameAchievements;
 using nlohmann::json;
 
 Result<json> GetList(const std::string& url, const std::string& token, const std::string& locale) {
-  const auto result = runner::RunCurlWithSecrets(
-      {"-sSL", "-f", "--max-time", "15", "-H", "X-Gog-Lc: " + locale, url},
-      runner::CurlConfigLine("header", "Authorization: Bearer " + token));
+  const auto result =
+      CurlWithToken(token, {"-f", "--max-time", "15", "-H", "X-Gog-Lc: " + locale, url});
   if (!result) return std::unexpected(result.error());
   const json parsed = json::parse(result->output, nullptr, false);
   if (result->exit_code != 0 || !parsed.is_object()) {

@@ -91,6 +91,12 @@ std::uintmax_t TreeBytes(const std::filesystem::path& root) {
   return total;
 }
 
+std::string ZDrivePath(const std::filesystem::path& path) {
+  std::string out = "Z:" + path.string();
+  std::ranges::replace(out, '/', '\\');
+  return out;
+}
+
 bool IsWithin(const std::filesystem::path& target, const std::vector<std::filesystem::path>& roots,
               bool allow_equal) {
   std::error_code ec;

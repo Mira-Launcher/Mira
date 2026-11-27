@@ -28,8 +28,8 @@ std::optional<std::string> GogIdIn(const fs::path& dir) {
   return std::nullopt;
 }
 
-// The game directory itself when it holds a goggame-*.info; otherwise the
-// legacy <install_root>/<id>/<Title>/ layout's single subdirectory, or `dir`.
+// The game directory itself when it holds a goggame-*.info; otherwise the single subdirectory of
+// gog.folder_naming "id"'s <install_root>/<id>/<Title>/ layout, or `dir`.
 fs::path ResolveGameDir(const fs::path& dir) {
   if (GogIdIn(dir)) return dir;
   std::error_code ec;
@@ -99,14 +99,16 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id,
   game.source = "gog";
   game.source_ref = id;
   // gogdl failing keeps the name it had, rather than the bare GOG id.
-  if (!title.empty()) {
+  if (!title.empty() && !existing) {
     game.name = title;
   } else if (game.name.empty()) {
     game.name = id;
   }
   game.install_path = game_dir.string();
   if (!exe_path.empty()) game.exe_path = exe_path;
-  game.platform = model::Platform::Windows;
+  // One set native by hand stays native.
+  if (!existing || existing->platform == model::Platform::Unknown)
+    game.platform = model::Platform::Windows;
   game.last_error.clear();
   game.updated_at = model::NowSeconds();
   if (!existing) game.created_at = game.updated_at;
@@ -131,14 +133,10 @@ Result<library::ImportSummary> GogImporter::Import() {
 
   for (const fs::path& entry : paths::ListDir(root)) {
     if (!fs::is_directory(entry, ec)) continue;
-    // No goggame-*.info yet: gogdl is still downloading it, unless it's the
-    // legacy <install_root>/<id>/ layout.
-    const std::string folder = entry.filename().string();
-    const bool legacy_id =
-        !folder.empty() && std::ranges::all_of(folder, [](char c) { return c >= '0' && c <= '9'; });
+    // No goggame-*.info yet: gogdl is still downloading it.
     const std::optional<std::string> found = GogIdIn(ResolveGameDir(entry));
-    if (!found && !legacy_id) continue;
-    const std::string id = found.value_or(folder);
+    if (!found) continue;
+    const std::string& id = *found;
     const bool existed = games_.Find("gog-" + id).has_value();
     summary.listed.insert("gog-" + id);
 

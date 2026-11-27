@@ -371,9 +371,7 @@ void AddGamesCard::ShowInstalled(const QString& path, const ImportGuessResult& g
 
   QLabel* error = page->ErrorLine();
   QHBoxLayout* buttons = page->ButtonRow();
-  auto* cancel = new QPushButton("Cancel", page);
-  connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
-  buttons->addWidget(cancel);
+  page->AddCancel([this] { Close(); });
   auto* add = new Button(QString(), ButtonKind::Primary, page);
   add->setDefault(true);
   buttons->addWidget(add);
@@ -512,9 +510,7 @@ void AddGamesCard::ShowLinks() {
 
   QLabel* error = page->ErrorLine();
   QHBoxLayout* buttons = page->ButtonRow();
-  auto* cancel = new QPushButton("Cancel", page);
-  connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
-  buttons->addWidget(cancel);
+  page->AddCancel([this] { Close(); });
   auto* start = new Button("Download", ButtonKind::Primary, page);
   start->setDefault(true);
   buttons->addWidget(start);
@@ -624,9 +620,7 @@ void AddGamesCard::ShowAppMenu() {
   count = new QLabel(page);
   SetTextStyle(count, text::kSubtle);
   buttons->insertWidget(0, count);
-  auto* cancel = new QPushButton("Cancel", page);
-  connect(cancel, &QPushButton::clicked, this, [this] { Close(); });
-  buttons->addWidget(cancel);
+  page->AddCancel([this] { Close(); });
   add = new Button("Add", ButtonKind::Primary, page);
   add->setDefault(true);
   buttons->addWidget(add);

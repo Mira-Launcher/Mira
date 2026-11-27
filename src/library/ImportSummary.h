@@ -3,6 +3,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "model/Types.h"
@@ -36,6 +37,12 @@ struct ImportSummary {
   std::set<std::string> listed;
   bool lists_installed = false;
 };
+
+// Saves an imported game over `existing` and records it as RecordImported does; false once a
+// failed save is logged, the game still listed as installed. `what` names it in the log ("epic").
+bool SaveImported(ImportSummary& summary, api::EventBus& events, store::GameStore& games,
+                  const std::optional<model::Game>& existing, model::Game& game,
+                  std::string_view what);
 
 // Counts a game as added or updated and publishes its event.
 void RecordImported(ImportSummary& summary, api::EventBus& events, const model::Game& game,

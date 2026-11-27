@@ -488,6 +488,8 @@ void Queue::PollFiles(Download& download, const std::vector<Result<FileStatus>>&
       continue;
     }
     file.status = *status;
+    // Still paused while the download runs: the resume asking aria2 got lost.
+    if (status->state == "paused") (void)aria2_.Resume(file.gid);
     if (status->speed > 0) download.retries = 0;
     if (status->state == "error") {
       Error error{"download_failed",

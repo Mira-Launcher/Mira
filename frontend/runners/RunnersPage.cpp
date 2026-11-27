@@ -62,13 +62,6 @@ ElidedLabel* Facts(const QString& text, SettingRow* row) {
   return facts;
 }
 
-// An empty list's one line, in the card's row padding.
-SettingRow* NoteRow(const QString& text) {
-  auto* row = new SettingRow(text, {});
-  SetTextStyle(row->Label(), text::kSubtle);
-  return row;
-}
-
 void SetProgress(QWidget* holder, double fraction);
 
 // A row's download progress: the percentage, when known, beside the rail.

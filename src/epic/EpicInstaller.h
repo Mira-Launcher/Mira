@@ -17,19 +17,7 @@ namespace mira::epic {
 // success, re-runs EpicImporter, which is what actually picks up the new
 // install and provisions a Wine/Proton prefix for it. Legendary itself
 // never creates one (see EpicImporter.h's class comment).
-class EpicInstaller {
- public:
-  EpicInstaller(config::Config& config, store::GameStore& games, api::EventBus& events);
-
-  Result<void> Install(const std::string& app_name);
-  Result<void> Update(const std::string& app_name);
-
- private:
-  Result<void> Run(const std::string& verb, const std::string& app_name);
-
-  config::Config& config_;
-  store::GameStore& games_;
-  api::EventBus& events_;
-};
+Result<void> InstallTitle(config::Config& config, store::GameStore& games, api::EventBus& events,
+                          const std::string& verb, const std::string& app_name);
 
 }  // namespace mira::epic

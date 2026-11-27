@@ -45,7 +45,6 @@ src/
   setup/      `mira setup`: wrapper script, desktop entry and icon for the AppImage
   system/     Packages: the distro packages each feature needs, and the command that installs them
   updates/    What has a newer version: Mira, runners, store tools and emulators
-  migrate/    One-time import of Mira 0.13's files (temporary)
   api/        EventBus (in-memory pub/sub), Jobs, Services and Server; routes/ holds the REST routes by area
   cli/        `mira`
   wrapper/    `mira-run`, the process that owns a launched game's session
@@ -78,7 +77,9 @@ logs/           per-game output from the last launches, and mirad.log (mirad's o
 
 **cache.db** (`store::MetadataStore`): fetched info per id, games and store titles alike, plus `artwork` rows pointing at each slot's file under `artwork/<id>/`, `lists` of what's fetched for the whole library (Steam's tag names), `achievements` per game (icons under `artwork/<id>/achievements/`, dropped with the game's metadata), and `cloud_saves`, where each GOG or Epic game keeps its cloud saves, dropped likewise. `save_entries` and `save_ids` index the save locations list: a rebuild writes the next generation of rows in batches beside the current one, switches the `lists` row `save_entries` to it and only then deletes the old rows, so reads never wait out a rebuild or see half of one. Everything in it can be fetched again, so a damaged one is started over.
 
-Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step. Files from Mira 0.13 (`games.toml`, `metadata/*.json`, `sessions/*.toml`, window state in `frontend.toml`) are imported once by `src/migrate/`, which is temporary: delete that folder, its call in `mirad_main.cpp` and its test to drop it.
+Only mirad opens either database. Schema changes are steps appended to `kMigrations`, counted by `PRAGMA user_version`; never edit a shipped step.
+
+An update works directly from any release of the past month; from an older one, update through a release in between. So code that carries old data over (`src/migrate/`) stays for a month after the first release with it, and says when it can go. Schema steps stay for good.
 
 ## Running the daemon
 
@@ -129,7 +130,7 @@ The scan takes a folder for an HTML game only when nothing in it runs: an `.html
 
 Neither `umu-run` nor `wineboot` gives a reliable exit code for prefix creation, so both runners check that `drive_c` exists afterwards.
 
-`RunnerRegistry` turns a `kind:name` reference into a runner and build. `latest` picks the newest build. `auto` (the default for `default_runner.windows`) prefers a distro-packaged build, then GE-Proton or Wine staging-tkg, then the newest, and uses Proton when any Proton build is installed. Provisioning pins the resolved build onto the game's `runner_ref`, so installing another build never changes a working game. A pinned build that's gone (removed after a newer one of its line came) resolves to the newest installed build whose name differs from it only in its numbers, so `GE-Proton11-7` runs on `GE-Proton11-9` (`RunnerRegistry::StandIn`). Updating a build through Mira (`POST /v1/runners/update`) moves every reference to it onto the new one: games' `runner_ref`, their overrides and every runner setting (`runner::RepointRefs`, which the startup migration of in-place builds uses too). A build removed any other way (`DELETE /v1/runners/...`, by hand, or before that existed) is moved off the same way by `runner::RepointRemovedBuilds`: at startup, after a removal, and when a launch has to use a stand-in, so a game shows the build it runs. Runner settings left at their default aren't moved: they keep following the default.
+`RunnerRegistry` turns a `kind:name` reference into a runner and build. `latest` picks the newest build. `auto` (the default for `default_runner.windows`) prefers a distro-packaged build, then GE-Proton or Wine staging-tkg, then the newest, and uses Proton when any Proton build is installed. Provisioning pins the resolved build onto the game's `runner_ref`, so installing another build never changes a working game. A pinned build that's gone (removed after a newer one of its line came) resolves to the newest installed build whose name differs from it only in its numbers, so `GE-Proton11-7` runs on `GE-Proton11-9` (`RunnerRegistry::StandIn`). Updating a build through Mira (`POST /v1/runners/update`) moves every reference to it onto the new one: games' `runner_ref`, their overrides and every runner setting (`runner::RepointRefs`). A build removed any other way (`DELETE /v1/runners/...`, by hand, or before that existed) is moved off the same way by `runner::RepointRemovedBuilds`: at startup, after a removal, and when a launch has to use a stand-in, so a game shows the build it runs. Runner settings left at their default aren't moved: they keep following the default.
 
 Windows games are provisioned when they are detected and again on later scans while they are still `setting_up`. A game that broke because no runner was available is provisioned again on each scan, when a runner download finishes, and when it is launched.
 

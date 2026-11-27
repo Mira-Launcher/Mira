@@ -46,9 +46,8 @@ std::string WindowsPath(const fs::path& prefix, const fs::path& path) {
   std::error_code ec;
   const fs::path drive_c = fs::weakly_canonical(prefix / "drive_c", ec);
   const fs::path target = fs::weakly_canonical(path, ec);
-  std::string out = paths::IsWithin(target, {drive_c})
-                        ? "C:\\" + target.lexically_relative(drive_c).string()
-                        : "Z:" + target.string();
+  if (!paths::IsWithin(target, {drive_c})) return paths::ZDrivePath(target);
+  std::string out = "C:\\" + target.lexically_relative(drive_c).string();
   std::ranges::replace(out, '/', '\\');
   return out;
 }

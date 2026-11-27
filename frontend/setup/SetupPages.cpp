@@ -68,6 +68,16 @@ QLabel* Bold(QWidget* parent, const QString& text) {
   return label;
 }
 
+// A bold title over a line about it, taking the width the rest of `line` leaves.
+void AddTitleAndDetail(QHBoxLayout* line, QWidget* parent, const QString& title,
+                       const QString& detail) {
+  auto* text = new QVBoxLayout();
+  text->setSpacing(1);
+  text->addWidget(Bold(parent, title));
+  text->addWidget(MakeLabel(parent, detail, text::kDetail));
+  line->addLayout(text, /*stretch=*/1);
+}
+
 QLabel* GlyphLabel(QWidget* parent, icons::Glyph glyph, int size, icons::Role role) {
   auto* label = new QLabel(parent);
   icons::Follow(label, glyph, size, role);
@@ -252,19 +262,13 @@ WelcomePage::WelcomePage(const SetupContext& context) : context_(context) {
     line->setSpacing(10);
     line->addWidget(GlyphLabel(card, kFeatures[i].glyph, 20, &theme::Tokens::accent), 0,
                     Qt::AlignTop);
-    auto* text = new QVBoxLayout();
-    text->setSpacing(1);
-    text->addWidget(Bold(card, kFeatures[i].title));
-    text->addWidget(MakeLabel(card, kFeatures[i].text, text::kDetail));
-    line->addLayout(text, /*stretch=*/1);
+    AddTitleAndDetail(line, card, kFeatures[i].title, kFeatures[i].text);
     features->addWidget(card, i / 2, i % 2);
   }
   layout->addLayout(features);
 
   QFrame* folder = SetupCard(this);
-  auto* card = new QVBoxLayout(folder);
-  card->setContentsMargins(kSetupCardMargins);
-  card->setSpacing(8);
+  QVBoxLayout* card = SetupColumn(folder, kSetupCardMargins, 8);
   auto* head = new QHBoxLayout();
   head->setSpacing(8);
   head->addWidget(GlyphLabel(folder, icons::Glyph::Folder, 18, &theme::Tokens::accent));
@@ -612,9 +616,7 @@ void FoundPage::Show() {
 
   if (steam_.found) {
     QFrame* card = SetupCard(this);
-    auto* column = new QVBoxLayout(card);
-    column->setContentsMargins(kSetupCardMargins);
-    column->setSpacing(6);
+    QVBoxLayout* column = SetupColumn(card, kSetupCardMargins, 6);
     auto* head = new QHBoxLayout();
     head->setSpacing(14);
     const std::vector<SteamInstalledGame> games = steam_.games;
@@ -736,13 +738,8 @@ void FoundPage::Show() {
     line->setContentsMargins(16, 12, 16, 12);
     line->setSpacing(12);
     line->addWidget(MakeSourceBadge(source, 30, card));
-    auto* text = new QVBoxLayout();
-    text->setSpacing(1);
-    text->addWidget(Bold(card, source.name));
-    text->addWidget(
-        MakeLabel(card, games > 0 ? Counted(games, "game") + " added" : QString(importer.adds),
-                  text::kDetail));
-    line->addLayout(text, /*stretch=*/1);
+    AddTitleAndDetail(line, card, source.name,
+                      games > 0 ? Counted(games, "game") + " added" : QString(importer.adds));
     if (games == 0) {
       auto* add = new Switch(card);
       add->setChecked(importer.on);
@@ -763,23 +760,15 @@ void FoundPage::Show() {
     mark->setFixedSize(36, 36);
     mark->setAlignment(Qt::AlignCenter);
     line->addWidget(mark);
-    auto* text = new QVBoxLayout();
-    text->setSpacing(1);
-    text->addWidget(Bold(card, "No games yet"));
-    text->addWidget(
-        MakeLabel(card,
-                  "Steam, Lutris and Heroic aren't installed. That's fine: your stores come "
-                  "next, and games you install yourself can be added any time.",
-                  text::kDetail));
-    line->addLayout(text, /*stretch=*/1);
+    AddTitleAndDetail(line, card, "No games yet",
+                      "Steam, Lutris and Heroic aren't installed. That's fine: your stores come "
+                      "next, and games you install yourself can be added any time.");
     body_->addWidget(card);
   }
 
   if (runners_known_) {
     QFrame* card = SetupCard(this);
-    auto* column = new QVBoxLayout(card);
-    column->setContentsMargins(16, 12, 16, 14);
-    column->setSpacing(8);
+    QVBoxLayout* column = SetupColumn(card, QMargins(16, 12, 16, 14), 8);
     QStringList builds;
     for (const RunnerInfo& runner : runners_) {
       if (runner.kind == "proton" || runner.kind == "wine")
@@ -950,9 +939,7 @@ AppsPage::AppsPage(const SetupContext& context) : context_(context) {
   layout->addWidget(line_);
 
   QFrame* card = SetupCard(this);
-  auto* rows = new QVBoxLayout(card);
-  rows->setContentsMargins(kSetupListMargins);
-  rows->setSpacing(0);
+  QVBoxLayout* rows = SetupColumn(card, kSetupListMargins);
   in_all_ = new Switch(card);
   rows->addWidget(SetupRow(card, "Apps under All",
                            "List apps under the All tab too, not only under Apps", in_all_));
@@ -1067,8 +1054,7 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
       text::kDetail));
 
   QFrame* plan_card = SetupCard(this);
-  auto* plan_rows = new QVBoxLayout(plan_card);
-  plan_rows->setContentsMargins(kSetupListMargins);
+  QVBoxLayout* plan_rows = SetupColumn(plan_card, kSetupListMargins);
   plans_ = new Segmented(plan_card);
   for (const OfficePlan& plan : OfficePlans()) plans_->AddOption(plan.value, plan.short_name);
   connect(plans_, &Segmented::Changed, this, [this](const QString& plan) { plan_ = plan; });
@@ -1077,9 +1063,7 @@ OfficeSetupPage::OfficeSetupPage(const SetupContext& context) : context_(context
   layout->addWidget(plan_card);
 
   QFrame* apps_card = SetupCard(this);
-  auto* apps = new QVBoxLayout(apps_card);
-  apps->setContentsMargins(16, 12, 16, 14);
-  apps->setSpacing(10);
+  QVBoxLayout* apps = SetupColumn(apps_card, QMargins(16, 12, 16, 14), 10);
   apps->addWidget(MakeLabel(apps_card, "Apps to add to your library", text::kDetail));
   app_tiles_ = new QWidget(apps_card);
   auto* grid = new QGridLayout(app_tiles_);
@@ -1185,15 +1169,11 @@ DonePage::DonePage(const SetupContext& context) : context_(context) {
   layout->addSpacing(6);
 
   summary_ = SetupCard(this);
-  auto* rows = new QVBoxLayout(summary_);
-  rows->setContentsMargins(16, 8, 16, 8);
-  rows->setSpacing(0);
+  QVBoxLayout* rows = SetupColumn(summary_, QMargins(16, 8, 16, 8));
   layout->addWidget(summary_);
 
   QFrame* switches = SetupCard(this);
-  auto* switch_rows = new QVBoxLayout(switches);
-  switch_rows->setContentsMargins(kSetupListMargins);
-  switch_rows->setSpacing(0);
+  QVBoxLayout* switch_rows = SetupColumn(switches, kSetupListMargins);
   login_ = new Switch(switches);
   login_->setChecked(context.prefs->start_on_login.value_or(true));
   QWidget* login_row = SetupRow(switches, "Start Mira when I log in (in the tray)",

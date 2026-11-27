@@ -35,6 +35,9 @@ std::filesystem::path DatabaseFile();  // <UserDir>/mira.db
 // written the way a user would naturally type a path.
 std::filesystem::path Expand(std::string_view raw);
 
+// `path` as Wine programs see it through drive Z: ("Z:\\home\\...").
+std::string ZDrivePath(const std::filesystem::path& path);
+
 // Whether `target` resolves (symlinks included) inside one of `roots`. A root
 // itself only counts with `allow_equal`. Empty roots never match.
 bool IsWithin(const std::filesystem::path& target, const std::vector<std::filesystem::path>& roots,

@@ -1,15 +1,20 @@
 #pragma once
 
+#include <QSize>
 #include <QString>
 #include <string>
 
 class QLabel;
+class QWidget;
 
 namespace mira_gui {
 
 class ArtworkStore;
 class SheetCard;
 struct GameSummary;
+
+// The game's cover at `size`, kept current as its art changes.
+QLabel* MakeCover(QWidget* parent, const GameSummary& game, QSize size, ArtworkStore* artwork);
 
 // The game's cover before the title, then the title (SheetCard::SetHeading). Returns the title.
 QLabel* AddGameCardHeading(SheetCard* card, const GameSummary& game, const QString& title,

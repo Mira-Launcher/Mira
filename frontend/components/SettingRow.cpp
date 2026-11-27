@@ -338,21 +338,14 @@ void ExpanderRow::SetSummary(const QString& text, Tone tone) {
   SetTextStyle(summary_, {TextRole::Body, tone});
 }
 
-void ExpanderRow::AddTrailing(QWidget* widget) {
-  widget->setParent(head_);
-  head_layout_->insertWidget(head_layout_->indexOf(chevron_), widget, 0, Qt::AlignVCenter);
-}
-
 void ExpanderRow::SetLeading(QWidget* widget) {
   widget->setParent(head_);
   head_layout_->insertWidget(0, widget, 0, Qt::AlignVCenter);
 }
 
 void ExpanderRow::SetExpanded(bool expanded) {
-  const bool changed = expanded != Expanded();
   body_->setVisible(expanded);
   fold::ShowChevron(chevron_, expanded);
-  if (changed) emit Toggled(expanded);
 }
 
 bool ExpanderRow::Expanded() const {
@@ -365,6 +358,12 @@ bool ExpanderRow::eventFilter(QObject* watched, QEvent* event) {
     return true;
   }
   return QWidget::eventFilter(watched, event);
+}
+
+SettingRow* NoteRow(const QString& text, QWidget* parent) {
+  auto* row = new SettingRow(text, {}, parent);
+  SetTextStyle(row->Label(), text::kSubtle);
+  return row;
 }
 
 QWidget* FieldWithButtons(QWidget* field, const std::vector<QWidget*>& buttons) {

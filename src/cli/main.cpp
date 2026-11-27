@@ -21,6 +21,7 @@
 #include <functional>
 #include <iostream>
 #include <json.hpp>
+#include <optional>
 #include <string>
 #include <thread>
 #include <toml.hpp>
@@ -175,6 +176,21 @@ bool Ok(const httplib::Result& res) {
   return res && res->status >= 200 && res->status < 300;
 }
 
+// A request's JSON body ({} when it has none), or nullopt once why it failed is printed.
+std::optional<json> Reply(const httplib::Result& res) {
+  if (!Ok(res)) {
+    PrintError(res);
+    return std::nullopt;
+  }
+  if (res->body.empty()) return json::object();
+  json body = json::parse(res->body, nullptr, false);
+  if (body.is_discarded()) {
+    std::fputs("mira: unexpected reply from mirad\n", stderr);
+    return std::nullopt;
+  }
+  return body;
+}
+
 // Percent-encodes user input for a URL path segment or query value.
 std::string Seg(std::string_view text) {
   std::string out;
@@ -234,13 +250,10 @@ bool AwaitJob(httplib::Client& client, const httplib::Result& res, json& result,
 
 int CmdStatus() {
   auto client = ConnectRunning();
-  auto res = client.Get("/v1/health");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
+  const std::optional<json> reply = Reply(client.Get("/v1/health"));
+  if (!reply) return 1;
   std::puts("mirad is running");
-  const json health = json::parse(res->body, nullptr, false);
+  const json health = *reply;
   if (!health.is_object() || health.value("api", 0) != mira::kApiVersion) {
     std::fprintf(
         stderr,
@@ -271,12 +284,9 @@ int CmdLibraryRelocate() {
 
 int CmdRunnersList() {
   auto client = Connect();
-  auto res = client.Get("/v1/runners");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  json builds = json::parse(res->body);
+  const std::optional<json> reply = Reply(client.Get("/v1/runners"));
+  if (!reply) return 1;
+  json builds = *reply;
   if (builds.empty()) {
     std::puts("(no runner builds found, check runner_search_paths / wine_search_paths)");
     return 0;
@@ -292,12 +302,9 @@ int CmdRunnersList() {
 int PrintList(const std::string& path, const char* empty,
               const std::function<void(const json&)>& line) {
   auto client = Connect();
-  auto res = client.Get(path);
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  const json entries = json::parse(res->body);
+  const std::optional<json> reply = Reply(client.Get(path));
+  if (!reply) return 1;
+  const json entries = *reply;
   if (entries.empty()) std::puts(empty);
   for (const json& entry : entries) line(entry);
   return 0;
@@ -326,14 +333,11 @@ int CmdRunnersUpdate(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res =
-      client.Post("/v1/runners/update", json{{"reference", argv[0]}}.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
+  const std::optional<json> reply = Reply(
+      client.Post("/v1/runners/update", json{{"reference", argv[0]}}.dump(), "application/json"));
+  if (!reply) return 1;
   std::printf("updating to %s: watch `mira watch` for runners.download.finished/failed\n",
-              json::parse(res->body).value("name", "").c_str());
+              reply->value("name", "").c_str());
   return 0;
 }
 
@@ -344,11 +348,7 @@ int CmdRunnersTools(int argc, char** argv) {
   }
   if (argc == 2) {
     auto client = Connect();
-    auto res = client.Post(std::format("/v1/runners/tools/{}/setup", Seg(argv[1])));
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
+    if (!Reply(client.Post(std::format("/v1/runners/tools/{}/setup", Seg(argv[1]))))) return 1;
     std::printf("installing %s: watch `mira watch` for %s.setup.finished/failed\n", argv[1],
                 argv[1]);
     return 0;
@@ -373,13 +373,10 @@ int CmdRunnersCatalog(int argc, char** argv) {
     }
   }
   auto client = Connect();
-  auto res =
-      client.Get(std::format("/v1/runners/catalog?kind={}&source={}", Seg(kind), Seg(source)));
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  json releases = json::parse(res->body);
+  const std::optional<json> reply = Reply(
+      client.Get(std::format("/v1/runners/catalog?kind={}&source={}", Seg(kind), Seg(source))));
+  if (!reply) return 1;
+  json releases = *reply;
   if (releases.empty()) {
     std::puts("(no releases found, check runner_sources.*.repo / .asset_pattern)");
     return 0;
@@ -411,11 +408,7 @@ int CmdRunnersDownload(int argc, char** argv) {
   }
   auto client = Connect();
   const json body = {{"kind", kind}, {"tag", tag}, {"source", source}};
-  auto res = client.Post("/v1/runners/download", body.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
+  if (!Reply(client.Post("/v1/runners/download", body.dump(), "application/json"))) return 1;
   std::printf("downloading %s %s: watch `mira watch` for runners.download.finished/failed\n",
               kind.c_str(), tag.c_str());
   return 0;
@@ -427,12 +420,10 @@ int CmdRunnersSchema(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res = client.Get(std::format("/v1/runners/{}/schema", Seg(argv[0])));
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  std::cout << json::parse(res->body).dump(2) << '\n';
+  const std::optional<json> reply =
+      Reply(client.Get(std::format("/v1/runners/{}/schema", Seg(argv[0]))));
+  if (!reply) return 1;
+  std::cout << reply->dump(2) << '\n';
   return 0;
 }
 
@@ -447,11 +438,7 @@ int CmdRunnersRemove(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res = client.Delete(std::format("/v1/runners/{}", Seg(argv[0])));
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
+  if (!Reply(client.Delete(std::format("/v1/runners/{}", Seg(argv[0]))))) return 1;
   std::puts("removed");
   return 0;
 }
@@ -521,11 +508,8 @@ int CmdOpenUrl(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res = client.Post("/v1/open-url", json{{"url", argv[0]}}.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
+  if (!Reply(client.Post("/v1/open-url", json{{"url", argv[0]}}.dump(), "application/json")))
     return 1;
-  }
   return 0;
 }
 
@@ -535,11 +519,7 @@ int CmdStop(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res = client.Post(std::format("/v1/games/{}/stop", Seg(argv[0])));
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
+  if (!Reply(client.Post(std::format("/v1/games/{}/stop", Seg(argv[0]))))) return 1;
   std::puts("stopping");
   return 0;
 }
@@ -571,11 +551,9 @@ int CmdRun(int argc, char** argv) {
                                 ? std::filesystem::absolute(exe_path, ec).string()
                                 : exe_path}};
   if (!args.empty()) body["args"] = args;
-  auto res = client.Post(std::format("/v1/games/{}/run", Seg(id)), body.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
+  if (!Reply(
+          client.Post(std::format("/v1/games/{}/run", Seg(id)), body.dump(), "application/json")))
     return 1;
-  }
   std::puts("running");
   return 0;
 }
@@ -617,12 +595,10 @@ int CmdAdd(int argc, char** argv) {
   if (is_installer) body["is_installer"] = true;
 
   auto client = Connect();
-  auto res = client.Post("/v1/games/manual", body.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  json game = json::parse(res->body);
+  const std::optional<json> reply =
+      Reply(client.Post("/v1/games/manual", body.dump(), "application/json"));
+  if (!reply) return 1;
+  json game = *reply;
   std::printf("%s: %s\n", game.value("id", "").c_str(), game.value("status", "").c_str());
   return 0;
 }
@@ -727,14 +703,10 @@ int CmdConfirm(int argc, char** argv) {
     return 2;
   }
   auto client = Connect();
-  auto res =
-      client.Post(std::format("/v1/games/{}/confirm", Seg(id)), body.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  const json game = json::parse(res->body, nullptr, false);
-  std::puts(game.value("status", "").c_str());
+  const std::optional<json> game = Reply(
+      client.Post(std::format("/v1/games/{}/confirm", Seg(id)), body.dump(), "application/json"));
+  if (!game) return 1;
+  std::puts(game->value("status", "").c_str());
   return 0;
 }
 
@@ -820,11 +792,8 @@ int CmdSteamScan() {
 
 int CmdSteamStatus(const char* status) {
   auto client = Connect();
-  auto res = client.Post("/v1/steam/status", json{{"status", status}}.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
+  if (!Reply(client.Post("/v1/steam/status", json{{"status", status}}.dump(), "application/json")))
     return 1;
-  }
   return 0;
 }
 
@@ -882,12 +851,9 @@ int CmdLauncher(int argc, char** argv) {
   const std::string_view sub = argc > 0 ? argv[0] : "";
   auto client = Connect();
   if (sub == "list") {
-    auto res = client.Get("/v1/launchers");
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    for (const json& launcher : json::parse(res->body)) {
+    const std::optional<json> reply = Reply(client.Get("/v1/launchers"));
+    if (!reply) return 1;
+    for (const json& launcher : *reply) {
       const std::string state = launcher.value("installed", false) ? "installed"
                                 : launcher.value("install_state", "") == "running"
                                     ? "installing"
@@ -927,12 +893,9 @@ int CmdLauncher(int argc, char** argv) {
         return 2;
       }
     }
-    auto res = client.Post(std::format("/v1/launchers/{}/open", Seg(argv[1])), body.dump(),
-                           "application/json");
-    if (!Ok(res)) {
-      PrintError(res);
+    if (!Reply(client.Post(std::format("/v1/launchers/{}/open", Seg(argv[1])), body.dump(),
+                           "application/json")))
       return 1;
-    }
     return 0;
   }
   std::fprintf(stderr,
@@ -986,12 +949,9 @@ const char* CredentialPrompt(std::string_view store) {
 }
 
 int CmdStoreStatus(httplib::Client& client, const std::string& id) {
-  auto res = client.Get(std::format("/v1/stores/{}/status", Seg(id)));
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  const json status = json::parse(res->body);
+  const std::optional<json> reply = Reply(client.Get(std::format("/v1/stores/{}/status", Seg(id))));
+  if (!reply) return 1;
+  const json status = *reply;
   const json& tool = status["tool"];
   if (!tool.value("installed", false)) {
     std::printf("%s: tool not installed, run \"mira store %s setup\"\n", id.c_str(), id.c_str());
@@ -1009,27 +969,24 @@ int CmdStoreStatus(httplib::Client& client, const std::string& id) {
   return 0;
 }
 
-int CmdStoreLogin(httplib::Client& client, const std::string& id) {
-  auto begun = client.Post(std::format("/v1/stores/{}/login/begin", Seg(id)));
-  if (!Ok(begun)) {
-    PrintError(begun);
-    return 1;
-  }
-  std::printf("Visit this URL and sign in:\n%s\n\n",
-              json::parse(begun->body).value("url", "").c_str());
+// `argument`, when given, is the credential, so nothing is asked.
+int CmdStoreLogin(httplib::Client& client, const std::string& id, const std::string& argument) {
+  const std::optional<json> reply =
+      Reply(client.Post(std::format("/v1/stores/{}/login/begin", Seg(id))));
+  if (!reply) return 1;
+  std::printf("Visit this URL and sign in:\n%s\n\n", reply->value("url", "").c_str());
   // A terminal paste routinely carries a trailing \r or spaces.
-  const std::string credential = mira::strings::Trim(ReadSecret(CredentialPrompt(id)));
+  const std::string credential =
+      mira::strings::Trim(argument.empty() ? ReadSecret(CredentialPrompt(id)) : argument);
   if (credential.empty()) {
     std::fprintf(stderr, "mira: nothing entered\n");
     return 2;
   }
-  auto res = client.Post(std::format("/v1/stores/{}/login", Seg(id)),
-                         json{{"credential", credential}}.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  const std::string account = json::parse(res->body).value("account", std::string());
+  const std::optional<json> signed_in =
+      Reply(client.Post(std::format("/v1/stores/{}/login", Seg(id)),
+                        json{{"credential", credential}}.dump(), "application/json"));
+  if (!signed_in) return 1;
+  const std::string account = signed_in->value("account", std::string());
   std::puts(account.empty() ? "authenticated"
                             : std::format("authenticated as {}", account).c_str());
   return 0;
@@ -1038,23 +995,17 @@ int CmdStoreLogin(httplib::Client& client, const std::string& id) {
 int CmdStoreItchCollections(httplib::Client& client, int argc, char** argv) {
   const std::string_view action = argc > 0 ? argv[0] : "list";
   if (action == "add" && argc > 1) {
-    auto res = client.Post("/v1/stores/itch/collections", json{{"link", argv[1]}}.dump(),
-                           "application/json");
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    const json added = json::parse(res->body);
+    const std::optional<json> reply = Reply(client.Post(
+        "/v1/stores/itch/collections", json{{"link", argv[1]}}.dump(), "application/json"));
+    if (!reply) return 1;
+    const json added = *reply;
     std::printf("added %s (%lld games)\n", added.value("title", std::string()).c_str(),
                 added.value("games_count", 0LL));
     return 0;
   }
   if (action == "remove" && argc > 1) {
-    auto res = client.Delete(std::format("/v1/stores/itch/collections/{}", Seg(argv[1])));
-    if (!Ok(res)) {
-      PrintError(res);
+    if (!Reply(client.Delete(std::format("/v1/stores/itch/collections/{}", Seg(argv[1])))))
       return 1;
-    }
     std::puts("removed");
     return 0;
   }
@@ -1062,12 +1013,9 @@ int CmdStoreItchCollections(httplib::Client& client, int argc, char** argv) {
     std::fprintf(stderr, "usage: mira store itch collections [list | add <link> | remove <id>]\n");
     return 2;
   }
-  auto res = client.Get("/v1/stores/itch/collections");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  for (const json& collection : json::parse(res->body)) {
+  const std::optional<json> reply = Reply(client.Get("/v1/stores/itch/collections"));
+  if (!reply) return 1;
+  for (const json& collection : *reply) {
     std::printf("%-10lld %-5s %4lld games  %s\n", collection.value("id", 0LL),
                 collection.value("own", false) ? "own" : "added",
                 collection.value("games_count", 0LL),
@@ -1078,12 +1026,9 @@ int CmdStoreItchCollections(httplib::Client& client, int argc, char** argv) {
 
 int CmdStoreHumble(httplib::Client& client, std::string_view action, int argc, char** argv) {
   if (action == "bundles") {
-    auto res = client.Get("/v1/stores/humble/bundles");
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    const json bundles = json::parse(res->body);
+    const std::optional<json> reply = Reply(client.Get("/v1/stores/humble/bundles"));
+    if (!reply) return 1;
+    const json bundles = *reply;
     if (bundles.empty()) {
       std::puts(
           "(nothing found. Is humble-cli set up and signed in? Try `mira store humble status`)");
@@ -1114,12 +1059,9 @@ int CmdStoreHumble(httplib::Client& client, std::string_view action, int argc, c
 int CmdStore(int argc, char** argv) {
   auto client = Connect();
   if (argc == 0 || std::string_view(argv[0]) == "list") {
-    auto res = client.Get("/v1/stores");
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    for (const json& store : json::parse(res->body)) {
+    const std::optional<json> reply = Reply(client.Get("/v1/stores"));
+    if (!reply) return 1;
+    for (const json& store : *reply) {
       std::printf("%-8s %-16s %s\n", store.value("id", "").c_str(), store.value("name", "").c_str(),
                   store.value("tool_name", "").c_str());
     }
@@ -1128,18 +1070,14 @@ int CmdStore(int argc, char** argv) {
   const std::string id = argv[0];
   const std::string_view action = argc > 1 ? argv[1] : "status";
   if (action == "status") return CmdStoreStatus(client, id);
-  if (action == "login") return CmdStoreLogin(client, id);
+  if (action == "login") return CmdStoreLogin(client, id, argc > 2 ? argv[2] : "");
   if (id == "itch" && action == "collections")
     return CmdStoreItchCollections(client, argc - 2, argv + 2);
   if (id == "humble" && (action == "bundles" || action == "download")) {
     return CmdStoreHumble(client, action, argc - 2, argv + 2);
   }
   if (action == "logout") {
-    auto res = client.Post(std::format("/v1/stores/{}/logout", Seg(id)));
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
+    if (!Reply(client.Post(std::format("/v1/stores/{}/logout", Seg(id))))) return 1;
     std::puts("logged out");
     return 0;
   }
@@ -1168,12 +1106,9 @@ int CmdLibraryList(int argc, char** argv) {
   auto client = Connect();
   const std::string path =
       argc > 0 ? std::format("/v1/library?source={}", Seg(argv[0])) : std::string("/v1/library");
-  auto res = client.Get(path.c_str());
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  json entries = json::parse(res->body);
+  const std::optional<json> reply = Reply(client.Get(path.c_str()));
+  if (!reply) return 1;
+  json entries = *reply;
   if (entries.empty()) {
     std::puts(
         "(nothing found. Is the source configured and authenticated? Try `mira store epic "
@@ -1197,12 +1132,9 @@ int CmdLibraryInstallOrUpdate(int argc, char** argv, bool is_update) {
   }
   auto client = Connect();
   json body = {{"source", argv[0]}, {"ref", argv[1]}};
-  auto res = client.Post(is_update ? "/v1/library/update" : "/v1/library/install", body.dump(),
-                         "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
+  if (!Reply(client.Post(is_update ? "/v1/library/update" : "/v1/library/install", body.dump(),
+                         "application/json")))
     return 1;
-  }
   std::printf("%s: watch `mira watch` for library.install.finished\n",
               is_update ? "updating" : "installing");
   return 0;
@@ -1217,13 +1149,10 @@ int CmdLibraryHide(int argc, char** argv, bool hidden) {
   json refs = json::array();
   for (int i = 1; i < argc; ++i) refs.push_back(argv[i]);
   auto client = Connect();
-  auto res = client.Post("/v1/library/hidden",
+  if (!Reply(client.Post("/v1/library/hidden",
                          json{{"source", argv[0]}, {"refs", refs}, {"hidden", hidden}}.dump(),
-                         "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
+                         "application/json")))
     return 1;
-  }
   std::puts(hidden ? "hidden" : "shown");
   return 0;
 }
@@ -1251,12 +1180,9 @@ int CmdLibrary(int argc, char** argv) {
 
 int CmdDesktopEntriesList() {
   auto client = Connect();
-  auto res = client.Get("/v1/desktop-entries/candidates");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  json candidates = json::parse(res->body);
+  const std::optional<json> reply = Reply(client.Get("/v1/desktop-entries/candidates"));
+  if (!reply) return 1;
+  json candidates = *reply;
   if (candidates.empty()) {
     std::puts(
         "(no candidates: every already-installed .desktop entry is either already a game, "
@@ -1278,13 +1204,10 @@ int CmdDesktopEntriesImport(int argc, char** argv) {
   for (int i = 0; i < argc; ++i) ids.push_back(argv[i]);
 
   auto client = Connect();
-  auto res =
-      client.Post("/v1/desktop-entries/import", json{{"ids", ids}}.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  json summary = json::parse(res->body);
+  const std::optional<json> reply = Reply(
+      client.Post("/v1/desktop-entries/import", json{{"ids", ids}}.dump(), "application/json"));
+  if (!reply) return 1;
+  json summary = *reply;
   std::printf("added: %lld  updated: %lld\n", summary.value("added", 0LL),
               summary.value("updated", 0LL));
   return 0;
@@ -1300,12 +1223,9 @@ int CmdDesktopEntries(int argc, char** argv) {
 
 int CmdGameModeStatus() {
   auto client = Connect();
-  auto res = client.Get("/v1/gamemode/status");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  json status = json::parse(res->body);
+  const std::optional<json> reply = Reply(client.Get("/v1/gamemode/status"));
+  if (!reply) return 1;
+  json status = *reply;
   std::printf("installed: %s  daemon running: %s\n",
               status.value("installed", false) ? "yes" : "no",
               status.value("daemon_running", false) ? "yes" : "no");
@@ -1334,12 +1254,10 @@ int CmdAchievements(int argc, char** argv) {
                   result))
       return 1;
   }
-  auto res = client.Get(std::format("/v1/games/{}/achievements", Seg(id)));
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  const json set = json::parse(res->body, nullptr, false);
+  const std::optional<json> reply =
+      Reply(client.Get(std::format("/v1/games/{}/achievements", Seg(id))));
+  if (!reply) return 1;
+  const json set = *reply;
   std::printf("%lld of %lld unlocked\n", static_cast<long long>(set.value("unlocked", 0)),
               static_cast<long long>(set.value("total", 0)));
   for (const json& item : set.value("items", json::array())) {
@@ -1483,22 +1401,19 @@ int CmdSavesRemote(int argc, char** argv) {
                   game.value("code", std::string()).c_str());
     return failed.empty() ? 0 : 1;
   }
-  auto res = what == "disconnect" ? client.Delete("/v1/saves/remote/" + slot)
-                                  : client.Get("/v1/saves/remote");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  const json state = json::parse(res->body, nullptr, false);
+  const std::optional<json> state =
+      Reply(what == "disconnect" ? client.Delete("/v1/saves/remote/" + slot)
+                                 : client.Get("/v1/saves/remote"));
+  if (!state) return 1;
   for (const char* each : {"primary", "mirror"}) {
-    const json info = state.value(each, json());
+    const json info = state->value(each, json());
     if (info.is_object())
       std::printf("%s: %s (%s)\n", each, info.value("name", std::string()).c_str(),
                   info.value("provider", std::string()).c_str());
     else
       std::printf("%s: not connected\n", each);
   }
-  for (const json& game : state.value("pending", json::array()))
+  for (const json& game : state->value("pending", json::array()))
     std::printf("  %s: %s %s\n", game.value("id", std::string()).c_str(),
                 game.value("state", std::string()).c_str(),
                 game.value("error", std::string()).c_str());
@@ -1548,12 +1463,10 @@ int CmdSaves(int argc, char** argv) {
   }
   auto client = Connect();
   if (game) {
-    auto res = client.Get(std::format("/v1/games/{}/saves", Seg(argv[0])));
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    const json saves = json::parse(res->body, nullptr, false);
+    const std::optional<json> reply =
+        Reply(client.Get(std::format("/v1/games/{}/saves", Seg(argv[0]))));
+    if (!reply) return 1;
+    const json saves = *reply;
     std::printf("%s", saves.value("status", std::string()).c_str());
     if (saves["entry"].is_string()) {
       std::printf("  (%s, by %s)", saves["entry"].get<std::string>().c_str(),
@@ -1635,42 +1548,29 @@ int CmdSaves(int argc, char** argv) {
         add ? std::filesystem::absolute(argv[3]).lexically_normal().string() : std::string(argv[3]);
     json body = {{add ? "add" : "remove", path}};
     if (argc == 5) body["matching"] = argv[4];
-    auto res = client.Post(std::format("/v1/games/{}/saves/folders", Seg(argv[1])), body.dump(),
-                           "application/json");
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    const json answer = json::parse(res->body, nullptr, false);
-    for (const json& kept : answer.value("extra_paths", json::array()))
+    const std::optional<json> answer = Reply(client.Post(
+        std::format("/v1/games/{}/saves/folders", Seg(argv[1])), body.dump(), "application/json"));
+    if (!answer) return 1;
+    for (const json& kept : answer->value("extra_paths", json::array()))
       if (kept.is_string()) std::printf("%s\n", kept.get<std::string>().c_str());
     return 0;
   }
   if (what == "pin" || what == "unpin") {
-    auto res = client.Patch(std::format("/v1/games/{}/saves/{}", Seg(argv[1]), Seg(argv[2])),
-                            json{{"pinned", what == "pin"}}.dump(), "application/json");
-    if (!Ok(res)) {
-      PrintError(res);
+    if (!Reply(client.Patch(std::format("/v1/games/{}/saves/{}", Seg(argv[1]), Seg(argv[2])),
+                            json{{"pinned", what == "pin"}}.dump(), "application/json")))
       return 1;
-    }
     return 0;
   }
   if (what == "delete") {
-    auto res = client.Delete(std::format("/v1/games/{}/saves/{}", Seg(argv[1]), Seg(argv[2])));
-    if (!Ok(res)) {
-      PrintError(res);
+    if (!Reply(client.Delete(std::format("/v1/games/{}/saves/{}", Seg(argv[1]), Seg(argv[2])))))
       return 1;
-    }
     return 0;
   }
   if (what == "search") {
-    auto res = client.Get(std::format("/v1/saves/entries?q={}", Seg(argv[1])));
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    for (const json& entry :
-         json::parse(res->body, nullptr, false).value("entries", json::array())) {
+    const std::optional<json> reply =
+        Reply(client.Get(std::format("/v1/saves/entries?q={}", Seg(argv[1]))));
+    if (!reply) return 1;
+    for (const json& entry : reply->value("entries", json::array())) {
       const std::string alias = entry.value("alias_of", std::string());
       std::printf("%s%s\n", entry.value("name", std::string()).c_str(),
                   alias.empty() ? "" : std::format("  (same as {})", alias).c_str());
@@ -1681,12 +1581,9 @@ int CmdSaves(int argc, char** argv) {
     json result;
     if (!AwaitJob(client, client.Post("/v1/saves/manifest/update"), result)) return 1;
   }
-  auto res = client.Get("/v1/saves/manifest");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  const json state = json::parse(res->body, nullptr, false);
+  const std::optional<json> reply = Reply(client.Get("/v1/saves/manifest"));
+  if (!reply) return 1;
+  const json state = *reply;
   const auto when = [](std::int64_t at) {
     return at > 0 ? std::format("{:%Y-%m-%d %H:%M}",
                                 std::chrono::sys_seconds(std::chrono::seconds(at)))
@@ -1714,12 +1611,9 @@ int CmdTricks(int argc, char** argv) {
 
   auto client = Connect();
   const json body = {{"verb", verb}};
-  auto res =
-      client.Post(std::format("/v1/games/{}/tricks", Seg(id)), body.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
+  if (!Reply(client.Post(std::format("/v1/games/{}/tricks", Seg(id)), body.dump(),
+                         "application/json")))
     return 1;
-  }
   std::puts("running: watch `mira watch` for tricks.finished/.failed");
   return 0;
 }
@@ -1742,22 +1636,16 @@ int CmdMetadata(int argc, char** argv) {
   auto client = Connect();
 
   if (flag == "--refresh") {
-    auto posted = client.Post(std::format("/v1/games/{}/metadata/refresh", Seg(id)));
-    if (!Ok(posted)) {
-      PrintError(posted);
-      return 1;
-    }
+    if (!Reply(client.Post(std::format("/v1/games/{}/metadata/refresh", Seg(id))))) return 1;
     std::puts("fetching: watch `mira watch` for game.metadata_ready/.metadata_failed");
     return 0;
   }
 
   if (flag == "--wrong") {
-    auto posted = client.Post(std::format("/v1/games/{}/metadata/wrong-match", Seg(id)));
-    if (!Ok(posted)) {
-      PrintError(posted);
-      return 1;
-    }
-    const json match = json::parse(posted->body).value("match", json::object());
+    const std::optional<json> reply =
+        Reply(client.Post(std::format("/v1/games/{}/metadata/wrong-match", Seg(id))));
+    if (!reply) return 1;
+    const json match = reply->value("match", json::object());
     std::printf("switched to \"%s\" (SteamGridDB %lld), fetching its art\n",
                 match.value("name", "").c_str(),
                 static_cast<long long>(match.value("id", std::int64_t{0})));
@@ -1779,13 +1667,10 @@ int CmdMetadata(int argc, char** argv) {
     if (flag == "--matches" || flag == "--match") {
       httplib::Params params;
       if (flag == "--matches" && argc > 2) params.emplace("q", argv[2]);
-      auto res = client.Get(std::format("/v1/games/{}/metadata/matches", Seg(id)), params,
-                            httplib::Headers{});
-      if (!Ok(res)) {
-        PrintError(res);
-        return 1;
-      }
-      const json body = json::parse(res->body);
+      const std::optional<json> res_reply = Reply(client.Get(
+          std::format("/v1/games/{}/metadata/matches", Seg(id)), params, httplib::Headers{}));
+      if (!res_reply) return 1;
+      const json body = *res_reply;
       const json& matches = body["matches"];
       if (flag == "--matches") {
         const std::int64_t chosen = body.value("chosen", std::int64_t{0});
@@ -1813,22 +1698,17 @@ int CmdMetadata(int argc, char** argv) {
       std::fprintf(stderr, "usage: mira metadata <id> --match-id STEAMGRIDDB_ID\n");
       return 2;
     }
-    auto posted = client.Post(std::format("/v1/games/{}/metadata/match", Seg(id)),
-                              json{{"steamgriddb_id", chosen_id}}.dump(), "application/json");
-    if (!Ok(posted)) {
-      PrintError(posted);
+    if (!Reply(client.Post(std::format("/v1/games/{}/metadata/match", Seg(id)),
+                           json{{"steamgriddb_id", chosen_id}}.dump(), "application/json")))
       return 1;
-    }
     std::puts("fetching art from the chosen match");
     return 0;
   }
 
-  auto res = client.Get(std::format("/v1/games/{}/metadata", Seg(id)));
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  std::cout << json::parse(res->body).dump(2) << '\n';
+  const std::optional<json> reply =
+      Reply(client.Get(std::format("/v1/games/{}/metadata", Seg(id))));
+  if (!reply) return 1;
+  std::cout << reply->dump(2) << '\n';
   return 0;
 }
 
@@ -1870,11 +1750,7 @@ int CmdHiddenPassword(httplib::Client& client, const json& state, bool remove) {
     }
   }
   body["password"] = password;
-  auto res = client.Put("/v1/hidden/password", body.dump(), "application/json");
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
+  if (!Reply(client.Put("/v1/hidden/password", body.dump(), "application/json"))) return 1;
   std::puts(remove ? "password removed"
             : had  ? "password changed"
                    : "password set (lock now with `mira hidden lock`)");
@@ -1934,12 +1810,9 @@ int CmdList(int argc, char** argv) {
     query.pop_back();  // trailing '&'
     path += "?" + query;
   }
-  auto res = client.Get(path);
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  json games = json::parse(res->body);
+  const std::optional<json> reply = Reply(client.Get(path));
+  if (!reply) return 1;
+  json games = *reply;
   if (tag_filter == "hidden") {
     if (const json state = HiddenState(client);
         state.is_object() && state.value("password", false) && state.value("locked", true))
@@ -1967,13 +1840,11 @@ int CmdShow(int argc, char** argv) {
   const bool effective = argc > 1 && std::string_view(argv[1]) == "--effective";
 
   auto client = Connect();
-  auto res = client.Get(effective ? std::format("/v1/games/{}/config", Seg(id))
-                                  : std::format("/v1/games/{}", Seg(id)));
-  if (!Ok(res)) {
-    PrintError(res);
-    return 1;
-  }
-  std::cout << json::parse(res->body).dump(2) << '\n';
+  const std::optional<json> reply =
+      Reply(client.Get(effective ? std::format("/v1/games/{}/config", Seg(id))
+                                 : std::format("/v1/games/{}", Seg(id))));
+  if (!reply) return 1;
+  std::cout << reply->dump(2) << '\n';
   return 0;
 }
 
@@ -2066,12 +1937,10 @@ int CmdSet(int argc, char** argv) {
   auto client = Connect();
   // --env adds to the game's launch.env list, starting it from Settings' list.
   if (!env.empty()) {
-    auto res = client.Get(std::format("/v1/games/{}/config", Seg(id)));
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    json list = json::parse(res->body, nullptr, false)["launch.env"].value("value", json::array());
+    const std::optional<json> reply =
+        Reply(client.Get(std::format("/v1/games/{}/config", Seg(id))));
+    if (!reply) return 1;
+    json list = reply->value("launch.env", json::object()).value("value", json::array());
     for (const auto& [key, value] : env.items())
       mira::config::SetEnvEntry(list, key, value.get<std::string>());
     overrides["launch.env"] = std::move(list);
@@ -2090,29 +1959,20 @@ int CmdSet(int argc, char** argv) {
   if (!add_tags.empty() || !remove_tags.empty()) {
     const json body = {
         {"ids", json::array({id})}, {"add_tags", add_tags}, {"remove_tags", remove_tags}};
-    auto res = client.Patch("/v1/games", body.dump(), "application/json");
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
+    if (!Reply(client.Patch("/v1/games", body.dump(), "application/json"))) return 1;
     changed = true;
   }
 
   if (!patch.empty()) {
-    auto res = client.Patch(std::format("/v1/games/{}", Seg(id)), patch.dump(), "application/json");
-    if (!Ok(res)) {
-      PrintError(res);
+    if (!Reply(
+            client.Patch(std::format("/v1/games/{}", Seg(id)), patch.dump(), "application/json")))
       return 1;
-    }
     changed = true;
   }
   if (!overrides.empty()) {
-    auto res = client.Patch(std::format("/v1/games/{}/config", Seg(id)), overrides.dump(),
-                            "application/json");
-    if (!Ok(res)) {
-      PrintError(res);
+    if (!Reply(client.Patch(std::format("/v1/games/{}/config", Seg(id)), overrides.dump(),
+                            "application/json")))
       return 1;
-    }
     changed = true;
   }
 
@@ -2129,12 +1989,9 @@ int CmdConfig(int argc, char** argv) {
   auto client = Connect();
 
   if (sub == "list") {
-    auto res = client.Get("/v1/config/schema");
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    for (const json& entry : json::parse(res->body)) {
+    const std::optional<json> reply = Reply(client.Get("/v1/config/schema"));
+    if (!reply) return 1;
+    for (const json& entry : *reply) {
       std::printf("%-32s %-8s %-9s %s\n", entry.value("key", "").c_str(),
                   entry.value("type", "").c_str(), entry.value("scope", "").c_str(),
                   entry.value("doc", "").c_str());
@@ -2148,12 +2005,9 @@ int CmdConfig(int argc, char** argv) {
       return 2;
     }
     // Asked for by name, so a secret is printed as stored.
-    auto res = client.Get("/v1/config?reveal=1");
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
-    json document = json::parse(res->body);
+    const std::optional<json> reply = Reply(client.Get("/v1/config?reveal=1"));
+    if (!reply) return 1;
+    json document = *reply;
     json::json_pointer pointer;
     std::string flat(argv[1]);
     for (char& c : flat) {
@@ -2189,11 +2043,7 @@ int CmdConfig(int argc, char** argv) {
       cursor = &(*cursor)[segment];
       start = dot + 1;
     }
-    auto res = client.Patch("/v1/config", patch.dump(), "application/json");
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
+    if (!Reply(client.Patch("/v1/config", patch.dump(), "application/json"))) return 1;
     std::puts("ok");
     return 0;
   }
@@ -2201,11 +2051,7 @@ int CmdConfig(int argc, char** argv) {
   if (sub == "reset") {
     const std::string path =
         argc > 1 ? std::format("/v1/config/reset?key={}", Seg(argv[1])) : "/v1/config/reset";
-    auto res = client.Post(path);
-    if (!Ok(res)) {
-      PrintError(res);
-      return 1;
-    }
+    if (!Reply(client.Post(path))) return 1;
     std::puts("ok");
     return 0;
   }

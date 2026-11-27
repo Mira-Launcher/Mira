@@ -40,8 +40,7 @@ inline QColor StatusColor(const std::string& status) {
 // rather than approximated. "native" is deliberately not part of that
 // `medals` map on their side either: it lives as its own top-level
 // `native: "green"` entry in the same object, because it means "doesn't
-// touch Proton at all" rather than grading how well Proton runs it, which
-// is the distinction ProtonDbTierIsNative below exists to carry into ours.
+// touch Proton at all" rather than grading how well Proton runs it.
 inline QColor ProtonDbTierColor(const std::string& tier) {
   if (tier == "platinum") return QColor("#b4c7dc");
   if (tier == "gold") return QColor("#cfb53b");
@@ -50,10 +49,6 @@ inline QColor ProtonDbTierColor(const std::string& tier) {
   if (tier == "borked" || tier == "garbage") return QColor("#ff0000");
   if (tier == "native") return QColor("#008000");
   return QColor("#444444");  // "pending"
-}
-
-inline bool ProtonDbTierIsNative(const std::string& tier) {
-  return tier == "native";
 }
 
 // Platinum/gold/silver are light enough that white text on them would wash

@@ -79,12 +79,6 @@ void AddSorting(json& record, const library::SortRules& rules, const model::Game
     record["folder"] = folder;
 }
 
-// Deletes `target` only if it resolves (symlinks included) inside one of `roots`.
-Result<void> DeleteUnderRoot(const std::string& target,
-                             const std::vector<std::filesystem::path>& roots) {
-  return library::DeleteInside(target, roots);
-}
-
 }  // namespace
 
 Services::Services(config::Config& config_in, store::GameStore& games_in, EventBus& events_in)
@@ -939,7 +933,7 @@ Result<void> Services::DeleteGameData(const model::Game& game, std::span<const m
         own && *own == std::filesystem::path(game.data_dir).lexically_normal() &&
         paths::IsWithin(game.install_path, config.GetPathArray("library_roots")))
       roots.push_back(game.install_path);
-    if (auto deleted = DeleteUnderRoot(game.data_dir, roots); !deleted) return deleted;
+    if (auto deleted = library::DeleteInside(game.data_dir, roots); !deleted) return deleted;
   }
   // Its shader cache goes with its files or prefix; it's rebuilt if the game comes back.
   if ((files || prefix) && !game.id.empty()) {

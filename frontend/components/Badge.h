@@ -18,7 +18,6 @@ class Badge : public QWidget {
   void SetText(const QString& text);
   QString Text() const { return text_; }
   void SetTone(Tone tone);
-  Tone CurrentTone() const { return tone_; }
   // A color of its own in place of the tone's (a ProtonDB tier); an invalid color goes back to it.
   void SetColor(const QColor& color);
 

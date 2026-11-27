@@ -69,13 +69,18 @@ Result<library::ImportSummary> AmazonImporter::Import() {
     game.id = id;
     game.source = "amazon";
     game.source_ref = product_id;
-    if (product.contains("title") && product["title"].is_string()) {
+    // A name the user gave it stays.
+    if (!existing && product.contains("title") && product["title"].is_string()) {
       game.name = product["title"].get<std::string>();
     } else if (game.name.empty()) {
       game.name = path.filename().string();
     }
     game.install_path = path.string();
-    game.exe_path = command;
+    // Keep a picked exe while it still exists, as EpicImporter does.
+    std::error_code exe_ec;
+    const bool own_exe =
+        existing && !existing->exe_path.empty() && fs::exists(path / existing->exe_path, exe_ec);
+    if (!own_exe) game.exe_path = command;
     if (const json args = main.contains("Args") ? main["Args"] : json::array(); args.is_array()) {
       std::vector<std::string> list;
       for (const json& arg : args) {
@@ -90,7 +95,9 @@ Result<library::ImportSummary> AmazonImporter::Import() {
     if (main.contains("WorkingSubdirOverride") && main["WorkingSubdirOverride"].is_string()) {
       game.working_dir = ForwardSlashes(main["WorkingSubdirOverride"].get<std::string>());
     }
-    game.platform = model::Platform::Windows;
+    // One set native by hand stays native.
+    if (!existing || existing->platform == model::Platform::Unknown)
+      game.platform = model::Platform::Windows;
     const fs::path sdk = NileConfigDir() / "SDK" / "Amazon Games Services";
     game.env["FUEL_DIR"] = (sdk / "Legacy").string();
     game.env["AMAZON_GAMES_SDK_PATH"] = (sdk / "AmazonGamesSDK").string();
@@ -109,12 +116,7 @@ Result<library::ImportSummary> AmazonImporter::Import() {
       library::ProvisionOnImport(game, existing, config_, games_, provisioner);
     }
 
-    if (auto saved = games_.Merge(existing, game); !saved) {
-      log::Error("failed to import amazon game {}: {}", product_id, saved.error().message);
-      summary.listed.insert(game.id);  // still installed, only not saved
-      continue;
-    }
-    library::RecordImported(summary, events_, game, existing.has_value());
+    library::SaveImported(summary, events_, games_, existing, game, "amazon");
   }
   summary.lists_installed = true;
   return summary;

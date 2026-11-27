@@ -163,7 +163,7 @@ void EnsurePackages(QWidget* parent, const std::string& feature, const QString& 
   QPointer<QWidget> guard(parent);
   api::GetSystemPackagesAsync(
       parent, feature, [guard, what, done = std::move(done)](SystemPackagesResult result) {
-        // An older mirad, or a failed check: let the work itself say what's wrong.
+        // A failed check: let the work itself say what's wrong.
         if (!result.ok || result.missing.empty()) return done(true);
         QWidget* parent = guard.data();
         const QString names = Names(result.missing);

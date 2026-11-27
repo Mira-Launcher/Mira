@@ -204,6 +204,10 @@ void UpdatesPanel::Rebuild() {
   }
 
   const bool any = rows_->count() > 1;
+  // Nothing listed only says it's up to date when the check worked.
+  empty_->setText(checker_->Error().isEmpty()
+                      ? QString("Mira and everything it downloaded are up to date")
+                      : "Couldn't check for updates: " + checker_->Error());
   empty_->setVisible(!any);
   auto* scroll = findChild<QScrollArea*>("updates_scroll");
   scroll->setVisible(any);

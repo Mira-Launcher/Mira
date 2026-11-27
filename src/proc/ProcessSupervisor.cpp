@@ -126,6 +126,15 @@ std::optional<std::filesystem::path> WrappedGroup(pid_t wrapper_pid) {
   return group;
 }
 
+// `pid` is still a mira-run: after a reboot an old session's pid can belong to anything.
+bool IsMiraRun(pid_t pid) {
+  if (pid <= 0 || ::kill(pid, 0) != 0) return false;
+  std::ifstream comm(std::format("/proc/{}/comm", pid));
+  std::string name;
+  std::getline(comm, name);
+  return name == "mira-run";
+}
+
 bool AnyAlive(const std::set<pid_t>& pids) {
   for (pid_t pid : pids) {
     if (::kill(pid, 0) == 0) return true;
@@ -646,7 +655,7 @@ void ProcessSupervisor::FinalizeWrappedSession(const std::string& game_id,
 void ProcessSupervisor::WatchReconciledLive(std::string game_id, pid_t wrapper_pid,
                                             std::int64_t started_at) {
   // Not this mirad's child, so waitpid() can't work -- poll liveness instead.
-  while (!stopping_.load(std::memory_order_relaxed) && ::kill(wrapper_pid, 0) == 0) {
+  while (!stopping_.load(std::memory_order_relaxed) && IsMiraRun(wrapper_pid)) {
     KillIfOverdue(game_id, wrapper_pid);
     if (PollWaitStopping()) break;
   }
@@ -672,7 +681,7 @@ void ProcessSupervisor::Reconcile() {
       continue;
     }
 
-    const bool wrapper_alive = record.wrapper_pid > 0 && ::kill(record.wrapper_pid, 0) == 0;
+    const bool wrapper_alive = IsMiraRun(record.wrapper_pid);
     if (wrapper_alive) {
       log::Info("re-adopting live session for {} (mira-run pid {})", record.game_id,
                 record.wrapper_pid);

@@ -1,14 +1,13 @@
 #include "UnclearMoveCard.h"
 
 #include <QHBoxLayout>
-#include <QLabel>
 #include <QPushButton>
 
 #include "../components/Format.h"
 #include "../components/SettingRow.h"
 #include "../components/Text.h"
-#include "../library/ArtworkStore.h"
 #include "../library/GameLibraryModel.h"
+#include "CardParts.h"
 
 namespace mira_gui {
 namespace {
@@ -26,19 +25,8 @@ UnclearMoveCard::UnclearMoveCard(const UnclearMove& move, const GameLibraryModel
 
   for (const auto& [id, name] : move.games) {
     auto* row = new SettingRow(QString::fromStdString(name), QString(), this);
-    if (const GameSummary* game = library->Find(id)) {
-      auto* cover = new QLabel(row);
-      cover->setFixedSize(kCover);
-      const auto show_cover = [this, cover, artwork, game = *game] {
-        cover->setPixmap(artwork->Cover(game, kCover, devicePixelRatioF()));
-      };
-      show_cover();
-      connect(artwork, &ArtworkStore::CoverChanged, cover,
-              [show_cover, id = QString::fromStdString(game->id)](const QString& changed) {
-                if (changed == id) show_cover();
-              });
-      row->AddAfterLabel(cover);
-    }
+    if (const GameSummary* game = library->Find(id))
+      row->AddAfterLabel(MakeCover(row, *game, kCover, artwork));
     auto* pick = new QPushButton("This game", row);
     connect(pick, &QPushButton::clicked, this,
             [this, folder = move.folder, id = id] { emit Chosen(folder, id); });

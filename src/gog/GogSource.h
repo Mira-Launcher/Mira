@@ -7,7 +7,7 @@ namespace mira::gog {
 // Catalog reads GOG's own embed.gog.com API directly (bearer token from
 // Gog.h's AccessToken) rather than through gogdl -- gogdl has no
 // list-owned-games subcommand of its own (see Gog.h's class comment).
-// Install/Update wrap GogInstaller.
+// Install/Update wrap gog::InstallTitle.
 class GogSource : public library::ILibrarySource {
  public:
   std::string Name() const override { return "gog"; }

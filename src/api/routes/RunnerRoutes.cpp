@@ -22,13 +22,6 @@ namespace {
 using httplib::Request;
 using httplib::Response;
 using nlohmann::json;
-
-// Deletes `target` only if it resolves (symlinks included) inside one of `roots`.
-Result<void> DeleteUnderRoot(const std::string& target,
-                             const std::vector<std::filesystem::path>& roots) {
-  return library::DeleteInside(target, roots);
-}
-
 }  // namespace
 
 void RegisterRunnerRoutes(Router& http, Services& s) {
@@ -234,7 +227,8 @@ void RegisterRunnerRoutes(Router& http, Services& s) {
                        std::format("{} is in use by {}, which is running", name, users));
     }
 
-    if (auto deleted = DeleteUnderRoot(build_dir.string(), runner::RunnerRoots(s.config, kind));
+    if (auto deleted =
+            library::DeleteInside(build_dir.string(), runner::RunnerRoots(s.config, kind));
         !deleted) {
       // A partly deleted build is still listed, so lists re-read what is left.
       s.events.Publish("runners.removed", {{"kind", kind}, {"name", name}});

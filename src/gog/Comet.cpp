@@ -59,10 +59,9 @@ std::string Username(const config::Config& config) {
   }
   std::string name;
   if (const auto token = AccessToken(config)) {
-    const auto result = runner::RunCurlWithSecrets(
-        {"-sSL", "-f", "--max-time", "5",
-         achievements::Endpoint("GOG_EMBED", "https://embed.gog.com") + "/userData.json"},
-        runner::CurlConfigLine("header", "Authorization: Bearer " + *token));
+    const auto result = CurlWithToken(
+        *token, {"-f", "--max-time", "5",
+                 achievements::Endpoint("GOG_EMBED", "https://embed.gog.com") + "/userData.json"});
     if (result && result->exit_code == 0) {
       const json parsed = json::parse(result->output, nullptr, false);
       if (parsed.is_object()) name = core::JsonString(parsed, "username");

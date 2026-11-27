@@ -110,39 +110,12 @@ void SourceSettingsCard::Save() {
     emit SaveFinished(true);
     return;
   }
-  // As on the settings screen: a value put back to its default is removed, not written out.
-  std::vector<ConfigEdit> edits;
-  std::vector<size_t> edited;
-  std::vector<size_t> resets;
-  for (size_t i = 0; i < settings_.size(); ++i) {
-    if (!settings_[i].Changed()) continue;
-    if (settings_[i].IsDefault()) {
-      resets.push_back(i);
-    } else {
-      edits.push_back({settings_[i].entry.key, settings_[i].entry.type, settings_[i].Text()});
-      edited.push_back(i);
-    }
-  }
   saving_ = true;
   save_error_.clear();
   UpdateButtons();
-  // What was sent: an edit typed while the save runs is still unsaved after it.
-  std::vector<std::string> sent(settings_.size());
-  for (size_t i = 0; i < settings_.size(); ++i) sent[i] = settings_[i].Text();
-
   // Settings first, then the runner; a failed setting stops there.
-  saves_pending_ = (edits.empty() ? 0 : 1) + static_cast<int>(resets.size());
-  if (saves_pending_ == 0) {
-    SaveRunner();
-    return;
-  }
-  const auto done = [this, sent](bool ok, const std::string& error,
-                                 const std::vector<size_t>& indices) {
-    if (ok) {
-      for (const size_t i : indices) settings_[i].original = sent[i];
-    } else if (save_error_.isEmpty()) {
-      save_error_ = error_help::Describe(error);
-    }
+  saves_pending_ = SaveChanged(this, settings_, [this](const PatchConfigResult& result) {
+    if (!result.ok && save_error_.isEmpty()) save_error_ = error_help::Describe(result.error);
     if (--saves_pending_ > 0) return;
     if (!save_error_.isEmpty()) {
       ShowStatus(save_error_, true);
@@ -150,17 +123,8 @@ void SourceSettingsCard::Save() {
       return;
     }
     SaveRunner();
-  };
-  if (!edits.empty()) {
-    api::PatchConfigAsync(this, edits, [done, edited](PatchConfigResult result) {
-      done(result.ok, result.error, edited);
-    });
-  }
-  for (const size_t i : resets) {
-    api::ResetConfigKeyAsync(this, settings_[i].entry.key, [done, i](PatchConfigResult result) {
-      done(result.ok, result.error, {i});
-    });
-  }
+  });
+  if (saves_pending_ == 0) SaveRunner();
 }
 
 void SourceSettingsCard::SaveRunner() {

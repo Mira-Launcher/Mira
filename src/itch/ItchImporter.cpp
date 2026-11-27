@@ -82,7 +82,8 @@ Result<library::ImportSummary> ItchImporter::Import() {
     game.id = id;
     game.source = "itch";
     game.source_ref = cave.game_id;
-    game.name = cave.title.empty() ? cave.game_id : cave.title;
+    if (!existing || game.name.empty())  // a rename stays
+      game.name = cave.title.empty() ? cave.game_id : cave.title;
     game.install_path = cave.install_folder;
     game.platform = cave.is_linux_native ? model::Platform::Native : model::Platform::Windows;
     game.last_error.clear();
@@ -113,13 +114,7 @@ Result<library::ImportSummary> ItchImporter::Import() {
       game.status = model::GameStatus::Ready;
     }
 
-    auto result = games_.Merge(existing, game);
-    if (!result) {
-      log::Error("failed to save itch game {}: {}", id, result.error().message);
-      summary.listed.insert(id);  // still installed, only not saved
-      continue;
-    }
-    library::RecordImported(summary, events_, game, existing.has_value());
+    library::SaveImported(summary, events_, games_, existing, game, "itch");
   }
   summary.lists_installed = true;
   return summary;

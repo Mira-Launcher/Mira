@@ -272,7 +272,8 @@ Result<HeroicImportSummary> HeroicImporter::Import() {
     game.id = existing ? game.id : games_.NextId(found.title, install_path);
     game.source = "heroic";
     game.source_ref = ref;
-    game.name = found.title;
+    // A rename stays; a game found by its folder before takes Heroic's title.
+    if (!existing || existing->source != "heroic" || game.name.empty()) game.name = found.title;
     const bool own_program =
         existing && fs::exists(fs::path(existing->install_path) / existing->exe_path, ec);
     if (!own_program) {
@@ -308,13 +309,7 @@ Result<HeroicImportSummary> HeroicImporter::Import() {
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
 
-    auto result = games_.Merge(existing, game);
-    if (!result) {
-      log::Error("failed to save heroic game {}: {}", game.id, result.error().message);
-      continue;
-    }
-    keep(game);
-    library::RecordImported(summary, events_, game, existing.has_value());
+    if (library::SaveImported(summary, events_, games_, existing, game, "heroic")) keep(game);
   }
   return summary;
 }

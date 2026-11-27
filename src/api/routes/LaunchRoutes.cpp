@@ -759,10 +759,7 @@ void RegisterLaunchRoutes(Router& http, Services& s) {
       }
       auto command = launchers::BuildCommand(s.config, s.games, *game);
       if (!command) return SendError(res, 409, command.error());
-      for (std::string file : *files) {
-        std::ranges::replace(file, '/', '\\');
-        command->argv.push_back("Z:" + file);
-      }
+      for (const std::string& file : *files) command->argv.push_back(paths::ZDrivePath(file));
       if (auto ran = RunPreScriptInline(pre_script,
                                         static_cast<int>(resolver.GetInt("launch.pre_timeout_s")));
           !ran) {

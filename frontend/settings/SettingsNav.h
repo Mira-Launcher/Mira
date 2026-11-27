@@ -83,9 +83,6 @@ class SettingsNavWidget : public QWidget {
   // have given them their real heights. Folding never does this by itself.
   void RearrangePages();
 
-  // Back to the first page's top, at once.
-  void ScrollToTop();
-
  protected:
   bool eventFilter(QObject* watched, QEvent* event) override;
 

@@ -17,6 +17,8 @@ class UpdateChecker : public QObject {
   explicit UpdateChecker(QObject* parent = nullptr);
 
   const std::vector<UpdateInfo>& Updates() const { return updates_; }
+  // Why the last check failed; empty once one works.
+  const QString& Error() const { return error_; }
 
   // While updates.check is on. `refresh` is someone asking: it checks regardless, past mirad's
   // cached answers. `done` runs once an answer lands, or fails.
@@ -30,6 +32,7 @@ class UpdateChecker : public QObject {
   void Answered();
 
   std::vector<UpdateInfo> updates_;
+  QString error_;
   int request_ = 0;  // only the newest answer is kept
   std::vector<std::function<void()>> waiting_;
 };

@@ -45,10 +45,11 @@ std::uintmax_t TotalSize(const fs::path& dir) {
   std::error_code ec;
   if (fs::is_regular_file(dir, ec))
     return fs::file_size(dir, ec);  // a game in one file, an AppImage
-  for (const auto& entry :
-       fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)) {
+  // increment(ec): a folder removed mid-walk would make ++ throw.
+  fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec);
+  for (; !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
     std::error_code size_ec;
-    if (entry.is_regular_file(size_ec)) total += entry.file_size(size_ec);
+    if (it->is_regular_file(size_ec)) total += it->file_size(size_ec);
   }
   return total;
 }

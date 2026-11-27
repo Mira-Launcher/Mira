@@ -13,20 +13,8 @@ namespace mira::gog {
 // "<gog.install_root>/<id>", then runs GogImporter::ImportPath on that
 // directory to pick it up as a tracked model::Game and provision a
 // Wine/Proton prefix for it. gogdl never creates one, the same posture as
-// EpicInstaller re: Legendary.
-class GogInstaller {
- public:
-  GogInstaller(config::Config& config, store::GameStore& games, api::EventBus& events);
-
-  Result<void> Install(const std::string& id);
-  Result<void> Update(const std::string& id);
-
- private:
-  Result<void> Run(const std::string& id);
-
-  config::Config& config_;
-  store::GameStore& games_;
-  api::EventBus& events_;
-};
+// epic::InstallTitle re: Legendary.
+Result<void> InstallTitle(config::Config& config, store::GameStore& games, api::EventBus& events,
+                          const std::string& id);
 
 }  // namespace mira::gog

@@ -1,13 +1,11 @@
 #pragma once
 
 #include <QString>
-#include <functional>
 #include <optional>
 #include <string>
-#include <vector>
 
 #include "../client/Types.h"
-#include "../components/SheetCard.h"
+#include "LiveCard.h"
 
 class QLabel;
 class QPushButton;
@@ -20,7 +18,7 @@ struct SourceInfo;
 // /v1/games/{id}/mod-managers/{manager}): Vortex's files deployed into the game's folders, the
 // game files it set aside, and its mods, downloads and settings for the game. Remove stays off
 // until that's known, and while the manager is open. An in-window card (cards::Show).
-class RemoveModManagerCard : public SheetCard {
+class RemoveModManagerCard : public LiveCard {
   Q_OBJECT
 
  public:
@@ -34,14 +32,9 @@ class RemoveModManagerCard : public SheetCard {
   void Confirmed();
 
  private:
-  // A row with a label and muted text on the right, which `text` fills again with the summary.
-  void AddInfoRow(const QString& label, std::function<QString()> text,
-                  std::function<QString()> tooltip = nullptr);
-
   QString manager_name_;
   bool vortex_ = false;
   std::optional<ModManagerPurgeResult> summary_;
-  std::vector<std::function<void()>> refresh_;
   QLabel* note_ = nullptr;
   QPushButton* confirm_ = nullptr;
 };

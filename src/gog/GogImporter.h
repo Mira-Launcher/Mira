@@ -21,7 +21,7 @@ std::filesystem::path FindGameDir(const config::Config& config, const std::strin
 // own (see Gog.h), so the only source of truth is gog.install_root, the
 // directory Mira itself installs into. Import() walks its immediate
 // subdirectories and runs `gogdl import <dir>` on each to identify it, so
-// a game GogInstaller already put there is picked up on a fresh `mirad`
+// a game gog::InstallTitle already put there is picked up on a fresh `mirad`
 // start, and one a user drops in by hand is picked up too.
 class GogImporter {
  public:
@@ -30,7 +30,7 @@ class GogImporter {
   Result<library::ImportSummary> Import();
 
   // Identifies and upserts one already-unpacked install at `path` --
-  // what GogInstaller calls right after a fresh download (already knows
+  // what gog::InstallTitle calls right after a fresh download (already knows
   // `id`, GOG's product id), and what `mira gog import <id> <path>` uses
   // for an install living somewhere else. A missing/unparseable title
   // falls back to `id`, same as every other source here. `refresh` false

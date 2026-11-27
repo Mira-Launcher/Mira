@@ -285,13 +285,6 @@ void SettingsNavWidget::RefreshIcons() {
   }
 }
 
-void SettingsNavWidget::ScrollToTop() {
-  sections_nav_->Stop();
-  canvas_->layout()->activate();
-  scroll_->verticalScrollBar()->setValue(0);
-  SyncToScroll();
-}
-
 void SettingsNavWidget::RegisterRow(QWidget* row_widget, const QString& searchable_text) {
   auto* page = AncestorOf<SettingsPage>(row_widget);
   const auto category = std::ranges::find(categories_, page, &Category::page);

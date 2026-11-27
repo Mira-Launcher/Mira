@@ -125,7 +125,7 @@ bool MoveGamesCard::Moves(const RelocationPlan& plan) {
 }
 
 MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
-    : SheetCard(QString(), parent), plans_(std::move(plans)) {
+    : LiveCard(QString(), parent), plans_(std::move(plans)) {
   setFixedWidth(kWidth);
   SetProminentTitle();
   std::vector<std::string> moving;
@@ -153,7 +153,7 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
         auto* size = Line(row, QString(), part->copies ? text::kWarning : text::kSubtle);
         size->setWordWrap(false);
         row->AddControl(size);
-        refresh_.push_back([this, size, id = plan.id, files, copies = part->copies] {
+        AddLive([this, size, id = plan.id, files, copies = part->copies] {
           const auto it = sizes_.find(id);
           const QString amount =
               !measured_ || it == sizes_.end()
@@ -192,7 +192,9 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
         auto* size = Line(row, QString(), AnyCopies(plan) ? text::kWarning : text::kSubtle);
         size->setWordWrap(false);
         row->AddControl(size);
-        refresh_.push_back([this, size, plan] { size->setText(MovingSize(plan)); });
+        AddLive([this, size, plan] {
+          size->setText(sizes_.contains(plan.id) ? SizeText(MovingBytes(plan)) : QString("…"));
+        });
         // isVisibleTo: the card may not be shown yet.
         const auto chevron_icon = [chevron, detail, row] {
           chevron->setIcon(icons::For(detail->isVisibleTo(row) ? icons::Glyph::ChevronUp
@@ -237,21 +239,14 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
     auto* total = Line(this, QString(), text::kSubtle);
     total->setWordWrap(false);
     buttons->insertWidget(0, total);
-    refresh_.push_back([this, total] {
+    AddLive([this, total] {
       if (!measured_) return total->setText("…");
       qint64 sum = 0;
-      for (const RelocationPlan& plan : plans_) {
-        const auto it = sizes_.find(plan.id);
-        if (!Moves(plan) || it == sizes_.end()) continue;
-        if (plan.files.action == "move") sum += static_cast<qint64>(it->second.files);
-        if (plan.prefix.action == "move") sum += static_cast<qint64>(it->second.prefix);
-      }
+      for (const RelocationPlan& plan : plans_) sum += MovingBytes(plan);
       total->setText(SizeText(sum));
     });
   }
-  auto* cancel = new QPushButton("Cancel", this);
-  connect(cancel, &QPushButton::clicked, this, [this] { cards::Close(this); });
-  buttons->addWidget(cancel);
+  AddCancel([this] { cards::Close(this); });
   auto* move = new Button(
       moving.size() <= 1 || one ? QString("Move") : QString("Move %1 games").arg(moving.size()),
       ButtonKind::Primary, this);
@@ -259,7 +254,6 @@ MoveGamesCard::MoveGamesCard(std::vector<RelocationPlan> plans, QWidget* parent)
   move->setEnabled(!moving.empty());
   connect(move, &QPushButton::clicked, this, [this, moving] { emit Confirmed(moving); });
   buttons->addWidget(move);
-  for (const auto& refresh : refresh_) refresh();
 }
 
 void MoveGamesCard::AddPartLines(QWidget* parent, const RelocationPlan& plan) {
@@ -271,19 +265,19 @@ void MoveGamesCard::AddPartLines(QWidget* parent, const RelocationPlan& plan) {
   }
 }
 
-QString MoveGamesCard::MovingSize(const RelocationPlan& plan) const {
+qint64 MoveGamesCard::MovingBytes(const RelocationPlan& plan) const {
   const auto it = sizes_.find(plan.id);
-  if (!measured_ || it == sizes_.end()) return "…";
+  if (!Moves(plan) || it == sizes_.end()) return 0;
   qint64 sum = 0;
   if (plan.files.action == "move") sum += static_cast<qint64>(it->second.files);
   if (plan.prefix.action == "move") sum += static_cast<qint64>(it->second.prefix);
-  return SizeText(sum);
+  return sum;
 }
 
 void MoveGamesCard::SetSizes(const std::map<std::string, RemovalSize>& sizes) {
   sizes_ = sizes;
   measured_ = true;
-  for (const auto& refresh : refresh_) refresh();
+  Refresh();
 }
 
 }  // namespace mira_gui

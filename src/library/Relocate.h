@@ -24,7 +24,7 @@ struct RelocateRequest {
 // already at the target -- safe to run across a whole library without
 // redundant moves. Every destination, explicit or canonical, must resolve
 // inside a configured root (library_roots / prefix_root) the same way
-// api::DeleteUnderRoot validates a deletion target, or the move is
+// DeleteInside validates a deletion target, or the move is
 // refused. A plain rename() where possible, falling back to copy-then-
 // remove across filesystems (EXDEV). Never called automatically -- only
 // from an explicit relocate request; changing prefix_root/prefix_naming

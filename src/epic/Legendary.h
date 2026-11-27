@@ -20,7 +20,7 @@
 // installed, it's launched through Mira's own Wine/Proton runners like any
 // other Windows game (see docs/backend.md). This file only knows how to
 // find or fetch the `legendary` binary and run it; it has no game-library
-// knowledge (see EpicImporter/EpicInstaller for that).
+// knowledge (see EpicImporter/epic::InstallTitle for that).
 namespace mira::epic {
 
 // Where Mira's own managed download lives, if it ever fetches one. It never
