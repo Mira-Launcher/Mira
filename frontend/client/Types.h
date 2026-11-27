@@ -1173,6 +1173,7 @@ struct FrontendPrefs {
   std::optional<bool> big_screen_large_text;
   std::optional<bool> big_screen_at_start;
   std::optional<bool> start_on_login;
+  std::optional<bool> login_opens_window;  // started at login, the window shows, not just the tray
   // Closing the main window hides it to the tray (default), or quits Mira when false.
   std::optional<bool> close_to_tray;
   // Big screen navigation sounds and controller vibration, both on by default.

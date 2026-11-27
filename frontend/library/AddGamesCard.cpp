@@ -12,7 +12,6 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
-#include <QMenu>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QStorageInfo>
@@ -207,21 +206,29 @@ void AddGamesCard::ShowMenu() {
     Close();
   });
 
-  QPushButton* installed = add_row(icons::Glyph::Folder, "Already installed",
-                                   "A game or app's folder, or the program itself", "Choose…")
-                               .second;
-  auto* pick = new QMenu(installed);
-  pick->addAction("Folder…", this, [this] {
-    const QString folder =
+  // A file picker opens for a folder or a file, never both: one button for each.
+  QPushButton* folder = nullptr;
+  QPushButton* program = nullptr;
+  {
+    auto* row = new SettingRow("Already installed", QString(), page);
+    row->SetLeading(Tile(row, icons::Glyph::Folder));
+    row->SetBelow(Detail(row, "A game or app's folder for Mira to search, or the program itself"));
+    folder = new QPushButton("Folder", row);
+    program = new QPushButton("Program", row);
+    row->AddControl(folder);
+    row->AddControl(program);
+    page->AddRow(row);
+  }
+  connect(folder, &QPushButton::clicked, this, [this] {
+    const QString picked =
         QFileDialog::getExistingDirectory(this, "The game or app's folder", QDir::homePath());
-    if (!folder.isEmpty()) Classify(folder, false);
+    if (!picked.isEmpty()) Classify(picked, false);
   });
-  pick->addAction("Program…", this, [this] {
+  connect(program, &QPushButton::clicked, this, [this] {
     const QString file =
         QFileDialog::getOpenFileName(this, "The program that starts it", QDir::homePath());
     if (!file.isEmpty()) Classify(file, false);
   });
-  installed->setMenu(pick);
 
   QPushButton* installer =
       add_row(icons::Glyph::Download, "Installer", "Adds the game and installs it", "Choose…")
@@ -244,6 +251,8 @@ void AddGamesCard::ShowMenu() {
   connect(menu, &QPushButton::clicked, this, [this] { ShowAppMenu(); });
   // One width, so the buttons line up down the card.
   int widest = 0;
+  buttons.push_back(folder);
+  buttons.push_back(program);
   for (QPushButton* button : buttons) widest = std::max(widest, button->sizeHint().width());
   for (QPushButton* button : buttons) button->setMinimumWidth(widest);
 

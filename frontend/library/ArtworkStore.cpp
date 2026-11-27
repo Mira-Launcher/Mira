@@ -133,9 +133,8 @@ void ArtworkStore::SetQuickScaling(bool quick) {
   if (quick || drawn_quickly_.isEmpty()) return;
   // Queued: a view closed mid-zoom turns this off from its destructor, mid-teardown.
   QTimer::singleShot(0, this, [this] {
-    if (quick_)
-      return;  // another zoom started: its end announces them    for (const QString& id :
-               // std::exchange(drawn_quickly_, {})) emit CoverChanged(id);
+    if (quick_) return;  // another zoom started: its end announces them
+    for (const QString& id : std::exchange(drawn_quickly_, {})) emit CoverChanged(id);
   });
 }
 
