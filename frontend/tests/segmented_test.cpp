@@ -34,13 +34,12 @@ int InkWidth(QWidget* widget) {
 TEST_CASE("A checked segment's semibold text shows in full in the size its regular text set") {
   nav_test::App();
   Segmented segmented({{"auto", "System's choice"}, {"on", "On"}}, nullptr);
-  // base.qss's look: padding round the text, and semibold once checked.
+  // base.qss's look: padding round the text, and semibold once checked. The font goes in the sheet
+  // because a styled child takes the app's font, not its parent's.
   segmented.setStyleSheet(
-      "QPushButton { background: white; color: black; border: none; padding: 5px 18px; }"
+      "QPushButton { font-family: 'DejaVu Sans'; font-size: 10pt; background: white; color: black;"
+      " border: none; padding: 5px 18px; }"
       "QPushButton:checked { font-weight: 600; }");
-  QFont font("DejaVu Sans");
-  font.setPointSizeF(10);
-  segmented.setFont(font);
   QPushButton* option = segmented.Option("auto");
   option->ensurePolished();
   option->resize(option->sizeHint());
