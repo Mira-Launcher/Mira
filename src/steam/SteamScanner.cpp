@@ -59,7 +59,7 @@ Result<library::ImportSummary> SteamScanner::Scan() {
     model::Game game = existing.value_or(model::Game{});
     game.id = id;
     game.source = "steam";
-    game.name = app.name;
+    if (!existing || game.name.empty()) game.name = app.name;  // a rename stays
     game.install_path = app.install_dir.string();
     game.platform = app.is_native ? model::Platform::Native : model::Platform::Windows;
     game.data_dir = app.compat_data_dir.string();

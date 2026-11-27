@@ -99,14 +99,16 @@ Result<model::Game> GogImporter::ImportPath(const std::string& id,
   game.source = "gog";
   game.source_ref = id;
   // gogdl failing keeps the name it had, rather than the bare GOG id.
-  if (!title.empty()) {
+  if (!title.empty() && !existing) {
     game.name = title;
   } else if (game.name.empty()) {
     game.name = id;
   }
   game.install_path = game_dir.string();
   if (!exe_path.empty()) game.exe_path = exe_path;
-  game.platform = model::Platform::Windows;
+  // One set native by hand stays native.
+  if (!existing || existing->platform == model::Platform::Unknown)
+    game.platform = model::Platform::Windows;
   game.last_error.clear();
   game.updated_at = model::NowSeconds();
   if (!existing) game.created_at = game.updated_at;

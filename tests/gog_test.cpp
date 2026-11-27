@@ -147,6 +147,15 @@ TEST_CASE("GogImporter::ImportPath tags and provisions a title") {
   const auto game = fixture.games.Find("gog-123");
   REQUIRE(game);
   CHECK(game->name == "A GOG Game");
+
+  // Importing it again keeps a rename and a game set native by hand.
+  REQUIRE(fixture.games.Update("gog-123", [](model::Game& g) {
+    g.name = "Mine";
+    g.platform = model::Platform::Native;
+  }));
+  REQUIRE(importer.ImportPath("123", fixture.dir / "installed" / "123"));
+  CHECK(fixture.games.Find("gog-123")->name == "Mine");
+  CHECK(fixture.games.Find("gog-123")->platform == model::Platform::Native);
 }
 
 TEST_CASE("GogImporter::Import scans install_root's subdirectories") {

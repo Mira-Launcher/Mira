@@ -272,7 +272,8 @@ Result<HeroicImportSummary> HeroicImporter::Import() {
     game.id = existing ? game.id : games_.NextId(found.title, install_path);
     game.source = "heroic";
     game.source_ref = ref;
-    game.name = found.title;
+    // A rename stays; a game found by its folder before takes Heroic's title.
+    if (!existing || existing->source != "heroic" || game.name.empty()) game.name = found.title;
     const bool own_program =
         existing && fs::exists(fs::path(existing->install_path) / existing->exe_path, ec);
     if (!own_program) {

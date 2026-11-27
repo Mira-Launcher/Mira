@@ -66,7 +66,8 @@ Result<library::ImportSummary> EpicImporter::Import() {
     game.id = id;
     game.source = "epic";
     game.source_ref = title.app_name;
-    game.name = title.title.empty() ? title.app_name : title.title;
+    if (!existing || game.name.empty())
+      game.name = title.title.empty() ? title.app_name : title.title;
     game.install_path = title.install_path;
     // Keep a picked exe while it still exists, as LutrisImporter does.
     std::error_code ec;
@@ -74,7 +75,9 @@ Result<library::ImportSummary> EpicImporter::Import() {
         existing && !existing->exe_path.empty() &&
         std::filesystem::exists(std::filesystem::path(title.install_path) / existing->exe_path, ec);
     game.exe_path = own_exe ? existing->exe_path : title.executable;
-    game.platform = model::Platform::Windows;
+    // One set native by hand stays native.
+    if (!existing || existing->platform == model::Platform::Unknown)
+      game.platform = model::Platform::Windows;
     game.last_error.clear();
     game.updated_at = model::NowSeconds();
     if (!existing) game.created_at = game.updated_at;
@@ -93,7 +96,8 @@ Result<library::ImportSummary> EpicImporter::Import() {
     if (epic_playtime) {
       const auto it = epic_playtime->find(title.app_name);
       TakePlaytime(games_, id, it != epic_playtime->end() ? it->second : 0);
-      SendPlaytime(config_, games_, id);  // what an earlier send couldn't
+      SendPlaytime(config_, games_, id);                      // what an earlier send couldn't
+      if (const auto fresh = games_.Find(id)) game = *fresh;  // announced with its playtime
     }
     library::RecordImported(summary, events_, game, existing.has_value());
   }
