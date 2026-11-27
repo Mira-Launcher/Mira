@@ -18,7 +18,7 @@ using nlohmann::json;
 namespace fs = std::filesystem;
 
 // Each step runs once, in order; append, never edit one that has shipped.
-constexpr std::array<std::string_view, 15> kMigrations = {
+constexpr std::array<std::string_view, 16> kMigrations = {
     R"sql(
 CREATE TABLE games(
   id TEXT PRIMARY KEY,
@@ -211,6 +211,11 @@ CREATE TABLE IF NOT EXISTS store_playtime(
   seen INTEGER NOT NULL,
   sent_through INTEGER NOT NULL
 ) STRICT;
+)sql",
+    R"sql(
+-- A source's games can stay off the library page while it keeps importing; one switched off did both.
+ALTER TABLE sources ADD COLUMN in_library INTEGER NOT NULL DEFAULT 1;
+UPDATE sources SET in_library = 0, enabled = 1 WHERE added = 1 AND enabled = 0;
 )sql",
 };
 
@@ -732,7 +737,8 @@ Result<void> GameStore::KeepUiState(const json& state) {
 namespace {
 // A source's row with hidden mode's choice beside it, NULL when there is none.
 constexpr std::string_view kSourceSelect =
-    "SELECT id, added, enabled, in_sidebar, position, imported_at, hidden_sidebar.shown "
+    "SELECT id, added, enabled, in_sidebar, position, imported_at, hidden_sidebar.shown, "
+    "in_library "
     "FROM sources LEFT JOIN hidden_sidebar ON hidden_sidebar.source = sources.id";
 
 // Columns: kSourceSelect's.
@@ -741,6 +747,7 @@ SourceState ReadSource(const Statement& row) {
       .id = row.Text(0),
       .added = row.Int(1) != 0,
       .enabled = row.Int(2) != 0,
+      .in_library = row.Int(7) != 0,
       .in_sidebar = row.Int(3) != 0,
       .in_hidden_sidebar = row.IsNull(6) ? std::nullopt : std::optional<bool>(row.Int(6) != 0),
       .position = static_cast<int>(row.Int(4)),
@@ -777,8 +784,8 @@ void GameStore::SaveSource(const SourceState& state) {
   if (!db_.IsOpen()) return;
   const auto written = Transact([&]() -> Result<void> {
     auto keep = db_.Prepare(
-        "INSERT OR REPLACE INTO sources(id, added, enabled, in_sidebar, position, imported_at) "
-        "VALUES(?, ?, ?, ?, ?, ?)");
+        "INSERT OR REPLACE INTO sources(id, added, enabled, in_sidebar, position, imported_at, "
+        "in_library) VALUES(?, ?, ?, ?, ?, ?, ?)");
     if (!keep) return std::unexpected(keep.error());
     if (auto done = keep->Bind(1, state.id)
                         .Bind(2, std::int64_t{state.added})
@@ -786,6 +793,7 @@ void GameStore::SaveSource(const SourceState& state) {
                         .Bind(4, std::int64_t{state.in_sidebar})
                         .Bind(5, std::int64_t{state.position})
                         .Bind(6, state.imported_at)
+                        .Bind(7, std::int64_t{state.in_library})
                         .Run();
         !done)
       return done;

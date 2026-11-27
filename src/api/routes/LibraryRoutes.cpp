@@ -609,7 +609,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     const auto found = counts.find(state.id);
     return json{{"id", state.id},
                 {"added", state.added || state.id == "local"},
-                {"enabled", state.enabled},
+                {"in_library", state.in_library},
                 {"in_sidebar", state.in_sidebar},
                 {"in_hidden_sidebar", state.in_hidden_sidebar.value_or(state.in_sidebar)},
                 {"position", state.position},
@@ -669,7 +669,7 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     if (std::ranges::find(kSourceIds, id) == kSourceIds.end()) {
       return SendError(res, 404, "unknown_source", std::format("no source named \"{}\"", id));
     }
-    const auto body = BodyObject(req, res, R"({"enabled": true, "in_sidebar": true})");
+    const auto body = BodyObject(req, res, R"({"in_library": true, "in_sidebar": true})");
     if (!body) return;
     // A change made in hidden mode gives it a list of its own, from then on apart from in_sidebar.
     const auto hidden = body->find("in_hidden_sidebar");
@@ -682,9 +682,11 @@ void RegisterLibraryRoutes(Router& http, Services& s) {
     };
     const bool was_added = state.added;
     flag("added", state.added);
-    if (state.added && !was_added)
+    if (state.added && !was_added) {
       state.enabled = true;  // setting a source up means wanting its games
-    flag("enabled", state.enabled);
+      state.in_library = true;
+    }
+    flag("in_library", state.in_library);
     flag("in_sidebar", state.in_sidebar);
     s.games.SaveSource(state);
     SendJson(res, source_json(s.games.CountBySource(s.hidden.Locked()), state));

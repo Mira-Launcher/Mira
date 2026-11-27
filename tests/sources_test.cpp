@@ -214,11 +214,12 @@ TEST_CASE("A launcher's games import from its prefix, and removing it keeps save
 }
 
 TEST_CASE(
-    "Sources can be switched off, reordered and listed in that order, and hidden mode's sidebar "
+    "Sources can be kept off the library page, reordered and listed in that order, and hidden "
+    "mode's sidebar "
     "mirrors the list until it's changed there") {
   LiveServer server(TempDir("sources-list"));
   httplib::Client client = server.Client();
-  auto patched = client.Patch("/v1/sources/epic", R"({"enabled": false, "in_sidebar": false})",
+  auto patched = client.Patch("/v1/sources/epic", R"({"in_library": false, "in_sidebar": false})",
                               "application/json");
   REQUIRE(patched != nullptr);
   CHECK(patched->status == 200);
@@ -235,7 +236,7 @@ TEST_CASE(
   for (const json& source : sources) {
     if (source["id"] == "epic") epic = source;
   }
-  CHECK(epic["enabled"] == false);
+  CHECK(epic["in_library"] == false);
   CHECK(epic["in_sidebar"] == false);
   CHECK(epic["in_hidden_sidebar"] == false);  // hidden mode mirrors in_sidebar until changed there
   CHECK(GetJson(client, "/v1/sources")["hidden_sidebar_mirrors"] == true);
@@ -288,28 +289,23 @@ TEST_CASE(
   CHECK(shown["local"] == false);
 }
 
-TEST_CASE("A switched-off source's games are left out of the library unless include_off is set") {
+TEST_CASE("A source kept off the library page still lists and imports its games") {
   const fs::path state = TempDir("sources-off-games");
   LiveServer server(state);
   REQUIRE(server.games().Upsert(SourceGame("steam-570", "steam", state / "Dota 2")));
   httplib::Client client = server.Client();
-  auto patched = client.Patch("/v1/sources/steam", R"({"enabled": false})", "application/json");
+  auto patched = client.Patch("/v1/sources/steam", R"({"in_library": false})", "application/json");
   REQUIRE(patched != nullptr);
   CHECK(patched->status == 200);
 
-  const auto ids = [](const json& games) {
-    std::vector<std::string> out;
-    for (const json& game : games) out.push_back(game["id"]);
-    return out;
-  };
-  CHECK_FALSE(std::ranges::contains(ids(GetJson(client, "/v1/games")), std::string("steam-570")));
-  CHECK(std::ranges::contains(ids(GetJson(client, "/v1/games?include_off=true")),
-                              std::string("steam-570")));
+  const json games = GetJson(client, "/v1/games");
+  CHECK(std::ranges::any_of(games, [](const json& game) { return game["id"] == "steam-570"; }));
+  CHECK(server.games().SourceEnabled("steam"));
 
-  // Setting it up again turns it back on.
+  // Setting it up again puts it back in the library.
   client.Patch("/v1/sources/steam", R"({"added": false})", "application/json");
   client.Patch("/v1/sources/steam", R"({"added": true})", "application/json");
-  CHECK(server.games().Source("steam").enabled);
+  CHECK(server.games().Source("steam").in_library);
 }
 
 TEST_CASE("An unknown source can't be planned or removed") {

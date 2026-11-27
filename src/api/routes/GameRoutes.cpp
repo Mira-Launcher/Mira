@@ -7,7 +7,6 @@
 #include <fstream>
 #include <map>
 #include <optional>
-#include <set>
 
 #include "api/Http.h"
 #include "api/Routes.h"
@@ -86,24 +85,16 @@ void RegisterGameRoutes(Router& http, Services& s) {
   // --- games ----------------------------------------------------------------
 
   // Leaves out games tagged "hidden" unless a tag is asked for or include_hidden=true (and always
-  // while hidden games are locked), and games from a source that's off unless include_off=true.
+  // while hidden games are locked).
   http.Get("/v1/games", [&s](const Request& req, Response& res) {
     std::vector<model::Game> all = s.games.All();
     json out = json::array();
     const auto status_filter = req.params.find("status");
     const auto tag_filter = req.params.find("tag");
     const bool include_hidden = BoolParam(req, "include_hidden");
-    const bool include_off = BoolParam(req, "include_off");
-    std::set<std::string> off_sources;
-    if (!include_off) {
-      for (const store::SourceState& source : s.games.Sources()) {
-        if (!source.enabled) off_sources.insert(source.id);
-      }
-    }
     const Services::RecordSettings settings = s.CurrentRecordSettings();
     for (const model::Game& game : all) {
       if (s.Conceals(game)) continue;
-      if (!include_off && off_sources.contains(store::SourceIdOf(game.source))) continue;
       if (status_filter != req.params.end() &&
           status_filter->second != model::ToString(game.status)) {
         continue;

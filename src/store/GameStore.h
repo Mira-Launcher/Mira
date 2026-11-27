@@ -70,7 +70,8 @@ struct RemoteSync {
 struct SourceState {
   std::string id;
   bool added = false;   // set up: shown on the Sources page and in the sidebar, not in the catalog
-  bool enabled = true;  // off keeps it added but hidden, its games unlisted and imports skipped
+  bool enabled = true;  // off once removed, so imports don't bring its games back
+  bool in_library = true;  // off keeps its games off the library page; they're still imported
   bool in_sidebar = true;
   // In hidden mode's sidebar; unset while hidden mode mirrors in_sidebar.
   std::optional<bool> in_hidden_sidebar = std::nullopt;
